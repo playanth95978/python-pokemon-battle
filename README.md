@@ -197,3 +197,36 @@ catégories, générations et versions datées. Chaque espèce est sélectionnab
 les deux combattants. Les dates portent sur les jeux et le début des générations.
 La provenance de l'instantané, les règles des kits de combat simplifiés et la
 procédure de mise à jour sont décrites dans `docs/catalogue.md`.
+
+## Adaptateur Mistral
+
+Le transport asynchrone `mistral/client.py` utilise HTTPX avec un transport injectable
+pour les tests. `mistral/llm_adapter.py` accepte les descriptions JSON des outils
+via `complete(messages, tools=..., tool_choice="auto")`, conserve les appels dans
+`Completion.tool_calls` et accepte une réponse assistant sans texte lorsqu'elle
+contient des appels d'outils. Les messages de résultat portent `tool_call_id` et
+éventuellement `name`, afin de poursuivre la conversation avec le modèle.
+
+Les contrats `Message`, `Completion` et `ToolCall` vivent dans
+`application/ai/generation.py`. Le domaine de combat reste dans `domain.py` : ne
+pas créer un paquet `domain/` homonyme sans migration de ses définitions métier.
+
+`core/config.py` cherche le `.env` à la racine du projet. Les paramètres utiles
+sont `MISTRAL_API_KEY` et `MISTRAL_CHAT_MODEL` ; la clé reste uniquement côté backend.
+L'adaptateur ne contient aucun outil capable de modifier directement un combat.
+Le `ToolsContext`, la boucle d'exécution des outils et la route d'adversaire IA
+restent à implémenter : ces corrections fournissent le contrat d'échange, pas
+encore un adversaire jouable. Le module de sécurité importé d'un autre projet,
+inutilisé et dépendant de `app.*`, a été retiré ; aucune authentification n'est ajoutée.
+
+Les tests utilisent uniquement une clé factice construite sans lire le `.env`
+et `httpx.MockTransport`. Pour les exécuter dans l'environnement du projet :
+
+```powershell
+uv sync --extra test
+.venv/Scripts/python.exe -m pytest -q
+```
+
+Ils couvrent les appels simples et multiples, le retour des résultats d'outils,
+les réponses textuelles, les erreurs HTTP et JSON, les délais dépassés et l'absence
+de clé. Aucun test ne consomme l'API Mistral réelle.
