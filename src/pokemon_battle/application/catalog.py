@@ -4,9 +4,11 @@ from types import MappingProxyType
 
 from pokemon_battle.domain import Attack, Category, Species, Stats
 from pokemon_battle.types import Type
+from .pokemon_catalogue import species_definitions
 
 TACKLE = Attack("Charge", Type.NORMAL, 40, 100, 35)
 CATALOG = MappingProxyType({
+    **species_definitions(),
     "bulbizarre": Species("Bulbizarre", (Type.GRASS, Type.POISON),
                           Stats(120, 69, 70, 85, 86, 65),
                           (TACKLE, Attack("Fouet Lianes", Type.GRASS, 45, 100, 25))),

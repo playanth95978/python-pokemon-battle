@@ -11,6 +11,7 @@ from pokemon_battle.application.catalog import CATALOG
 from pokemon_battle.infrastructure.sqlite_battle_repository import SqliteBattleRepository
 
 from .battle_controller import router
+from .catalogue_controller import router as catalogue_router
 
 def create_app(database_path: str | Path = "battles.sqlite3") -> FastAPI:
     @asynccontextmanager
@@ -24,6 +25,7 @@ def create_app(database_path: str | Path = "battles.sqlite3") -> FastAPI:
 
     app = FastAPI(title="Pokémon Battle API", lifespan=lifespan)
     app.include_router(router)
+    app.include_router(catalogue_router)
     return app
 
 

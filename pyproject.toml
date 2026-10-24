@@ -18,3 +18,6 @@ test = ["pytest>=8", "httpx>=0.27,<1"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+pokemon_battle = ["data/*.json"]
