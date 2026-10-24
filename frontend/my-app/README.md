@@ -82,3 +82,36 @@ resynchronisation. Ils ne nécessitent pas de serveur démarré.
 Le proxy Vite sert au développement. Pour un déploiement, prévoir un reverse proxy
 qui transmet `/api/*` à FastAPI en retirant le préfixe `/api` ; le build statique seul
 ne fournit pas le backend.
+
+## Illustrations et animations
+
+L'interface reprend le modèle HTML fourni : fond bleu nuit, combattants en diagonale,
+fiches de PV dans l'arène, commandes à gauche du combat sur grand écran et journal
+sous le terrain. Sous 1000 px, les commandes passent sous l'arène. Les deux attaques
+restent choisies explicitement, conformément au contrat actuel de FastAPI.
+
+`pokemonArtwork.ts` appelle `https://pokeapi.co/api/v2/pokemon/{id}/` pour lire
+uniquement les URL d'illustrations. Les noms français sont associés aux identifiants
+PokéAPI des trois espèces du catalogue. Les réponses sont partagées en mémoire et
+conservées dans le cache de session. Une illustration officielle manquante ou cassée
+se replie sur le sprite, puis sur un emplacement neutre ; une panne de PokéAPI
+n'empêche pas de jouer. Aucune statistique de PokéAPI n'intervient dans le combat.
+
+Les Pokémon sont des images 2D. `renderAttack3D.ts` superpose des effets WebGL Three.js
+en vraie 3D : particules de feu pour Flammèche, gouttes pour Pistolet à O, lianes
+segmentées pour Fouet Lianes et onde d'impact pour Charge. Les autres noms se replient
+sur un impact générique (Éclair et Tonnerre ont un effet électrique si le catalogue
+les ajoute ultérieurement). Il n'y a pas de modèles 3D articulés de Pokémon.
+
+Les effets suivent les événements serveur dans leur ordre, sans rejouer les tours
+déjà affichés, sans riposte inventée après KO et sans impact en cas d'immunité ou
+d'échec. Pendant leur lecture, les commandes du tour suivant sont bloquées ; un
+nouveau combat reste possible et annule la lecture précédente. Les PV et PP affichés
+sont toujours les dernières valeurs FastAPI, sans simulation ni état de combat animé local.
+
+Le composant `BattleSession` conserve uniquement le curseur de lecture et les choix UI.
+Le bouton « Animations d'attaque » permet de désactiver les effets. La préférence
+`prefers-reduced-motion` les désactive également. Sans WebGL, un effet CSS de repli
+reste disponible. Three.js se charge à la première attaque uniquement ; son chunk
+d'environ 534 kB minifiés déclenche l'avertissement indicatif de taille Vite, sans
+empêcher le build. Les ressources GPU et les timers sont libérés à la fin des effets.

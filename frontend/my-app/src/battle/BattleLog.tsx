@@ -23,16 +23,16 @@ function describe(event: BattleEvent, battle: Battle): string {
 
 export function BattleLog({events, battle}: { events: BattleEvent[]; battle: Battle }) {
     return (
-        <section aria-labelledby="battle-log-heading" className="rounded-xl border-2 border-slate-200 bg-white p-5">
-            <h2 id="battle-log-heading" className="mb-4 text-xl font-bold">Journal du combat</h2>
+        <section aria-labelledby="battle-log-heading" className="card">
+            <h2 id="battle-log-heading">Journal du combat</h2>
             {events.length === 0 ?
-                <p className="text-sm text-slate-500">Choisis les deux attaques pour jouer le premier tour.</p> : (
+                <p className="muted text-sm">Choisis les deux attaques pour jouer le premier tour.</p> : (
                     <ol aria-live="polite" aria-relevant="additions"
-                        className="max-h-96 space-y-3 overflow-y-auto pr-2 text-sm">
+                        className="log">
                         {events.map((event, index) => (
-                            <li key={`${event.turn}-${index}`} className="border-l-2 border-slate-200 pl-3">
+                            <li key={`${event.turn}-${index}`}>
                                 <span
-                                    className="mr-2 font-bold text-blue-800">Tour {event.turn}</span>{describe(event, battle)}
+                                    className="log-turn">Tour {event.turn}</span>{describe(event, battle)}
                             </li>
                         ))}
                     </ol>

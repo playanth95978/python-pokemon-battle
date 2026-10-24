@@ -157,3 +157,9 @@ son client API ; les composants d'affichage ne connaissent pas le réseau.
 
 Voir `frontend/my-app/README.md` pour lancer FastAPI sur le port 8000 puis Vite,
 et pour les tests frontend (`npm test`) et le build (`npm run build`).
+
+L'arène reprend le HTML de référence fourni : thème bleu nuit et Pokémon en diagonale.
+Les illustrations 2D sont récupérées depuis PokéAPI avec cache et repli en cas d'échec.
+Les attaques du catalogue ont des effets 3D Three.js joués selon les événements
+FastAPI (flammes, eau, lianes, impact), avec option de désactivation et respect des
+mouvements réduits. Le moteur et les règles de calcul ne changent pas.

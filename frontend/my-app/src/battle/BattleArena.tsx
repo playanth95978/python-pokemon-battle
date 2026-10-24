@@ -1,20 +1,25 @@
 import type { Battle } from './types'
+import type { PokemonArtwork } from './pokemonArtwork'
+import type { AttackClip } from './attackPlayback'
 import { PokemonCard } from './PokemonCard'
+import { AttackEffects } from './AttackEffects'
 
-export function BattleArena({battle}: { battle: Battle }) {
-    const winner = [battle.first, battle.second].find((fighter) => fighter.id === battle.winner)
-    return (
-        <section aria-label="Arène de combat">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-xl font-bold">L’arène</h2>
-                <p className="rounded-full bg-slate-900 px-4 py-1 text-sm font-bold text-white" role="status">
-                    {winner ? `Victoire de ${winner.species}` : `Tour ${battle.turn}`}
-                </p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-                <PokemonCard fighter={battle.first} side="first"/>
-                <PokemonCard fighter={battle.second} side="second"/>
-            </div>
-        </section>
-    )
+interface Props {
+    battle: Battle
+    firstArtwork: PokemonArtwork | null
+    secondArtwork: PokemonArtwork | null
+    active: AttackClip | null
+}
+
+export function BattleArena({battle, firstArtwork, secondArtwork, active}: Props) {
+    return <section className="arena" aria-label="Arène de combat">
+        <div className="arena-ground enemy-ground" aria-hidden="true"/>
+        <div className="arena-ground player-ground" aria-hidden="true"/>
+        <PokemonCard fighter={battle.second} side="second" artwork={secondArtwork} active={active}/>
+        <PokemonCard fighter={battle.first} side="first" artwork={firstArtwork} active={active}/>
+        {active && <AttackEffects key={active.id} clip={active} fromPlayer={active.actor === battle.first.id}/>}
+        <div className="attack-caption" aria-live="polite">
+            {active ? `${active.actor === battle.first.id ? battle.first.species : battle.second.species} utilise ${active.name}${active.outcome === 'miss' ? ' : raté !' : active.outcome === 'immune' ? ' : aucun effet !' : ' !'}` : ''}
+        </div>
+    </section>
 }

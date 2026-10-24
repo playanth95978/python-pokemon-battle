@@ -1,26 +1,36 @@
+import { useState } from 'react'
 import type { Fighter } from './types'
+import type { PokemonArtwork } from './pokemonArtwork'
+import type { AttackClip } from './attackPlayback'
 
-export function PokemonCard({fighter, side}: { fighter: Fighter; side: 'first' | 'second' }) {
-    const percentage = Math.max(0, Math.min(100, fighter.hp / fighter.max_hp * 100))
-    return (
-        <article className="min-w-0 rounded-xl border-2 border-slate-200 bg-white p-5 sm:p-7">
-            <p className="mb-5 text-sm font-semibold text-slate-500">{side === 'first' ? 'Combattant 1' : 'Combattant 2'}</p>
-            <div className="mb-5 flex items-start justify-between gap-3">
-                <h2 className="break-words text-2xl font-extrabold text-slate-900 sm:text-3xl">{fighter.species}</h2>
-                <span
-                    className="shrink-0 rounded bg-slate-100 px-2 py-1 text-sm font-semibold">Niv. {fighter.level}</span>
-            </div>
-            <div className="mb-2 flex justify-between text-sm font-semibold">
-                <span>Points de vie</span><span>{fighter.hp} / {fighter.max_hp}</span>
-            </div>
-            <div role="progressbar" aria-label={`PV de ${fighter.species}, combattant ${side === 'first' ? 1 : 2}`}
-                 aria-valuenow={fighter.hp} aria-valuemin={0} aria-valuemax={fighter.max_hp}
-                 className="h-3 overflow-hidden rounded-full bg-slate-100">
-                <div
-                    className={`h-full ${percentage > 50 ? 'bg-emerald-600' : percentage > 20 ? 'bg-amber-500' : 'bg-red-600'}`}
-                    style={{width: `${percentage}%`}}/>
-            </div>
-            <p className="mt-3 text-sm font-semibold text-slate-500">{fighter.hp === 0 ? 'K.O.' : 'En combat'}</p>
-        </article>
-    )
+interface Props { fighter: Fighter; side: 'first' | 'second'; artwork: PokemonArtwork | null; active: AttackClip | null }
+
+function PokemonSprite({ artwork, species }: { artwork: PokemonArtwork | null; species: string }) {
+  const [failed, setFailed] = useState<string[]>([])
+  const image = [artwork?.primary, artwork?.fallback].find((url) => url && !failed.includes(url))
+  return image ? <img className="sprite" src={image} alt={species} decoding="async" draggable={false}
+    onError={() => setFailed((previous) => [...previous, image])} />
+    : <div className="sprite sprite-placeholder" role="img" aria-label={`${species}, illustration indisponible`}>
+      <span aria-hidden="true">?</span><small>Illustration indisponible</small>
+    </div>
+}
+
+export function PokemonCard({ fighter, side, artwork, active }: Props) {
+  const percentage = Math.max(0, Math.min(100, fighter.hp / fighter.max_hp * 100))
+  const attacking = active?.actor === fighter.id
+  const impacted = active?.target === fighter.id && active.outcome === 'hit'
+  return <article className={`fighter ${side === 'first' ? 'player' : 'enemy'}`}>
+    <div key={active?.id ?? 'idle'} className={`sprite-shell ${attacking ? 'attacking' : ''} ${impacted ? 'impact' : ''} ${fighter.hp === 0 && !active ? 'fainted' : ''}`}>
+      <PokemonSprite key={fighter.species} artwork={artwork} species={fighter.species} />
+    </div>
+    <div className="stats">
+      <div className="fighter-name"><h2>{fighter.species}</h2><span>Niv. {fighter.level}</span></div>
+      <p className="fighter-side">Combattant {side === 'first' ? 1 : 2}{fighter.hp === 0 ? ' · K.O.' : ''}</p>
+      <div role="progressbar" aria-label={`PV de ${fighter.species}, combattant ${side === 'first' ? 1 : 2}`}
+        aria-valuenow={fighter.hp} aria-valuemin={0} aria-valuemax={fighter.max_hp} className="hpbar">
+        <div className="hpfill" style={{ width: `${percentage}%`, background: percentage > 50 ? '#4ade80' : percentage > 25 ? '#facc15' : '#fb7185' }} />
+      </div>
+      <p className="hptext">{fighter.hp} / {fighter.max_hp} PV</p>
+    </div>
+  </article>
 }
