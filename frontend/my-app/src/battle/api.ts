@@ -1,4 +1,5 @@
 import type { Battle, BattleChoices, TurnCommand, TurnResponse } from './types'
+import type { Catalogue } from './catalogueTypes'
 
 export class ApiError extends Error {
     status: number
@@ -34,6 +35,7 @@ async function request<T>(path: string, signal: AbortSignal, body?: unknown): Pr
 }
 
 export const battleApi = {
+    catalogue: (signal: AbortSignal) => request<Catalogue>('/catalogue', signal),
     create: (choices: BattleChoices, signal: AbortSignal) => request<Battle>('/battles', signal, choices),
     get: (id: string, signal: AbortSignal) => request<Battle>(`/battles/${encodeURIComponent(id)}`, signal),
     playTurn: (id: string, moves: TurnCommand, signal: AbortSignal) =>

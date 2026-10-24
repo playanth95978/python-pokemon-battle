@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { useState } from 'react'
 import type { Battle, BattleEvent, MoveChoices } from './types'
 import { AttackPanel } from './AttackPanel'
 import { BattleArena } from './BattleArena'
@@ -7,9 +7,11 @@ import { BattleLog } from './BattleLog'
 import { useBattle } from './useBattle'
 import { usePokemonArtwork } from './usePokemonArtwork'
 import { useAttackPlayback } from './useAttackPlayback'
+import { useCatalogue } from './useCatalogue'
+import { PokemonCatalogue } from './PokemonCatalogue'
 
-const species = [{id: 'bulbizarre', name: 'Bulbizarre'}, {id: 'salameche', name: 'Salamèche'}, {
-    id: 'carapuce',
+const species = [{id: 'bulbasaur', name: 'Bulbizarre'}, {id: 'charmander', name: 'Salamèche'}, {
+    id: 'squirtle',
     name: 'Carapuce'
 }]
 
@@ -85,8 +87,9 @@ export function BattlePage() {
         retryLastTurn,
         refresh
     } = useBattle()
-    const [firstSpecies, setFirstSpecies] = useState('bulbizarre')
-    const [secondSpecies, setSecondSpecies] = useState('salameche')
+    const [firstSpecies, setFirstSpecies] = useState('bulbasaur')
+    const [secondSpecies, setSecondSpecies] = useState('charmander')
+    const {catalogue, error: catalogueError, loading: catalogueLoading, retry} = useCatalogue()
     const busy = pending !== null
 
     function create(event: FormEvent) {
@@ -109,12 +112,23 @@ export function BattlePage() {
                 <label key={field.label}>{field.label}<select value={field.value}
                                                               onChange={(event) => field.set(event.target.value)}
                                                               disabled={busy}>
-                    {species.map((pokemon) => <option key={pokemon.id} value={pokemon.id}>{pokemon.name}</option>)}
+                    {catalogue ? catalogue.generations.map((generation) => <optgroup key={generation.id}
+                                                                                     label={generation.name}>
+                        {catalogue.species.filter((pokemon) => pokemon.generation === generation.id).map((pokemon) =>
+                            <option key={pokemon.key} value={pokemon.key}>#{pokemon.id} · {pokemon.name}</option>)}
+                    </optgroup>) : species.map((pokemon) => <option key={pokemon.id}
+                                                                    value={pokemon.id}>{pokemon.name}</option>)}
                 </select></label>
             ))}
             <button className="button-restart" type="submit"
                     disabled={busy}>{pending === 'create' ? 'Création en cours' : battle ? 'Nouveau combat' : 'Créer le combat'}</button>
         </form>
+        {catalogueLoading && <p role="status" className="muted text-sm mb-3">Chargement du catalogue Pokémon</p>}
+        {catalogueError && <div className="message message-warning"><p>{catalogueError}</p>
+            <button className="mt-3" type="button" onClick={retry}>Réessayer le catalogue</button>
+        </div>}
+        {catalogue && <PokemonCatalogue catalogue={catalogue} disabled={busy}
+                                        onSelect={(side, key) => side === 'first' ? setFirstSpecies(key) : setSecondSpecies(key)}/>}
         {error && <div role="alert" className="message message-error">{error}</div>}
         {needsSync && <div className="message message-warning">
             <p>Le tour a peut-être été joué. Récupère sa réponse ou relis le combat avant de continuer.</p>

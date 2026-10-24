@@ -3,10 +3,19 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { BattlePage } from './BattlePage'
 import { initialBattle, resolvedTurn } from '../test/fixtures'
 
+vi.mock('./useCatalogue', () => ({
+    useCatalogue: () => ({
+        catalogue: null, error: null, loading: false, retry() {
+        }
+    })
+}))
+
 // Les images externes ont leurs propres tests ; ce parcours simule seulement FastAPI.
-vi.mock('./pokemonArtwork', () => ({ loadPokemonArtwork: vi.fn().mockResolvedValue({
-  primary: 'https://example.com/pokemon.png', fallback: null,
-}) }))
+vi.mock('./pokemonArtwork', () => ({
+    loadPokemonArtwork: vi.fn().mockResolvedValue({
+        primary: 'https://example.com/pokemon.png', fallback: null,
+    })
+}))
 
 afterEach(() => vi.unstubAllGlobals())
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {status})
