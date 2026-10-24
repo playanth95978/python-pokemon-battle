@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Trebuchet MS', 'Segoe UI', sans-serif;
+}
+
+@layer base {
+  body { @apply m-0 min-w-80 bg-slate-50 text-slate-800 antialiased; }
+  button, select, input { @apply focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-blue-700; }
+  button { @apply cursor-pointer disabled:cursor-not-allowed disabled:opacity-50; }
+}
+
+@layer components {
+  .button-primary { @apply rounded-lg border-2 border-blue-800 bg-blue-700 px-5 py-3 font-bold text-white hover:bg-blue-800; }
+  .button-secondary { @apply rounded-lg border-2 border-slate-400 bg-white px-4 py-2 font-bold text-slate-900 hover:bg-slate-100; }
+  .pokeball {
+    @apply relative block h-12 w-12 shrink-0 overflow-hidden rounded-full border-4 border-slate-900;
+    background: linear-gradient(#dc2626 0 44%, #0f172a 44% 56%, white 56%);
+  }
+  .pokeball::after {
+    content: '';
+    @apply absolute top-1/2 left-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-slate-900 bg-white;
+  }
+}
