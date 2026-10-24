@@ -73,6 +73,8 @@ class _SqliteSession:
             kind = item.pop("type")
             if kind == "DamageDealt":
                 item["effectiveness"] = Fraction(item["effectiveness"])
+            if kind == "AttackUsed" and item.get("attack_type") is not None:
+                item["attack_type"] = Type(item["attack_type"])
             events.append(classes[kind](**item))
         result = TurnResult(_record(battle_id, data["battle"]), tuple(events))
         return StoredTurn(row[0], row[1], row[2], result)

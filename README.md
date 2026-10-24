@@ -114,6 +114,10 @@ l'ordre d'exécution. Chaque événement porte `type` : `attack_used`, `attack_m
 `damage_dealt`, `knocked_out` ou `battle_ended`. Le multiplicateur `effectiveness`
 des dégâts est un nombre JSON (0, 0.25, 0.5, 1, 2 ou 4).
 
+`attack_used` fournit aussi `attack_type` et `attack_slot` pour identifier le type
+élémentaire et le choix d'attaque sans dépendre du libellé traduit. Ces champs sont
+nuls sur les anciens reçus ; leur relecture idempotente reste possible.
+
 Erreurs : **404** si le combat est absent, **409** s'il est terminé ou en cas de conflit
 de tour/clé, **400** pour une attaque inexistante ou sans PP, **422** pour une requête
 mal formée ou des métadonnées d'idempotence manquantes.
@@ -169,6 +173,19 @@ locaux `.glb` stylisés, un terrain en volume, une caméra manipulable et des an
 de repos, attaque, impact et KO. Ce sont des modèles créés pour le POC, pas les
 modèles officiels des jeux. Les autres espèces utilisent les illustrations ; un
 échec WebGL revient à cette vue. Les résultats restent entièrement ceux de FastAPI.
+
+L'affichage suit l'ordre des événements : PP au début de l'attaque, PV et KO à
+l'impact, victoire à la fin du dernier clip. Cette projection est dérivée des
+réponses serveur, sans second état métier stocké. Sans animations, les résultats
+complets apparaissent immédiatement.
+
+Les attaques ont une charge, une projection et un impact avec lumière locale ;
+Éclair produit des arcs électriques ramifiés et le feu un jet de particules.
+Pikachu possède Éclair pour les nouveaux combats après redémarrage de FastAPI.
+Le bouton **Activer le son** et le réglage du volume ajoutent des bruitages Web Audio
+synthétisés pour chaque famille d'attaque, synchronisés sur la lecture des événements.
+Le son s'arrête quand l'onglet est masqué ou le combat redémarre ; aucun son n'est
+lancé automatiquement à l'ouverture de la page.
 
 Le catalogue complet expose 1 025 espèces en français avec recherche, types,
 catégories, générations et versions datées. Chaque espèce est sélectionnable pour

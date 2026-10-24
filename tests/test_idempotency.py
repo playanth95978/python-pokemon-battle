@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
@@ -47,6 +48,26 @@ def testLaRepetitionRetourneLaMemeReponseSansRejouer(context):
     assert repeated.status_code == 200
     assert repeated.json() == response.json()
     assert SqliteBattleRepository(path).get(record.id) == before
+
+
+def testUnAncienRecuSansTypeNiSlotResteRejouable(context):
+    """Les métadonnées d'animation ne doivent pas invalider les anciennes réponses stockées."""
+    client, path, record = context
+    body = payload()
+    original = client.post(f"/battles/{record.id}/turns", json=body).json()
+    with closing(sqlite3.connect(path)) as connection:
+        stored = json.loads(connection.execute("SELECT result FROM battle_turns").fetchone()[0])
+        for event in stored["events"]:
+            event.pop("attack_type", None)
+            event.pop("attack_slot", None)
+        with connection:
+            connection.execute("UPDATE battle_turns SET result = ?", (json.dumps(stored),))
+    replay = client.post(f"/battles/{record.id}/turns", json=body)
+    assert replay.status_code == 200
+    assert replay.json()["battle"] == original["battle"]
+    assert all(event["attack_type"] is None and event["attack_slot"] is None
+               for event in replay.json()["events"] if event["type"] == "attack_used")
+    assert SqliteBattleRepository(path).get(record.id).battle.turn == 1
 
 
 @pytest.mark.parametrize("changes", [{"first_move": 1}, {"second_move": 1}, {"expected_turn": 1}])

@@ -9,6 +9,8 @@ import { usePokemonArtwork } from './usePokemonArtwork'
 import { useAttackPlayback } from './useAttackPlayback'
 import { useCatalogue } from './useCatalogue'
 import { PokemonCatalogue } from './PokemonCatalogue'
+import { battlePresentation } from './battlePresentation'
+import { useBattleAudio } from './useBattleAudio'
 
 const species = [{id: 'pikachu', name: 'Pikachu'}, {id: 'bulbasaur', name: 'Bulbizarre'}, {id: 'charmander', name: 'Salamèche'}, {
     id: 'squirtle',
@@ -27,22 +29,27 @@ function BattleSession({battle, events, busy, needsSync, playTurn}: {
     const [animations, setAnimations] = useState(true)
     const firstArtwork = usePokemonArtwork(battle.first.species)
     const secondArtwork = usePokemonArtwork(battle.second.species)
-    const {active, isPlaying, reducedMotion} = useAttackPlayback(events, animations)
-    const finished = battle.winner !== null
+    const {active, isPlaying, reducedMotion, revealedCount} = useAttackPlayback(events, animations)
+    const audio = useBattleAudio(active)
+    const displayed = battlePresentation(battle, events, revealedCount)
+    const finished = displayed.winner !== null
     const blocked = busy || needsSync || isPlaying
     const firstValid = battle.first.attacks.some((attack) => attack.slot === firstMove && attack.pp > 0)
     const secondValid = battle.second.attacks.some((attack) => attack.slot === secondMove && attack.pp > 0)
-    const winner = [battle.first, battle.second].find((fighter) => fighter.id === battle.winner)
+    const winner = [displayed.first, displayed.second].find((fighter) => fighter.id === displayed.winner)
 
     return <div className="battle-layout" aria-busy={busy}>
         <div className="battle-view">
             <div className="arena-toolbar">
+                <button type="button" aria-pressed={audio.enabled} onClick={() => void audio.toggle()}>{audio.enabled ? 'Couper le son' : 'Activer le son'}</button>
+                <label className="volume-control">Volume <input type="range" min="0" max="1" step="0.05" value={audio.volume} onChange={(event) => audio.setVolume(Number(event.target.value))}/></label>
                 <label className="motion-toggle"><input type="checkbox" checked={animations}
                                                         onChange={(event) => setAnimations(event.target.checked)}/> Animations
                     d’attaque</label>
                 <p className="pill" role="status">{winner ? `Victoire de ${winner.species}` : `Tour ${battle.turn}`}</p>
             </div>
-            <BattleArena battle={battle} firstArtwork={firstArtwork} secondArtwork={secondArtwork} active={active} motion={animations && !reducedMotion}/>
+            {audio.error && <p role="status" className="muted">{audio.error}</p>}
+            <BattleArena battle={displayed} firstArtwork={firstArtwork} secondArtwork={secondArtwork} active={active} motion={animations && !reducedMotion}/>
         </div>
         <section className="card battle-commands" aria-labelledby="attacks-heading">
             <h2 id="attacks-heading">{finished ? 'Combat terminé' : 'Choisis les attaques'}</h2>
@@ -50,9 +57,9 @@ function BattleSession({battle, events, busy, needsSync, playTurn}: {
                 <p className="muted">{winner?.species} remporte le duel. Lance un nouveau combat pour rejouer.</p> : <>
                     <p className="muted text-sm mb-4">Une attaque par combattant, puis le serveur résout le tour.</p>
                     <div className="grid gap-5">
-                        <AttackPanel fighter={battle.first} label="Attaque 1" selected={firstMove} disabled={blocked}
+                        <AttackPanel fighter={displayed.first} label="Attaque 1" selected={firstMove} disabled={blocked}
                                      onSelect={setFirstMove}/>
-                        <AttackPanel fighter={battle.second} label="Attaque 2" selected={secondMove} disabled={blocked}
+                        <AttackPanel fighter={displayed.second} label="Attaque 2" selected={secondMove} disabled={blocked}
                                      onSelect={setSecondMove}/>
                     </div>
                     <div className="bottom"><span
@@ -69,7 +76,7 @@ function BattleSession({battle, events, busy, needsSync, playTurn}: {
                     </div>
                 </>}
         </section>
-        <div className="battle-journal"><BattleLog battle={battle} events={events}/></div>
+        <div className="battle-journal"><BattleLog battle={displayed} events={events.slice(0, revealedCount)}/></div>
     </div>
 }
 

@@ -44,9 +44,9 @@ def testLePlusRapideJoueEnPremierAvecDegatsExacts():
     battle = Battle(fighter("a", speed=61), fighter("b", speed=83))
     events = BattleEngine(Rolls(1, 100, 1, 85)).play_turn(battle, 0, 0)
     assert events == (
-        AttackUsed(1, "b", "a", "Tackle", 2),
+        AttackUsed(1, "b", "a", "Tackle", 2, Type.NORMAL, 0),
         DamageDealt(1, "b", "a", 31, 220, Fraction(1)),
-        AttackUsed(1, "a", "b", "Tackle", 2),
+        AttackUsed(1, "a", "b", "Tackle", 2, Type.NORMAL, 0),
         DamageDealt(1, "a", "b", 26, 225, Fraction(1)),
     )
 

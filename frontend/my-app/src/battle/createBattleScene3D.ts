@@ -2,8 +2,10 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { clone } from 'three/addons/utils/SkeletonUtils.js'
 import { pocModelPath } from './pocModels'
 import { ATTACK_DURATION } from './attackPlayback'
+import { createAttackVfx } from './attackVfx'
 import type { AttackClip } from './attackPlayback'
 import type { Battle } from './types'
 
@@ -79,7 +81,8 @@ export async function createBattleScene3D(host: HTMLElement, firstName: string, 
   line.position.y = -0.02; scene.add(line)
 
   const actors = assets.map((asset, index) => {
-    const model = asset.scene.clone(true)
+    // Les modèles d'artistes partagent souvent un squelette : le cloner avec le skin.
+    const model = clone(asset.scene)
     // Le cache conserve les données CPU ; chaque scène possède ses ressources GPU jetables.
     model.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return
@@ -109,17 +112,7 @@ export async function createBattleScene3D(host: HTMLElement, firstName: string, 
     actor.mode = name
   }
 
-  const effect = new THREE.Group(); scene.add(effect)
-  const particleGeometry = new THREE.IcosahedronGeometry(0.075, 0)
-  const particleMaterial = new THREE.MeshStandardMaterial({ color: 0xffd04f, emissive: 0xffa400, emissiveIntensity: 1.5 })
-  const particles = Array.from({ length: 20 }, () => {
-    const mesh = new THREE.Mesh(particleGeometry, particleMaterial); effect.add(mesh); return mesh
-  })
-  const boltGeometry = new THREE.BufferGeometry()
-  boltGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(13 * 3), 3))
-  const bolt = new THREE.Line(boltGeometry, new THREE.LineBasicMaterial({ color: 0xfff18b }))
-  effect.add(bolt)
-  effect.visible = false
+  const effects = createAttackVfx(scene)
   let state: { battle: Battle; active: AttackClip | null; motion: boolean } | null = null
   let lastClip: string | null = null
   let attackStarted = 0
@@ -150,12 +143,10 @@ export async function createBattleScene3D(host: HTMLElement, firstName: string, 
       const source = active.actor === battle.first.id ? 0 : 1
       pose(source, 'Attack', motion, true)
       pose(1 - source, 'Idle', motion)
-      const color = active.kind === 'fire' ? 0xff812d : active.kind === 'water' ? 0x47cfff
-        : active.kind === 'vine' ? 0x66dd88 : active.kind === 'electric' ? 0xffdf39 : 0xddeaff
-      particleMaterial.color.setHex(color); particleMaterial.emissive.setHex(color)
+
     }
     if (!active || !motion) {
-      effect.visible = false
+      effects.hide()
       ;[battle.first, battle.second].forEach((fighter, index) => pose(index, fighter.hp === 0 ? 'Faint' : 'Idle', motion))
     }
   }
@@ -172,34 +163,13 @@ export async function createBattleScene3D(host: HTMLElement, firstName: string, 
         const source = active.actor === battle.first.id ? 0 : 1
         const target = 1 - source
         const targetFighter = target === 0 ? battle.first : battle.second
-        effect.visible = progress < 0.88
         const start = actors[source].placement.position.clone().add(new THREE.Vector3(0, 1.25, 0.25))
         const end = actors[target].placement.position.clone().add(new THREE.Vector3(0, 1.1, active.outcome === 'miss' ? 1.3 : 0))
-        bolt.visible = active.kind === 'electric' && progress > 0.15 && progress < 0.7
-        if (bolt.visible) {
-          const positions = boltGeometry.getAttribute('position')
-          for (let index = 0; index < positions.count; index++) {
-            const t = index / (positions.count - 1)
-            const point = start.clone().lerp(end, t)
-            point.y += index === 0 || index === positions.count - 1 ? 0 : Math.sin(index * 7 + progress * 40) * 0.22
-            positions.setXYZ(index, point.x, point.y, point.z)
-          }
-          positions.needsUpdate = true
-        }
-        particles.forEach((particle, index) => {
-          const t = Math.max(0, Math.min(1, progress / 0.7 - index * 0.012))
-          particle.position.lerpVectors(start, end, t)
-          const spread = Math.sin(t * Math.PI) * (active.kind === 'fire' ? 0.25 : 0.13)
-          particle.position.y += Math.sin(index * 2.4 + progress * 10) * spread
-          particle.position.z += Math.cos(index * 2.4 + progress * 10) * spread
-          particle.rotation.set(progress * 10, index, progress * 8)
-          const size = 0.65 + (index % 4) * 0.22
-          particle.scale.set(size, active.kind === 'fire' ? size * 2 : size, size)
-        })
+        effects.update(progress, start, end, active)
         if (progress > 0.65 && active.outcome === 'hit' && !actors[target].impacted) {
           pose(target, 'Hit', motion, true); actors[target].impacted = true
         }
-        if (progress > 0.86 && active.outcome === 'hit' && targetFighter.hp === 0 && !actors[target].fainted) {
+        if (progress > 0.65 && active.outcome === 'hit' && targetFighter.hp === 0 && !actors[target].fainted) {
           pose(target, 'Faint', motion, true); actors[target].fainted = true
         }
       }
@@ -216,6 +186,7 @@ export async function createBattleScene3D(host: HTMLElement, firstName: string, 
       disposed = true; cancelAnimationFrame(frame); observer.disconnect(); controls.dispose()
       actors.forEach((actor) => { actor.mixer.stopAllAction(); actor.mixer.uncacheRoot(actor.model) })
       renderer.domElement.removeEventListener('webglcontextlost', onLost)
+      effects.dispose()
       disposeScene(scene)
       sunlight.shadow.dispose()
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove()

@@ -7,6 +7,22 @@ from pokemon_battle.application.catalog import CATALOG
 from pokemon_battle.application.pokemon_catalogue import catalogue_data
 
 
+def testLePocExposeUneVraieAttaqueElectriqueDePikachu(tmp_path):
+    """Les éclairs doivent découler d'un événement électrique réel, pas du nom du combattant."""
+    from uuid import uuid4
+    with TestClient(create_app(tmp_path / "battles.sqlite3")) as client:
+        battle = client.post("/battles", json={"first_species": "pikachu", "second_species": "charmander"}).json()
+        assert battle["first"]["attacks"][0]["name"] == "Éclair"
+        assert battle["first"]["attacks"][0]["pp"] == 30
+        result = client.post(f"/battles/{battle['id']}/turns", json={
+            "first_move": 0, "second_move": 1, "expected_turn": 0, "idempotency_key": str(uuid4()),
+        })
+        assert result.status_code == 200
+        attack = next(event for event in result.json()["events"] if event["type"] == "attack_used" and event["actor"] == battle["first"]["id"])
+        assert attack["attack_type"] == "electric"
+        assert attack["attack_slot"] == 0
+
+
 def testLeCatalogueExposeToutesLesEspecesSansStatistiquesDeCombat(tmp_path):
     """Le front reçoit un catalogue complet et documenté, pas un moteur de calcul."""
     with TestClient(create_app(tmp_path / "battles.sqlite3")) as client:

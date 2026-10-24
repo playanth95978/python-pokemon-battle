@@ -104,21 +104,24 @@ n'empêche pas de jouer. Ces appels d'illustration ne servent pas aux calculs du
 
 Pour les espèces sans modèle local, `renderAttack3D.ts` superpose aux images 2D des effets WebGL Three.js
 en vraie 3D : particules de feu pour Flammèche, gouttes pour Pistolet à O, lianes
-segmentées pour Fouet Lianes et onde d'impact pour Charge. Les autres noms se replient
-sur un impact générique (Éclair et Tonnerre ont un effet électrique si le catalogue
-les ajoute ultérieurement).
+segmentées pour les attaques Plante et onde d'impact pour les autres types.
+`attackVfx.ts` est partagé par les deux rendus : charge lumineuse, projection puis
+ondes et étincelles à l'impact. Les attaques électriques ont six arcs ramifiés,
+les attaques Feu un jet de particules allongées, l'Eau des gouttes et les attaques
+Plante des segments verts. Un échec ou une immunité ne déclenche pas d'onde d'impact.
 
 Le bouton **Lancer le POC 3D** crée un combat Pikachu contre Salamèche via FastAPI.
 Ces deux espèces disposent de vrais modèles locaux `.glb` stylisés, assemblés par
 groupes articulés, avec les clips repos, attaque, impact et KO. Il ne s'agit pas de
 modèles officiels. Le terrain, les éclairages, les ombres et les projectiles sont
-rendus dans la même scène Three.js. Les éclairs ont un tracé en zigzag et les
-flammes des particules allongées ; les autres attaques utilisent un effet générique.
+rendus dans la même scène Three.js. Pikachu dispose d'Éclair dans son kit de
+démonstration. Relancer FastAPI et créer un nouveau combat pour obtenir ce kit :
+les combats existants conservent leur instantané d'attaques.
 Glisser dans l'arène fait tourner la caméra, la molette zoome et les boutons
 permettent aussi de tourner ou recentrer. Le bouton **Voir en 2D** change de rendu.
 
-`BattleScene3D` charge le moteur graphique à la demande et lui transmet le dernier
-état serveur et le clip à lire. Aucune statistique ni issue de combat n'est calculée
+`BattleScene3D` charge le moteur graphique à la demande et lui transmet la projection
+d'affichage des événements serveur et le clip à lire. Aucune règle de combat n'est calculée
 par Three.js. Un fichier absent ou une perte de contexte WebGL ramène aux images.
 Les modèles peuvent être régénérés avec `npm run models:poc` ; leur provenance
 est décrite dans `public/models/poc/README.md`.
@@ -126,8 +129,18 @@ est décrite dans `public/models/poc/README.md`.
 Les effets suivent les événements serveur dans leur ordre, sans rejouer les tours
 déjà affichés, sans riposte inventée après KO et sans impact en cas d'immunité ou
 d'échec. Pendant leur lecture, les commandes du tour suivant sont bloquées ; un
-nouveau combat reste possible et annule la lecture précédente. Les PV et PP affichés
-sont toujours les dernières valeurs FastAPI, sans simulation ni état de combat animé local.
+nouveau combat reste possible et annule la lecture précédente. Les PP sont révélés
+au début de chaque attaque, les PV et le KO à l'impact (65 % du clip), puis le
+vainqueur à la fin du dernier clip. Le journal suit cette même progression.
+`battlePresentation` dérive cet affichage à partir des résultats FastAPI et des
+événements non encore révélés, sans stocker une deuxième copie du combat ni recalculer
+les dégâts. Désactiver les animations affiche immédiatement le résultat complet.
+Un GET plus récent que le journal local reste affiché tel quel.
+
+Les événements `attack_used` portent `attack_type` (type élémentaire stable) et
+`attack_slot` (position de l'attaque). Les effets utilisent le type, jamais le nom
+traduit. Les anciens reçus sans ces champs restent lisibles et utilisent un effet
+générique. Les noms restent réservés à l'affichage.
 
 Le composant `BattleSession` conserve uniquement le curseur de lecture et les choix UI.
 Le bouton « Animations d'attaque » permet de désactiver les effets. La préférence
@@ -138,3 +151,30 @@ Three.js se charge à l'ouverture d'une scène 3D ou à la première attaque 2D 
 chunk d'environ 587 kB minifiés déclenche l'avertissement indicatif de taille Vite,
 sans empêcher le build. Les ressources GPU, écouteurs et boucles de rendu sont
 libérés lors du changement de vue ou du démontage.
+
+## Sons des attaques
+
+**Activer le son** crée un contexte Web Audio pendant le clic, conformément aux
+restrictions d'autoplay. Le volume est réglable et le son est désactivé par défaut.
+Les bruitages sont synthétisés localement : charge et crépitement électriques,
+souffle de feu, eau, fouet et impact. Aucun extrait audio des jeux ni service externe.
+La projection commence à 22 % du clip et l'impact à 65 %, comme les effets visuels.
+Le bruit d'impact n'est joué que pour un résultat serveur `hit`.
+Changer le volume ne rejoue pas l'attaque. Activer le son en cours d'attaque prend
+effet à la suivante. Masquer l'onglet, couper le son, désactiver les animations ou
+redémarrer le combat arrête les sources. Sans Web Audio, le combat reste utilisable.
+Les mouvements réduits désactivent la lecture des clips et donc leurs bruitages.
+
+## Remplacement des modèles reporté
+
+Les démarches Sketchfab sont abandonnées à la demande de l'utilisateur. Les fichiers
+intégrés restent les modèles locaux du POC. La recherche avait identifié deux
+modèles animés du même artiste, anak3d, annoncés sous CC BY 4.0 :
+
+- [Pikachu](https://sketchfab.com/3d-models/0025-pikachu-3d-a90e7b35382846af92ddb557b5b6d372)
+- [Salamèche](https://sketchfab.com/3d-models/0004-charmander-3d-cd7ee496f0564ccba2276960071b4a85)
+
+La visionneuse est publique, mais le téléchargement demande une connexion Sketchfab.
+Les fichiers n'ont pas été récupérés ni intégrés. Leur format et leurs clips
+exportés n'ont donc pas été validés. Le chargeur utilise `SkeletonUtils.clone`
+pour préserver les skins lors d'un futur remplacement des modèles.

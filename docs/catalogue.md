@@ -56,6 +56,11 @@ PV = base + 60, autres statistiques = base + 5 ; Munja conserve un PV.
 Les trois démonstrations initiales gardent leurs statistiques et attaques historiques,
 quel que soit l'alias français ou anglais utilisé.
 
+Le kit de démonstration de Pikachu ajoute Éclair (Électrik, spécial, puissance 40,
+précision 100, 30 PP) avant les attaques importées, sans changer ses statistiques.
+Ce complément explicite permet de montrer un effet électrique issu d'un vrai
+événement métier. Les instantanés des combats déjà créés restent inchangés.
+
 Les attaques sont sélectionnées parmi les apprentissages par niveau jusqu'au
 niveau 50 présents dans les CSV, avec dégâts directs uniquement (`effect_id=1`),
 au plus quatre, en privilégiant les références récentes. Ce n'est pas une

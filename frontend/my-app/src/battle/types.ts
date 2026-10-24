@@ -23,7 +23,7 @@ export interface Battle {
 }
 
 export type BattleEvent =
-    | { type: 'attack_used'; turn: number; actor: string; target: string; attack: string; pp_remaining: number }
+    | { type: 'attack_used'; turn: number; actor: string; target: string; attack: string; pp_remaining: number; attack_type?: string | null; attack_slot?: number | null }
     | { type: 'attack_missed'; turn: number; actor: string; target: string }
     | {
     type: 'damage_dealt';

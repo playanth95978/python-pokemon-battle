@@ -11,12 +11,12 @@ export interface AttackClip {
   outcome: 'hit' | 'miss' | 'immune'
 }
 
-export function effectKind(name: string): EffectKind {
-  switch (name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()) {
-    case 'flammeche': return 'fire'
-    case 'pistolet a o': return 'water'
-    case 'fouet lianes': return 'vine'
-    case 'eclair': case 'tonnerre': return 'electric'
+export function effectKind(type?: string | null): EffectKind {
+  switch (type) {
+    case 'fire': return 'fire'
+    case 'water': return 'water'
+    case 'grass': return 'vine'
+    case 'electric': return 'electric'
     default: return 'charge'
   }
 }
@@ -31,7 +31,7 @@ export function attackClips(events: BattleEvent[]): AttackClip[] {
     const damage = following.find((item) => item.type === 'damage_dealt' && item.actor === event.actor)
     if (!missed && !damage) return []
     return [{ id: `${event.turn}-${index}`, actor: event.actor, target: event.target,
-      name: event.attack, kind: effectKind(event.attack),
+      name: event.attack, kind: effectKind(event.attack_type),
       outcome: missed ? 'miss' : damage?.type === 'damage_dealt' && damage.effectiveness === 0 ? 'immune' : 'hit' }]
   })
 }

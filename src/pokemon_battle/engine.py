@@ -5,7 +5,7 @@ from fractions import Fraction
 from typing import Protocol
 
 from .domain import Attack, Category, Fighter
-from .types import effectiveness
+from .types import Type, effectiveness
 
 
 class RandomSource(Protocol):
@@ -19,6 +19,9 @@ class AttackUsed:
     target: str
     attack: str
     pp_remaining: int
+    # Facultatifs pour relire les reçus enregistrés avant l'enrichissement des événements.
+    attack_type: Type | None = None
+    attack_slot: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +119,7 @@ class BattleEngine:
         attack = actor.species.attacks[move]
         actor.pp[move] -= 1
         events: list[DomainEvent] = [
-            AttackUsed(turn, actor.id, target.id, attack.name, actor.pp[move]),
+            AttackUsed(turn, actor.id, target.id, attack.name, actor.pp[move], attack.type, move),
         ]
         if self.rng.randint(1, 100) > attack.accuracy:
             events.append(AttackMissed(turn, actor.id, target.id))

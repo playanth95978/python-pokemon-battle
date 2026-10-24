@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 from pokemon_battle.application.battle_repository import StoredBattle
 from pokemon_battle.application.battle_service import TurnResult
 from pokemon_battle.domain import Fighter
+from pokemon_battle.types import Type
 from pokemon_battle.engine import AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded, DomainEvent
 
 
@@ -73,6 +74,8 @@ class AttackUsedResponse(BaseModel):
     target: str
     attack: str
     pp_remaining: int
+    attack_type: Type | None = None
+    attack_slot: int | None = None
 
 
 class AttackMissedResponse(BaseModel):

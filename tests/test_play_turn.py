@@ -51,6 +51,9 @@ def testUnTourRetourneLesEvenementsEtPersisteLesRessources(context):
         "attack_used", "damage_dealt", "attack_used", "damage_dealt",
     ]
     assert data["events"][0]["actor"] == data["battle"]["second"]["id"]
+    assert data["events"][0]["attack_type"] == "fire"
+    assert data["events"][0]["attack_slot"] == 1
+    assert data["events"][2]["attack_type"] == "grass"
     assert data["events"][1]["effectiveness"] == 2
     assert data["events"][3]["effectiveness"] == 0.5
     assert all(event["turn"] == 1 for event in data["events"])
