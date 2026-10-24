@@ -3,6 +3,23 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { BattlePage } from './BattlePage'
 import { initialBattle, resolvedTurn } from '../test/fixtures'
 
+vi.mock('./BattleScene3D', () => ({ BattleScene3D: () => <div>Scène 3D du POC</div> }))
+
+it('lance le POC avec les espèces prévues et verrouille la création pendant la requête', async () => {
+    let resolve!: (value: Response) => void
+    const fetchMock = vi.fn().mockReturnValue(new Promise<Response>((done) => {resolve = done}))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<BattlePage/> )
+    const launch = screen.getByRole('button', {name: 'Lancer le POC 3D'})
+    fireEvent.click(launch)
+    fireEvent.click(launch)
+    expect(launch).toBeDisabled()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({first_species: 'pikachu', second_species: 'charmander'})
+    resolve(new Response(JSON.stringify({...initialBattle, first: {...initialBattle.first, species: 'Pikachu'}}), {status: 201}))
+    expect(await screen.findByText('Scène 3D du POC')).toBeInTheDocument()
+})
+
 vi.mock('./useCatalogue', () => ({
     useCatalogue: () => ({
         catalogue: null, error: null, loading: false, retry() {

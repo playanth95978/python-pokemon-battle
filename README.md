@@ -163,3 +163,15 @@ Les illustrations 2D sont récupérées depuis PokéAPI avec cache et repli en c
 Les attaques du catalogue ont des effets 3D Three.js joués selon les événements
 FastAPI (flammes, eau, lianes, impact), avec option de désactivation et respect des
 mouvements réduits. Le moteur et les règles de calcul ne changent pas.
+
+Le bouton **Lancer le POC 3D** ouvre Pikachu contre Salamèche avec deux modèles
+locaux `.glb` stylisés, un terrain en volume, une caméra manipulable et des animations
+de repos, attaque, impact et KO. Ce sont des modèles créés pour le POC, pas les
+modèles officiels des jeux. Les autres espèces utilisent les illustrations ; un
+échec WebGL revient à cette vue. Les résultats restent entièrement ceux de FastAPI.
+
+Le catalogue complet expose 1 025 espèces en français avec recherche, types,
+catégories, générations et versions datées. Chaque espèce est sélectionnable pour
+les deux combattants. Les dates portent sur les jeux et le début des générations.
+La provenance de l'instantané, les règles des kits de combat simplifiés et la
+procédure de mise à jour sont décrites dans `docs/catalogue.md`.

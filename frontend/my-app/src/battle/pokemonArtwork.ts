@@ -4,7 +4,7 @@ export interface PokemonArtwork {
     fallback: string | null
 }
 
-const ids: Record<string, number> = {bulbizarre: 1, salameche: 4, carapuce: 7}
+const ids: Record<string, number> = {bulbizarre: 1, salameche: 4, carapuce: 7, pikachu: 25}
 
 export function registerArtworkEntries(entries: { key: string; name: string; pokemon_id: number }[]) {
     for (const entry of entries) {

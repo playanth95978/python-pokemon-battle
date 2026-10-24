@@ -764,3 +764,33 @@
         padding: 9px 12px;
     }
 }
+
+/* Les cartes restent des données serveur au-dessus du canvas indépendant. */
+.poc-launch, .arena-mode { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.poc-launch { background: #20364e; border: 1px solid #5b91a1; padding: 16px; border-radius: 12px; margin: 18px 0; }
+.poc-launch p, .arena-mode { color: #c1d0e5; font-size: 12px; }
+.poc-launch button { flex-shrink: 0; }
+.arena-mode { margin-bottom: 8px; }
+.arena-mode button { padding: 6px 12px; font-size: 12px; }
+.arena.arena-3d { display: block; height: 480px; padding: 0; background: #13243b; isolation: isolate; }
+.battle-scene-3d { position: absolute; inset: 0; touch-action: none; }
+.battle-scene-3d canvas { display: block; width: 100%; height: 100%; }
+.arena-3d .fighter { position: absolute; top: 14px; bottom: auto; width: 42%; min-height: 0; z-index: 2; pointer-events: none; }
+.arena-3d .fighter.player { left: 14px; right: auto; }
+.arena-3d .fighter.enemy { right: 14px; left: auto; }
+.arena-3d .stats { width: 100%; margin: 0; }
+.arena-3d .fighter-name h2 { font-size: 16px; }
+.arena-3d .attack-caption { top: auto; bottom: 86px; }
+.scene-camera-controls { position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 3; }
+.scene-camera-controls button { padding: 6px 12px; font-size: 12px; background: #172c47; }
+.scene-hint { position: absolute; bottom: 8px; width: 100%; text-align: center; color: #e0e9f4; font-size: 11px; pointer-events: none; }
+.scene-loading { position: absolute; top: 50%; width: 100%; text-align: center; background: #13243b; padding: 12px; }
+@media (max-width: 650px) {
+  .poc-launch { flex-direction: column; align-items: stretch; }
+  .arena.arena-3d { height: 440px; }
+  .arena-3d .fighter { width: 45%; top: 10px; }
+  .arena-3d .fighter.player { left: 8px; }
+  .arena-3d .fighter.enemy { right: 8px; }
+  .arena-3d .fighter-name { flex-wrap: wrap; }
+  .arena-3d .fighter-name h2 { font-size: 14px; }
+}

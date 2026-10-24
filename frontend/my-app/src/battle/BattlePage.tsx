@@ -10,7 +10,7 @@ import { useAttackPlayback } from './useAttackPlayback'
 import { useCatalogue } from './useCatalogue'
 import { PokemonCatalogue } from './PokemonCatalogue'
 
-const species = [{id: 'bulbasaur', name: 'Bulbizarre'}, {id: 'charmander', name: 'Salamèche'}, {
+const species = [{id: 'pikachu', name: 'Pikachu'}, {id: 'bulbasaur', name: 'Bulbizarre'}, {id: 'charmander', name: 'Salamèche'}, {
     id: 'squirtle',
     name: 'Carapuce'
 }]
@@ -27,7 +27,7 @@ function BattleSession({battle, events, busy, needsSync, playTurn}: {
     const [animations, setAnimations] = useState(true)
     const firstArtwork = usePokemonArtwork(battle.first.species)
     const secondArtwork = usePokemonArtwork(battle.second.species)
-    const {active, isPlaying} = useAttackPlayback(events, animations)
+    const {active, isPlaying, reducedMotion} = useAttackPlayback(events, animations)
     const finished = battle.winner !== null
     const blocked = busy || needsSync || isPlaying
     const firstValid = battle.first.attacks.some((attack) => attack.slot === firstMove && attack.pp > 0)
@@ -42,7 +42,7 @@ function BattleSession({battle, events, busy, needsSync, playTurn}: {
                     d’attaque</label>
                 <p className="pill" role="status">{winner ? `Victoire de ${winner.species}` : `Tour ${battle.turn}`}</p>
             </div>
-            <BattleArena battle={battle} firstArtwork={firstArtwork} secondArtwork={secondArtwork} active={active}/>
+            <BattleArena battle={battle} firstArtwork={firstArtwork} secondArtwork={secondArtwork} active={active} motion={animations && !reducedMotion}/>
         </div>
         <section className="card battle-commands" aria-labelledby="attacks-heading">
             <h2 id="attacks-heading">{finished ? 'Combat terminé' : 'Choisis les attaques'}</h2>
@@ -103,6 +103,13 @@ export function BattlePage() {
                 le meilleur gagne.</p></div>
             <span className="mode-tag">1 contre 1</span>
         </header>
+        <div className="poc-launch">
+          <div><strong>Arène 3D · Pikachu contre Salamèche</strong><p>Deux modèles stylisés, une caméra libre et des attaques animées.</p></div>
+          <button type="button" disabled={busy} onClick={() => {
+            setFirstSpecies('pikachu'); setSecondSpecies('charmander')
+            void createBattle({first_species: 'pikachu', second_species: 'charmander'})
+          }}>Lancer le POC 3D</button>
+        </div>
         <form onSubmit={create} className="setup-form">
             {[{label: 'Combattant 1', value: firstSpecies, set: setFirstSpecies}, {
                 label: 'Combattant 2',
@@ -146,6 +153,6 @@ export function BattlePage() {
             : <section className="arena arena-empty"><span aria-hidden="true" className="empty-ball">◉</span>
                 <h2>L’arène t’attend</h2><p>Choisis deux Pokémon et crée ton premier combat.</p></section>}
         <footer className="credits">Illustrations : <a href="https://pokeapi.co/" target="_blank"
-                                                       rel="noreferrer">PokéAPI</a></footer>
+                                                       rel="noreferrer">PokéAPI</a> · Modèles 3D stylisés créés localement pour le POC.</footer>
     </main>
 }

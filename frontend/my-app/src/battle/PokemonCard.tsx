@@ -3,7 +3,7 @@ import type { Fighter } from './types'
 import type { PokemonArtwork } from './pokemonArtwork'
 import type { AttackClip } from './attackPlayback'
 
-interface Props { fighter: Fighter; side: 'first' | 'second'; artwork: PokemonArtwork | null; active: AttackClip | null }
+interface Props { fighter: Fighter; side: 'first' | 'second'; artwork: PokemonArtwork | null; active: AttackClip | null; statsOnly?: boolean }
 
 function PokemonSprite({ artwork, species }: { artwork: PokemonArtwork | null; species: string }) {
   const [failed, setFailed] = useState<string[]>([])
@@ -15,14 +15,14 @@ function PokemonSprite({ artwork, species }: { artwork: PokemonArtwork | null; s
     </div>
 }
 
-export function PokemonCard({ fighter, side, artwork, active }: Props) {
+export function PokemonCard({ fighter, side, artwork, active, statsOnly = false }: Props) {
   const percentage = Math.max(0, Math.min(100, fighter.hp / fighter.max_hp * 100))
   const attacking = active?.actor === fighter.id
   const impacted = active?.target === fighter.id && active.outcome === 'hit'
   return <article className={`fighter ${side === 'first' ? 'player' : 'enemy'}`}>
-    <div key={active?.id ?? 'idle'} className={`sprite-shell ${attacking ? 'attacking' : ''} ${impacted ? 'impact' : ''} ${fighter.hp === 0 && !active ? 'fainted' : ''}`}>
+    {!statsOnly && <div key={active?.id ?? 'idle'} className={`sprite-shell ${attacking ? 'attacking' : ''} ${impacted ? 'impact' : ''} ${fighter.hp === 0 && !active ? 'fainted' : ''}`}>
       <PokemonSprite key={fighter.species} artwork={artwork} species={fighter.species} />
-    </div>
+    </div>}
     <div className="stats">
       <div className="fighter-name"><h2>{fighter.species}</h2><span>Niv. {fighter.level}</span></div>
       <p className="fighter-side">Combattant {side === 'first' ? 1 : 2}{fighter.hp === 0 ? ' · K.O.' : ''}</p>

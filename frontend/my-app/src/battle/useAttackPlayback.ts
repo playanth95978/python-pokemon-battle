@@ -20,5 +20,5 @@ export function useAttackPlayback(events: BattleEvent[], enabled: boolean) {
       enabled && !reducedMotion ? ATTACK_DURATION : 0)
     return () => window.clearTimeout(timer)
   }, [cursor, clips.length, enabled, reducedMotion])
-  return { active, isPlaying: active !== null }
+  return { active, isPlaying: active !== null, reducedMotion }
 }

@@ -34,8 +34,13 @@ Si le backend utilise un autre port, adapter la cible du proxy.
 4. Après le KO, cliquer sur « Nouveau combat » pour rejouer avec les choix du formulaire.
 
 Les deux combattants sont pilotés localement ; aucune IA d'adversaire n'est ajoutée.
-Les attaques sans PP sont désactivées. Le catalogue de sélection contient les trois
-espèces de démonstration du backend, sans dupliquer leurs statistiques.
+Les attaques sans PP sont désactivées. `GET /catalogue` fournit les 1 025 espèces
+de l'instantané PokéAPI, sans dupliquer leurs statistiques. Les sélecteurs sont
+groupés par génération ; le panneau « Catalogue des Pokémon » ajoute recherche,
+types, catégories, générations, versions datées et tri chronologique ou alphabétique.
+Les résultats sont paginés par 24 et permettent de choisir l'un ou l'autre combattant.
+Si le catalogue complet est indisponible, les trois démonstrations restent proposées
+avec un bouton pour réessayer. Voir `../../docs/catalogue.md` pour les dates et limites.
 
 ## Structure
 
@@ -92,16 +97,31 @@ restent choisies explicitement, conformément au contrat actuel de FastAPI.
 
 `pokemonArtwork.ts` appelle `https://pokeapi.co/api/v2/pokemon/{id}/` pour lire
 uniquement les URL d'illustrations. Les noms français sont associés aux identifiants
-PokéAPI des trois espèces du catalogue. Les réponses sont partagées en mémoire et
+PokéAPI fournis par le catalogue complet. Les réponses sont partagées en mémoire et
 conservées dans le cache de session. Une illustration officielle manquante ou cassée
 se replie sur le sprite, puis sur un emplacement neutre ; une panne de PokéAPI
-n'empêche pas de jouer. Aucune statistique de PokéAPI n'intervient dans le combat.
+n'empêche pas de jouer. Ces appels d'illustration ne servent pas aux calculs du combat.
 
-Les Pokémon sont des images 2D. `renderAttack3D.ts` superpose des effets WebGL Three.js
+Pour les espèces sans modèle local, `renderAttack3D.ts` superpose aux images 2D des effets WebGL Three.js
 en vraie 3D : particules de feu pour Flammèche, gouttes pour Pistolet à O, lianes
 segmentées pour Fouet Lianes et onde d'impact pour Charge. Les autres noms se replient
 sur un impact générique (Éclair et Tonnerre ont un effet électrique si le catalogue
-les ajoute ultérieurement). Il n'y a pas de modèles 3D articulés de Pokémon.
+les ajoute ultérieurement).
+
+Le bouton **Lancer le POC 3D** crée un combat Pikachu contre Salamèche via FastAPI.
+Ces deux espèces disposent de vrais modèles locaux `.glb` stylisés, assemblés par
+groupes articulés, avec les clips repos, attaque, impact et KO. Il ne s'agit pas de
+modèles officiels. Le terrain, les éclairages, les ombres et les projectiles sont
+rendus dans la même scène Three.js. Les éclairs ont un tracé en zigzag et les
+flammes des particules allongées ; les autres attaques utilisent un effet générique.
+Glisser dans l'arène fait tourner la caméra, la molette zoome et les boutons
+permettent aussi de tourner ou recentrer. Le bouton **Voir en 2D** change de rendu.
+
+`BattleScene3D` charge le moteur graphique à la demande et lui transmet le dernier
+état serveur et le clip à lire. Aucune statistique ni issue de combat n'est calculée
+par Three.js. Un fichier absent ou une perte de contexte WebGL ramène aux images.
+Les modèles peuvent être régénérés avec `npm run models:poc` ; leur provenance
+est décrite dans `public/models/poc/README.md`.
 
 Les effets suivent les événements serveur dans leur ordre, sans rejouer les tours
 déjà affichés, sans riposte inventée après KO et sans impact en cas d'immunité ou
@@ -112,6 +132,9 @@ sont toujours les dernières valeurs FastAPI, sans simulation ni état de combat
 Le composant `BattleSession` conserve uniquement le curseur de lecture et les choix UI.
 Le bouton « Animations d'attaque » permet de désactiver les effets. La préférence
 `prefers-reduced-motion` les désactive également. Sans WebGL, un effet CSS de repli
-reste disponible. Three.js se charge à la première attaque uniquement ; son chunk
-d'environ 534 kB minifiés déclenche l'avertissement indicatif de taille Vite, sans
-empêcher le build. Les ressources GPU et les timers sont libérés à la fin des effets.
+reste disponible. Dans le POC, désactiver les animations ou demander les mouvements
+réduits conserve la scène et la caméra, mais fige les mouvements automatiques.
+Three.js se charge à l'ouverture d'une scène 3D ou à la première attaque 2D ; son
+chunk d'environ 587 kB minifiés déclenche l'avertissement indicatif de taille Vite,
+sans empêcher le build. Les ressources GPU, écouteurs et boucles de rendu sont
+libérés lors du changement de vue ou du démontage.

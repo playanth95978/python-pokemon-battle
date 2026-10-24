@@ -29,6 +29,8 @@ export function PokemonCatalogue({catalogue, disabled, onSelect}: {
     }
 
     const version = catalogue.versions.find((entry) => entry.id === Number(filters.version))
+    const versionsByDate = [...catalogue.versions].sort((a, b) =>
+        (a.release_date ?? '9999').localeCompare(b.release_date ?? '9999') || a.order - b.order)
     return <details className="catalogue card">
         <summary>Catalogue des
             Pokémon <span>{catalogue.species.length} espèces · {catalogue.generations.length} générations</span>
@@ -59,7 +61,7 @@ export function PokemonCatalogue({catalogue, disabled, onSelect}: {
             <label>Version / Pokédex<select value={filters.version}
                                             onChange={(event) => change('version', event.target.value)}>
                 <option value="">Toutes les versions</option>
-                {catalogue.versions.map((entry) => <option key={entry.id}
+                    {versionsByDate.map((entry) => <option key={entry.id}
                                                            value={entry.id}>{entry.name} · {formatRelease(entry.release_date)}</option>)}
             </select></label>
             <label>Trier par<select value={filters.sort} onChange={(event) => change('sort', event.target.value)}>
@@ -92,6 +94,7 @@ export function PokemonCatalogue({catalogue, disabled, onSelect}: {
           <small>{pokemon.types.map((type) => catalogue.types.find((entry) => entry.key === type)?.name ?? type).join(' / ')}</small>
           <small>{pokemon.mythical ? 'Fabuleux' : pokemon.legendary ? 'Légendaire' : pokemon.baby ? 'Bébé' : pokemon.genus}</small>
           <small>Gén. {pokemon.generation} · {formatRelease(catalogue.generations.find((entry) => entry.id === pokemon.generation)?.release_date)}</small>
+          {pokemon.fallback_attack && <small>Kit de combat simplifié</small>}
         </span>
             </button>)}
         </div>

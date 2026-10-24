@@ -129,7 +129,7 @@ def main():
     output = {"source": f"https://github.com/PokeAPI/pokeapi/tree/{REVISION}/data/v2/csv",
               "updated_at": date.today().isoformat(),
               "species": species, "generations": generations,
-              "versions": sorted(groups.values(), key=lambda group: group["order"]),
+              "versions": sorted(groups.values(), key=lambda group: (group["release_date"] or "9999", group["order"])),
               "types": [{"key": key, "name": type_names[tid]["name"]} for tid, key in types.items()]}
     destination = ROOT / "src" / "pokemon_battle" / "data" / "catalogue.json"
     destination.parent.mkdir(parents=True, exist_ok=True)

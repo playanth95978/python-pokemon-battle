@@ -21,6 +21,7 @@ export const normalize = (value: string) => value.normalize('NFD').replace(/[\u0
 
 export function filterCatalogue(catalogue: Catalogue, filters: CatalogueFilters): PokemonEntry[] {
     const search = normalize(filters.search.trim().replace(/^#/, ''))
+    const number = /^\d+$/.test(search) ? Number(search) : null
     const dates = new Map(catalogue.generations.map((generation) => [generation.id, generation.release_date]))
     return catalogue.species.filter((pokemon) => {
         const category = filters.category === 'legendary' ? pokemon.legendary
@@ -30,7 +31,7 @@ export function filterCatalogue(catalogue: Catalogue, filters: CatalogueFilters)
         return category && (!filters.type || pokemon.types.includes(filters.type))
             && (!filters.generation || pokemon.generation === Number(filters.generation))
             && (!filters.version || pokemon.versions.includes(Number(filters.version)))
-            && (!search || normalize(`${pokemon.name} ${pokemon.key} ${pokemon.genus}`).includes(search) || String(pokemon.id) === search)
+            && (!search || (number !== null ? pokemon.id === number : normalize(`${pokemon.name} ${pokemon.key} ${pokemon.genus}`).includes(search)))
     }).sort((a, b) => {
         if (filters.sort === 'name') return a.name.localeCompare(b.name, 'fr')
         if (filters.sort === 'number') return a.id - b.id
