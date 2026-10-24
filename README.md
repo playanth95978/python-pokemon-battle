@@ -214,9 +214,13 @@ pas créer un paquet `domain/` homonyme sans migration de ses définitions méti
 `core/config.py` cherche le `.env` à la racine du projet. Les paramètres utiles
 sont `MISTRAL_API_KEY` et `MISTRAL_CHAT_MODEL` ; la clé reste uniquement côté backend.
 L'adaptateur ne contient aucun outil capable de modifier directement un combat.
-Le `ToolsContext`, la boucle d'exécution des outils et la route d'adversaire IA
-restent à implémenter : ces corrections fournissent le contrat d'échange, pas
-encore un adversaire jouable. Le module de sécurité importé d'un autre projet,
+`application/ai` fournit maintenant le `ToolsContext`, les quatre outils, la boucle
+`ToolCallingOpponent` et la stratégie de secours `LocalOpponent`. Une décision est
+bornée par défaut à 4 requêtes modèle, 8 appels d'outils et 8 secondes au total.
+Les arguments sont validés avec Pydantic et la décision ne modifie aucun combat.
+La route d'adversaire IA et son interface React restent à brancher : le mode de jeu
+actuel conserve les deux choix manuels. Voir `docs/ai.md` pour le contrat et les limites.
+Le module de sécurité importé d'un autre projet,
 inutilisé et dépendant de `app.*`, a été retiré ; aucune authentification n'est ajoutée.
 
 Les tests utilisent uniquement une clé factice construite sans lire le `.env`
@@ -230,3 +234,15 @@ uv sync --extra test
 Ils couvrent les appels simples et multiples, le retour des résultats d'outils,
 les réponses textuelles, les erreurs HTTP et JSON, les délais dépassés et l'absence
 de clé. Aucun test ne consomme l'API Mistral réelle.
+
+Pour lancer manuellement un cas réel de l'agent, avec outils, logs de décision et
+rapport de métriques, configurer `MISTRAL_API_KEY` côté backend puis exécuter :
+
+```powershell
+.venv/Scripts/python.exe -m pokemon_battle.ai_smoke --timeout 30 --output artifacts/ai-real.json
+```
+
+Pikachu doit choisir Charge face à Sabelette (Sol) plutôt qu'Éclair. Le script
+exécute ensuite un tour en mémoire. `--dry-run` teste le même parcours sans modèle
+réel ni lecture de configuration. Les critères, métriques, codes de sortie et
+limites sont décrits dans `docs/ai.md`.

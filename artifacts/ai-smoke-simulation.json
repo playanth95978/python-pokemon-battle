@@ -1,0 +1,202 @@
+{
+  "scenario": "pikachu_vs_ground",
+  "mode": "simulation",
+  "model": "simulation-sans-llm",
+  "timestamp_utc": "2026-10-24T23:35:22.816963+00:00",
+  "seed": 42,
+  "passed": true,
+  "real_agent_verified": false,
+  "checks": {
+    "legal_move": true,
+    "avoids_immunity": true,
+    "expected_slot": true,
+    "llm_selected": true,
+    "battle_unchanged_during_decision": true
+  },
+  "decision": {
+    "slot": 1,
+    "source": "llm",
+    "comment": "",
+    "fallback_reason": null
+  },
+  "selected_attack": "Charge",
+  "metrics": {
+    "model_requests": 2,
+    "model_responses": 2,
+    "tool_calls_requested": 4,
+    "tool_calls_executed": 4,
+    "tool_errors": 0,
+    "model_time_ms": 4.175,
+    "elapsed_ms": 6.059,
+    "tokens": {},
+    "usage_reports": 0,
+    "complete_usage_reports": 0,
+    "trace": [
+      {
+        "event": "model_request",
+        "request": 1
+      },
+      {
+        "event": "model_response",
+        "request": 1,
+        "tool_calls": 3
+      },
+      {
+        "event": "tool_result",
+        "tool": "inspect_battle",
+        "call_id": "sim-0",
+        "status": "ok",
+        "selected_slot": null
+      },
+      {
+        "event": "tool_result",
+        "tool": "list_legal_moves",
+        "call_id": "sim-1",
+        "status": "ok",
+        "selected_slot": null
+      },
+      {
+        "event": "tool_result",
+        "tool": "evaluate_matchups",
+        "call_id": "sim-2",
+        "status": "ok",
+        "selected_slot": null
+      },
+      {
+        "event": "model_request",
+        "request": 2
+      },
+      {
+        "event": "model_response",
+        "request": 2,
+        "tool_calls": 1
+      },
+      {
+        "event": "tool_result",
+        "tool": "select_attack",
+        "call_id": "sim-select",
+        "status": "ok",
+        "selected_slot": 1
+      },
+      {
+        "event": "decision",
+        "slot": 1,
+        "source": "llm"
+      }
+    ],
+    "usage_complete": false
+  },
+  "observations": {
+    "inspect_battle": {
+      "battle_id": "00000000-0000-0000-0000-000000000025",
+      "turn": 0,
+      "fighter": {
+        "id": "agent",
+        "species": "Pikachu",
+        "level": 50,
+        "hp": 110,
+        "max_hp": 110,
+        "types": [
+          "electric"
+        ]
+      },
+      "opponent": {
+        "id": "player",
+        "species": "Sabelette",
+        "level": 50,
+        "hp": 135,
+        "max_hp": 135,
+        "types": [
+          "ground"
+        ]
+      }
+    },
+    "list_legal_moves": {
+      "moves": [
+        {
+          "slot": 0,
+          "name": "Éclair",
+          "type": "electric",
+          "category": "special",
+          "power": 40,
+          "accuracy": 100,
+          "pp": 30,
+          "max_pp": 30
+        },
+        {
+          "slot": 1,
+          "name": "Charge",
+          "type": "normal",
+          "category": "physical",
+          "power": 40,
+          "accuracy": 100,
+          "pp": 35,
+          "max_pp": 35
+        }
+      ]
+    },
+    "evaluate_matchups": {
+      "matchups": [
+        {
+          "slot": 0,
+          "type": "electric",
+          "multiplier": 0.0
+        },
+        {
+          "slot": 1,
+          "type": "normal",
+          "multiplier": 1.0
+        }
+      ]
+    },
+    "select_attack": {
+      "selected_slot": 1
+    }
+  },
+  "turn": {
+    "number": 1,
+    "pikachu_hp": 86,
+    "sandshrew_hp": 122,
+    "winner": null
+  },
+  "events": [
+    {
+      "type": "AttackUsed",
+      "turn": 1,
+      "actor": "agent",
+      "target": "player",
+      "attack": "Charge",
+      "pp_remaining": 34,
+      "attack_type": "normal",
+      "attack_slot": 1
+    },
+    {
+      "type": "DamageDealt",
+      "turn": 1,
+      "actor": "agent",
+      "target": "player",
+      "damage": 13,
+      "hp_remaining": 122,
+      "effectiveness": 1.0
+    },
+    {
+      "type": "AttackUsed",
+      "turn": 1,
+      "actor": "player",
+      "target": "agent",
+      "attack": "Griffe",
+      "pp_remaining": 34,
+      "attack_type": "normal",
+      "attack_slot": 0
+    },
+    {
+      "type": "DamageDealt",
+      "turn": 1,
+      "actor": "player",
+      "target": "agent",
+      "damage": 24,
+      "hp_remaining": 86,
+      "effectiveness": 1.0
+    }
+  ]
+}
