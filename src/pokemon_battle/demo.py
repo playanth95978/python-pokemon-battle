@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from random import Random
 from tempfile import TemporaryDirectory
+from uuid import uuid4
 
 from .application.battle_service import BattleService
 from .application.catalog import CATALOG
@@ -35,7 +36,8 @@ def main(argv: list[str] | None = None) -> None:
             if None in moves:
                 print("Combat interrompu : toutes les attaques d'un combattant sont épuisées.")
                 return
-            result = service.play_turn(record.id, moves[0], moves[1])
+            result = service.play_turn(record.id, moves[0], moves[1],
+                                       expected_turn=battle.turn, idempotency_key=uuid4())
             battle = result.record.battle
             print(f"Tour {battle.turn} : {battle.first.species.name} {battle.first.hp} PV | "
                   f"{battle.second.species.name} {battle.second.hp} PV")

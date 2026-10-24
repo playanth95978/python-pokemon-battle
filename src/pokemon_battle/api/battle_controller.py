@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from pokemon_battle.application.battle_service import (
-    BattleService, UnknownSpeciesError, BattleNotFoundError, BattleFinishedError, InvalidMoveError,
+    BattleService, UnknownSpeciesError, BattleNotFoundError, BattleFinishedError, InvalidMoveError, TurnConflictError,
 )
 
 from .dependencies import get_battle_service
@@ -58,10 +58,11 @@ def play_turn(
 ) -> PlayTurnResponse:
     """Résoudre un tour et retourner l'état enregistré avec ses événements."""
     try:
-        result = service.play_turn(battle_id, request.first_move, request.second_move)
+        result = service.play_turn(battle_id, request.first_move, request.second_move,
+                                   expected_turn=request.expected_turn, idempotency_key=request.idempotency_key)
     except BattleNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-    except BattleFinishedError as error:
+    except (BattleFinishedError, TurnConflictError) as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     except InvalidMoveError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error

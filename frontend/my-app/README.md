@@ -54,10 +54,17 @@ avec boutons désactivés pendant l'attente. Aucun POST n'est envoyé automatiqu
 montage, y compris sous StrictMode. Les requêtes expirent après 15 secondes et sont
 annulées au démontage.
 
-Après un échec de tour, cliquer sur « Relire le combat » avant de rejouer : un POST
-dont la réponse est perdue peut déjà avoir été enregistré. Aucun tour n'est rejoué
-automatiquement. Le GET restaure l'état courant mais ne récupère pas les événements
-perdus, car l'API n'expose pas d'historique. Une information le précise à l'écran.
+Chaque nouvelle demande de tour contient `expected_turn`, repris de l'état serveur,
+et un UUID `idempotency_key`. Après une erreur réseau ou 5xx, cliquer sur
+« Récupérer le résultat du tour » renvoie exactement la même demande et la même clé.
+Si elle était enregistrée, le backend restitue le résultat sans jouer un autre tour.
+Le hook relit ensuite le combat par GET pour éviter d'afficher un ancien état.
+La clé reste disponible si cette relecture échoue ; aucun POST n'est réessayé automatiquement.
+
+Un conflit 409 exige une relecture. « Relire le combat » reste disponible pour
+abandonner la récupération et consulter l'état actuel. Ce GET seul ne récupère
+pas les événements perdus, car l'API n'expose pas d'historique complet.
+La demande à récupérer est uniquement conservée en mémoire jusqu'au rechargement.
 Le redémarrage remplace le combat et vide son journal seulement après création réussie.
 Un rechargement complet de la page revient au formulaire initial.
 

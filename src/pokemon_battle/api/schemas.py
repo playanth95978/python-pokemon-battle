@@ -23,6 +23,8 @@ class PlayTurnRequest(BaseModel):
 
     first_move: int = Field(ge=0, le=3, strict=True)
     second_move: int = Field(ge=0, le=3, strict=True)
+    expected_turn: int = Field(ge=0, strict=True)
+    idempotency_key: UUID
 
 
 class AttackResponse(BaseModel):

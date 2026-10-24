@@ -5,12 +5,13 @@ import logging
 import sqlite3
 from contextlib import closing, contextmanager
 from dataclasses import asdict
+from fractions import Fraction
 from pathlib import Path
 from uuid import UUID
 
-from pokemon_battle.application.battle_repository import StoredBattle
+from pokemon_battle.application.battle_repository import StoredBattle, StoredTurn, TurnResult
 from pokemon_battle.domain import Attack, Category, Fighter, Species, Stats
-from pokemon_battle.engine import Battle
+from pokemon_battle.engine import Battle, AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded
 from pokemon_battle.types import Type
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,15 @@ def _fighter(data: dict) -> Fighter:
     fighter.hp = data["hp"]
     fighter.pp = data["pp"]
     return fighter
+
+
+def _record(battle_id: UUID, data: dict) -> StoredBattle:
+    first, second = _fighter(data["first"]), _fighter(data["second"])
+    first_hp, second_hp = first.hp, second.hp
+    first.hp, second.hp = first.species.stats.hp, second.species.stats.hp
+    battle = Battle(first, second, data["turn"])
+    first.hp, second.hp = first_hp, second_hp
+    return StoredBattle(battle_id, battle)
 
 
 class _SqliteSession:
@@ -47,14 +57,41 @@ class _SqliteSession:
                                       (str(battle_id),)).fetchone()
         if row is None:
             return None
-        data = json.loads(row[0])
-        # Restaurer les PV après construction permet de relire les combats terminés.
-        first, second = _fighter(data["first"]), _fighter(data["second"])
-        first_hp, second_hp = first.hp, second.hp
-        first.hp, second.hp = first.species.stats.hp, second.species.stats.hp
-        battle = Battle(first, second, data["turn"])
-        first.hp, second.hp = first_hp, second_hp
-        return StoredBattle(battle_id, battle)
+        return _record(battle_id, json.loads(row[0]))
+
+    def get_turn(self, battle_id: UUID, key: UUID) -> StoredTurn | None:
+        row = self.connection.execute(
+            "SELECT expected_turn, first_move, second_move, result FROM battle_turns "
+            "WHERE battle_id = ? AND idempotency_key = ?", (str(battle_id), str(key)),
+        ).fetchone()
+        if row is None:
+            return None
+        data = json.loads(row[3])
+        classes = {cls.__name__: cls for cls in (AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded)}
+        events = []
+        for item in data["events"]:
+            kind = item.pop("type")
+            if kind == "DamageDealt":
+                item["effectiveness"] = Fraction(item["effectiveness"])
+            events.append(classes[kind](**item))
+        result = TurnResult(_record(battle_id, data["battle"]), tuple(events))
+        return StoredTurn(row[0], row[1], row[2], result)
+
+    def save_turn(self, battle_id: UUID, key: UUID, receipt: StoredTurn) -> None:
+        events = []
+        for event in receipt.result.events:
+            item = {"type": type(event).__name__, **asdict(event)}
+            if isinstance(event, DamageDealt):
+                item["effectiveness"] = str(event.effectiveness)
+            events.append(item)
+        snapshot = json.dumps({"battle": asdict(receipt.result.record.battle), "events": events},
+                              ensure_ascii=False)
+        self.connection.execute(
+            "INSERT INTO battle_turns "
+            "(battle_id, idempotency_key, expected_turn, first_move, second_move, result) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (str(battle_id), str(key), receipt.expected_turn, receipt.first_move, receipt.second_move, snapshot),
+        )
 
 
 class SqliteBattleRepository:
@@ -65,6 +102,7 @@ class SqliteBattleRepository:
     def _connection(self):
         try:
             with closing(sqlite3.connect(self.path)) as connection:
+                connection.execute("PRAGMA foreign_keys = ON")
                 with connection:
                     yield connection
         except sqlite3.Error:
@@ -77,6 +115,18 @@ class SqliteBattleRepository:
                 CREATE TABLE IF NOT EXISTS battles (
                     id TEXT PRIMARY KEY NOT NULL,
                     snapshot TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS battle_turns (
+                    battle_id TEXT NOT NULL REFERENCES battles(id),
+                    idempotency_key TEXT NOT NULL,
+                    expected_turn INTEGER NOT NULL CHECK (expected_turn >= 0),
+                    first_move INTEGER NOT NULL,
+                    second_move INTEGER NOT NULL,
+                    result TEXT NOT NULL,
+                    PRIMARY KEY (battle_id, idempotency_key),
+                    UNIQUE (battle_id, expected_turn)
                 )
             """)
 

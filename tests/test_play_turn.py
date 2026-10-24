@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from pokemon_battle.api.app import create_app
-from pokemon_battle.application.battle_service import BattleService, InvalidMoveError
+from pokemon_battle.application.battle_service import BattleService, InvalidMoveError, TurnConflictError
 from pokemon_battle.application.catalog import CATALOG
 from pokemon_battle.engine import BattleEngine
 from pokemon_battle.infrastructure.sqlite_battle_repository import SqliteBattleRepository
@@ -16,6 +16,10 @@ from pokemon_battle.infrastructure.sqlite_battle_repository import SqliteBattleR
 class MaximumRolls:
     def randint(self, a, b):
         return b
+
+
+def command(**overrides):
+    return {"expected_turn": 0, "idempotency_key": str(uuid4()), **overrides}
 
 
 @pytest.fixture
@@ -33,7 +37,7 @@ def context(tmp_path):
 def testUnTourRetourneLesEvenementsEtPersisteLesRessources(context):
     """Le tour HTTP applique le moteur puis expose le même état que le GET."""
     client, repository, battle_id = context
-    response = client.post(f"/battles/{battle_id}/turns", json={"first_move": 1, "second_move": 1})
+    response = client.post(f"/battles/{battle_id}/turns", json=command(first_move=1, second_move=1))
     assert response.status_code == 200
     data = response.json()
     assert data["battle"]["turn"] == 1
@@ -63,7 +67,7 @@ def testUnMauvaisChoixRefuseLeTourSansModifierLaBase(context, exhausted):
         record.battle.second.pp[0] = 0
         repository.save(record)
     before = repository.get(battle_id)
-    response = client.post(f"/battles/{battle_id}/turns", json={
+    response = client.post(f"/battles/{battle_id}/turns", json={**command(),
         "first_move": 0, "second_move": 0 if exhausted else 3,
     })
     assert response.status_code == 400
@@ -76,7 +80,7 @@ def testLeKoEmpecheLaRiposteEtLesToursSuivants(context):
     record = repository.get(battle_id)
     record.battle.first.hp = 1
     repository.save(record)
-    response = client.post(f"/battles/{battle_id}/turns", json={"first_move": 0, "second_move": 0})
+    response = client.post(f"/battles/{battle_id}/turns", json=command(first_move=0, second_move=0))
     assert response.status_code == 200
     data = response.json()
     assert [event["type"] for event in data["events"]] == [
@@ -88,6 +92,7 @@ def testLeKoEmpecheLaRiposteEtLesToursSuivants(context):
     assert data["battle"]["winner"] == record.battle.second.id
     before = repository.get(battle_id)
     assert client.post(f"/battles/{battle_id}/turns", json={
+        **command(expected_turn=1),
         "first_move": 0, "second_move": 0,
     }).status_code == 409
     assert repository.get(battle_id) == before
@@ -97,6 +102,7 @@ def testUnCombatAbsentDonne404(context):
     """Un UUID valide mais inconnu est distingué d'un choix invalide."""
     client, _, _ = context
     assert client.post(f"/battles/{uuid4()}/turns", json={
+        **command(),
         "first_move": 0, "second_move": 0,
     }).status_code == 404
 
@@ -110,7 +116,7 @@ def testUnCorpsInvalideDonne422(context, body):
     """La validation HTTP rejette les indices mal formés sans modifier le combat."""
     client, repository, battle_id = context
     before = repository.get(battle_id)
-    assert client.post(f"/battles/{battle_id}/turns", json=body).status_code == 422
+    assert client.post(f"/battles/{battle_id}/turns", json={**command(), **body}).status_code == 422
     assert repository.get(battle_id) == before
 
 
@@ -118,6 +124,7 @@ def testUnUuidInvalideDonne422(context):
     """Le chemin est validé avant d'entrer dans le service."""
     client, _, _ = context
     assert client.post("/battles/invalide/turns", json={
+        **command(),
         "first_move": 0, "second_move": 0,
     }).status_code == 422
 
@@ -137,6 +144,7 @@ def testUnePanneDeSauvegardeNePersistePasLeTour(tmp_path):
                     BEGIN SELECT RAISE(ABORT, 'Écriture refusée'); END
                 """)
         assert client.post(f"/battles/{record.id}/turns", json={
+            **command(),
             "first_move": 0, "second_move": 0,
         }).status_code == 500
         assert repository.get(record.id) == before
@@ -157,7 +165,7 @@ def testLaTransactionAnnuleUneEcritureAvantErreur(tmp_path):
 
 
 def testDeuxToursConcurrentsNeSEcrasentPas(tmp_path):
-    """Deux services avec des connexions distinctes conservent les deux tours."""
+    """Deux demandes du même tour avec des clés distinctes produisent un seul succès."""
     path = tmp_path / "battles.sqlite3"
     repository = SqliteBattleRepository(path)
     repository.initialize()
@@ -165,15 +173,19 @@ def testDeuxToursConcurrentsNeSEcrasentPas(tmp_path):
 
     def play(_):
         service = BattleService(SqliteBattleRepository(path), CATALOG, BattleEngine(MaximumRolls()))
-        return service.play_turn(record.id, 0, 0).record.battle.turn
+        try:
+            return service.play_turn(record.id, 0, 0, expected_turn=0, idempotency_key=uuid4()).record.battle.turn
+        except TurnConflictError:
+            return "conflit"
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         turns = list(executor.map(play, range(2)))
-    assert sorted(turns) == [1, 2]
+    assert turns.count(1) == 1
+    assert turns.count("conflit") == 1
     saved = repository.get(record.id)
-    assert saved.battle.turn == 2
-    assert saved.battle.first.pp == [33, 25]
-    assert saved.battle.second.pp == [33, 25]
+    assert saved.battle.turn == 1
+    assert saved.battle.first.pp == [34, 25]
+    assert saved.battle.second.pp == [34, 25]
 
 
 def testLeServiceValideLesIndicesSansLaCoucheHttp(context):
@@ -181,5 +193,5 @@ def testLeServiceValideLesIndicesSansLaCoucheHttp(context):
     _, repository, battle_id = context
     before = repository.get(battle_id)
     with pytest.raises(InvalidMoveError):
-        BattleService(repository, CATALOG).play_turn(battle_id, -1, 0)
+        BattleService(repository, CATALOG).play_turn(battle_id, -1, 0, expected_turn=0, idempotency_key=uuid4())
     assert repository.get(battle_id) == before

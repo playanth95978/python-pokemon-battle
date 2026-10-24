@@ -47,7 +47,8 @@ Le point d'entrée est `pokemon_battle.api.app:app`.
 
 - `POST /battles` : corps `first_species`, `second_species`.
 - `GET /battles/{battle_id}` : identifiant UUID.
-- `POST /battles/{battle_id}/turns` : corps `first_move`, `second_move`, indices de 0 à 3.
+- `POST /battles/{battle_id}/turns` : attaques `first_move`, `second_move` (0 à 3),
+  précondition `expected_turn` et clé UUID `idempotency_key` obligatoires.
 
 ### Exemple complet : créer un combat
 
@@ -81,20 +82,41 @@ Les combats terminés restent consultables avec leur vainqueur.
 ### Jouer un tour
 
 `POST /battles/{battle_id}/turns` accepte par exemple
-`{"first_move": 0, "second_move": 1}`. Les indices commencent à zéro.
+`{"first_move": 0, "second_move": 1, "expected_turn": 0, "idempotency_key": "6d29c7bf-aed6-49ef-ab43-b45df370d574"}`.
+Les indices commencent à zéro. `expected_turn` est le dernier numéro de tour
+reçu du serveur ; générer une nouvelle clé UUID pour chaque nouvelle intention de jeu.
 Le service charge le combat, vérifie les choix, appelle le moteur puis sauvegarde
 l'état. Une transaction SQLite `BEGIN IMMEDIATE` couvre la lecture et l'écriture
-sur la même connexion : deux requêtes concurrentes sont traitées successivement
-sans écraser les tours. Il n'y a pas de déduplication : renvoyer la même requête
-peut donc jouer un tour supplémentaire. Une erreur annule l'écriture.
+sur la même connexion. Le service recherche d'abord un reçu associé au combat et
+à la clé dans `battle_turns` :
+
+- Même clé et même contenu : restituer le résultat initial, événements compris,
+  sans appeler le moteur, même si le combat a évolué ou est terminé.
+- Même clé et autre contenu : **409**.
+- Nouvelle clé mais `expected_turn` différent du tour enregistré : **409** sans jouer.
+- Nouvelle clé et tour attendu correct : résoudre le tour puis enregistrer l'état
+  et le reçu dans la même transaction. Une panne annule les deux écritures.
+
+Deux requêtes concurrentes visant le même tour ne peuvent donc consommer les PP
+qu'une seule fois. Les contraintes uniques `(battle_id, idempotency_key)` et
+`(battle_id, expected_turn)` protègent également la base. Cette garantie est partagée
+par les processus utilisant le même fichier SQLite ; elle ne repose pas sur un verrou Python.
+Si la réservation SQLite expire, la requête échoue sans succès annoncé et peut être
+réessayée avec sa clé initiale.
+
+Les reçus réussis sont conservés en base sans expiration et survivent au redémarrage.
+Les demandes refusées ne réservent pas de clé. La table s'ajoute automatiquement au
+prochain démarrage de FastAPI, sans supprimer les combats existants.
+Une réponse répétée contient l'état du tour initial : un GET donne l'état courant.
 
 La réponse **200** contient `battle` (même structure que le GET) et `events` dans
 l'ordre d'exécution. Chaque événement porte `type` : `attack_used`, `attack_missed`,
 `damage_dealt`, `knocked_out` ou `battle_ended`. Le multiplicateur `effectiveness`
 des dégâts est un nombre JSON (0, 0.25, 0.5, 1, 2 ou 4).
 
-Erreurs : **404** si le combat est absent, **409** s'il est terminé, **400** pour
-une attaque inexistante ou sans PP, **422** pour une requête mal formée.
+Erreurs : **404** si le combat est absent, **409** s'il est terminé ou en cas de conflit
+de tour/clé, **400** pour une attaque inexistante ou sans PP, **422** pour une requête
+mal formée ou des métadonnées d'idempotence manquantes.
 Les erreurs de stockage ne sont pas converties en erreurs de choix d'attaque.
 Le moteur reste indépendant de FastAPI et SQLite. Aucun serveur n'est démarré automatiquement.
 
