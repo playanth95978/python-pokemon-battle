@@ -187,6 +187,11 @@ synthétisés pour chaque famille d'attaque, synchronisés sur la lecture des é
 Le son s'arrête quand l'onglet est masqué ou le combat redémarre ; aucun son n'est
 lancé automatiquement à l'ouverture de la page.
 
+L'arène accueille 28 spectateurs 3D dans des gradins, avec un repli CSS en vue 2D.
+Le public attend l'impact pour applaudir, réagit aux attaques manquées et aux
+immunités, puis se lève lors d'un KO et acclame le vainqueur. Ces réactions suivent
+les événements affichés ; les mouvements réduits conservent des poses fixes.
+
 Le catalogue complet expose 1 025 espèces en français avec recherche, types,
 catégories, générations et versions datées. Chaque espèce est sélectionnable pour
 les deux combattants. Les dates portent sur les jeux et le début des générations.

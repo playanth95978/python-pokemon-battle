@@ -6,6 +6,8 @@ import { PokemonCard } from './PokemonCard'
 import { AttackEffects } from './AttackEffects'
 import { BattleScene3D } from './BattleScene3D'
 import { pocModelPath } from './pocModels'
+import { SpectatorStand } from './SpectatorStand'
+import { crowdReaction } from './crowdReaction'
 
 interface Props {
     battle: Battle
@@ -13,9 +15,10 @@ interface Props {
     secondArtwork: PokemonArtwork | null
     active: AttackClip | null
     motion?: boolean
+    impact?: boolean
 }
 
-export function BattleArena({battle, firstArtwork, secondArtwork, active, motion = true}: Props) {
+export function BattleArena({battle, firstArtwork, secondArtwork, active, motion = true, impact = false}: Props) {
     const [prefer3D, setPrefer3D] = useState(true)
     const [failed, setFailed] = useState(false)
     const onFailure = useCallback(() => setFailed(true), [])
@@ -40,6 +43,7 @@ export function BattleArena({battle, firstArtwork, secondArtwork, active, motion
             <PokemonCard fighter={battle.first} side="first" artwork={firstArtwork} active={active} statsOnly={show3D}/>
             {!show3D && active &&
                 <AttackEffects key={active.id} clip={active} fromPlayer={active.actor === battle.first.id}/>}
+            <SpectatorStand reaction={crowdReaction(battle, active, impact)} motion={motion} flat={!show3D}/>
             <div className="attack-caption" aria-live="polite">
                 {active ? `${active.actor === battle.first.id ? battle.first.species : battle.second.species} utilise ${active.name}${active.outcome === 'miss' ? ' : raté !' : active.outcome === 'immune' ? ' : aucun effet !' : ' !'}` : ''}
             </div>

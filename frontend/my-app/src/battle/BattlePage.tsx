@@ -29,7 +29,7 @@ function BattleSession({battle, events, busy, needsSync, playTurn}: {
     const [animations, setAnimations] = useState(true)
     const firstArtwork = usePokemonArtwork(battle.first.species)
     const secondArtwork = usePokemonArtwork(battle.second.species)
-    const {active, isPlaying, reducedMotion, revealedCount} = useAttackPlayback(events, animations)
+    const {active, isPlaying, reducedMotion, revealedCount, impact} = useAttackPlayback(events, animations)
     const audio = useBattleAudio(active)
     const displayed = battlePresentation(battle, events, revealedCount)
     const finished = displayed.winner !== null
@@ -49,7 +49,7 @@ function BattleSession({battle, events, busy, needsSync, playTurn}: {
                 <p className="pill" role="status">{winner ? `Victoire de ${winner.species}` : `Tour ${battle.turn}`}</p>
             </div>
             {audio.error && <p role="status" className="muted">{audio.error}</p>}
-            <BattleArena battle={displayed} firstArtwork={firstArtwork} secondArtwork={secondArtwork} active={active} motion={animations && !reducedMotion}/>
+            <BattleArena battle={displayed} firstArtwork={firstArtwork} secondArtwork={secondArtwork} active={active} impact={impact} motion={animations && !reducedMotion}/>
         </div>
         <section className="card battle-commands" aria-labelledby="attacks-heading">
             <h2 id="attacks-heading">{finished ? 'Combat terminé' : 'Choisis les attaques'}</h2>

@@ -784,7 +784,23 @@
 .arena-3d .fighter.enemy { right: 14px; left: auto; }
 .arena-3d .stats { width: 100%; margin: 0; }
 .arena-3d .fighter-name h2 { font-size: 16px; }
-.arena-3d .attack-caption { top: auto; bottom: 86px; }
+.arena-3d .attack-caption { top: auto; bottom: 108px; }
+.crowd-status { position: absolute; z-index: 3; bottom: 12px; left: 8px; right: 8px; margin: 0; padding: 5px 8px; border-radius: 8px; background: #13243bd9; color: #d9e8f4; font-size: 11px; text-align: center; pointer-events: none; }
+.arena-3d .crowd-status { bottom: 70px; }
+.crowd-flat { position: absolute; left: 6%; right: 6%; top: 8px; height: 50px; display: flex; justify-content: space-around; align-items: end; border-bottom: 6px solid #365471; pointer-events: none; }
+.crowd-person { position: relative; display: block; width: 15px; height: 25px; background: currentColor; border-radius: 6px 6px 2px 2px; }
+.crowd-person i { position: absolute; width: 12px; height: 12px; top: -10px; left: 1px; border-radius: 50%; background: #d9ad87; border-top: 3px solid #303346; }
+.crowd-person b, .crowd-person em { position: absolute; top: 3px; width: 5px; height: 17px; background: currentColor; border-radius: 4px; transform-origin: top center; }
+.crowd-person b { left: -4px; transform: rotate(15deg); }
+.crowd-person em { right: -4px; transform: rotate(-15deg); }
+.crowd-motion.crowd-cheer .crowd-person b, .crowd-motion.crowd-cheer .crowd-person em { animation: crowd-clap .25s ease-in-out infinite alternate; }
+.crowd-knockout .crowd-person b, .crowd-victory .crowd-person b { transform: rotate(150deg); }
+.crowd-knockout .crowd-person em, .crowd-victory .crowd-person em { transform: rotate(-150deg); }
+.crowd-motion.crowd-knockout .crowd-person, .crowd-motion.crowd-victory .crowd-person { animation: crowd-jump .5s ease-in-out 8 alternate; }
+.crowd-miss .crowd-person { transform: rotate(7deg); }
+@keyframes crowd-clap { from { transform: rotate(-45deg); } to { transform: rotate(45deg); } }
+@keyframes crowd-jump { to { transform: translateY(-7px); } }
+@media (prefers-reduced-motion: reduce) { .crowd-flat * { animation: none !important; } }
 .scene-camera-controls { position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 3; }
 .scene-camera-controls button { padding: 6px 12px; font-size: 12px; background: #172c47; }
 .scene-hint { position: absolute; bottom: 8px; width: 100%; text-align: center; color: #e0e9f4; font-size: 11px; pointer-events: none; }

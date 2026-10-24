@@ -152,6 +152,19 @@ chunk d'environ 587 kB minifiés déclenche l'avertissement indicatif de taille 
 sans empêcher le build. Les ressources GPU, écouteurs et boucles de rendu sont
 libérés lors du changement de vue ou du démontage.
 
+## Public de l'arène
+
+`createSpectators` ajoute 28 spectateurs en deux rangées de gradins derrière le
+terrain 3D. Les figurants partagent leurs géométries et matériaux et ne génèrent
+pas d'ombres supplémentaires. La vue 2D conserve un public simplifié en CSS.
+`crowdReaction` lit uniquement la présentation du combat : attente avant impact,
+applaudissements après une attaque réussie, déception en cas d'échec, surprise lors
+d'une immunité, bras levés et sauts au KO puis célébration du vainqueur. Aucun
+résultat n'est annoncé avant sa révélation. La célébration finale animée s'arrête
+après quelques secondes. Les mouvements réduits conservent des poses fixes et le
+texte de réaction reste accessible. Les ressources des gradins sont libérées au
+démontage de la scène.
+
 ## Sons des attaques
 
 **Activer le son** crée un contexte Web Audio pendant le clic, conformément aux

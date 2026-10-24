@@ -18,7 +18,7 @@ export function useCatalogue() {
             setError(null)
         }).catch(() => {
             if (controller.signal.aborted) return
-            setError('Le catalogue complet est indisponible. Vérifie que FastAPI a été relancé, puis réessaie. Les trois Pokémon de démonstration restent disponibles.')
+            setError('Le catalogue complet est indisponible. Vérifie que FastAPI a été relancé, puis réessaie. Les Pokémon de démonstration restent disponibles.')
             setLoading(false)
         })
         return () => controller.abort()

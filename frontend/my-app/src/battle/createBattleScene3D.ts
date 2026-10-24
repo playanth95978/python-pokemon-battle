@@ -6,6 +6,8 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js'
 import { pocModelPath } from './pocModels'
 import { ATTACK_DURATION } from './attackPlayback'
 import { createAttackVfx } from './attackVfx'
+import { createSpectators } from './createSpectators'
+import { crowdReaction } from './crowdReaction'
 import type { AttackClip } from './attackPlayback'
 import type { Battle } from './types'
 
@@ -113,6 +115,7 @@ export async function createBattleScene3D(host: HTMLElement, firstName: string, 
   }
 
   const effects = createAttackVfx(scene)
+  const spectators = createSpectators(scene)
   let state: { battle: Battle; active: AttackClip | null; motion: boolean } | null = null
   let lastClip: string | null = null
   let attackStarted = 0
@@ -158,8 +161,10 @@ export async function createBattleScene3D(host: HTMLElement, firstName: string, 
     if (current) {
       const { battle, active, motion } = current
       actors.forEach((actor) => actor.mixer.update(motion ? delta : 0))
+      const progress = active && motion ? Math.min(1, (now - attackStarted) / ATTACK_DURATION) : 0
+      spectators.update(now / 1000, crowdReaction(battle, active, progress >= 0.65), motion,
+        active ? active.actor === battle.first.id ? -1 : 1 : 0)
       if (active && motion) {
-        const progress = Math.min(1, (now - attackStarted) / ATTACK_DURATION)
         const source = active.actor === battle.first.id ? 0 : 1
         const target = 1 - source
         const targetFighter = target === 0 ? battle.first : battle.second
@@ -187,6 +192,7 @@ export async function createBattleScene3D(host: HTMLElement, firstName: string, 
       actors.forEach((actor) => { actor.mixer.stopAllAction(); actor.mixer.uncacheRoot(actor.model) })
       renderer.domElement.removeEventListener('webglcontextlost', onLost)
       effects.dispose()
+      spectators.dispose()
       disposeScene(scene)
       sunlight.shadow.dispose()
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove()

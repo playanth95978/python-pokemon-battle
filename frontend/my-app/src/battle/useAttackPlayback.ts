@@ -27,5 +27,5 @@ export function useAttackPlayback(events: BattleEvent[], enabled: boolean) {
     const next = events.findIndex((event, index) => index > start && (event.type === 'attack_used' || event.type === 'battle_ended'))
     revealedCount = impact ? next < 0 ? events.length : next : start + 1
   }
-  return { active, isPlaying: active !== null, reducedMotion, revealedCount }
+  return { active, isPlaying: active !== null, reducedMotion, revealedCount, impact: active !== null && impact }
 }
