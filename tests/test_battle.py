@@ -103,15 +103,18 @@ def testLeKoInterromptLeTourEtTermineLeCombat():
         engine.play_turn(battle, 0, 0)
 
 
-@pytest.mark.parametrize("index", [-1, 1, True])
-def testUnChoixInvalideNeModifiePasLeCombat(index):
+@pytest.mark.parametrize("index, message", [
+    (-1, "Invalid attack slot"),
+    (1, "Invalid attack slot"),
+    (True, "Invalid battle action"),
+])
+def testUnChoixInvalideNeModifiePasLeCombat(index, message):
     """Même le second choix est validé avant la première attaque."""
     battle = Battle(fighter("a"), fighter("b"))
-    with pytest.raises(ValueError, match="slot"):
+    before = asdict(battle)
+    with pytest.raises(ValueError, match=message):
         BattleEngine(Rolls()).play_turn(battle, 0, index)
-    assert battle.turn == 0
-    assert battle.first.pp == [3]
-    assert battle.first.hp == 251
+    assert asdict(battle) == before
 
 
 def testUneAttaqueEpuiseeEstRefusee():
@@ -163,6 +166,28 @@ def testUnePotionSoigneAuMaximumVingtPv():
     assert events == (
         PotionUsed(1, "a", 20, 120, 1),
     )
+
+def testUnePotionRemplaceLAttaqueEtSoigneAvantUnAdversairePlusRapide():
+    """Le soin prioritaire permet de survivre au coup sans attaquer ni consommer de PP."""
+    battle = Battle(fighter("rapide", speed=92), fighter("blesse", speed=41))
+    battle.second.hp = 20
+
+    events = BattleEngine(Rolls(1, 100)).play_turn(battle, AttackAction(0), UsePotionAction())
+
+    assert events == (
+        PotionUsed(1, "blesse", 20, 40, 1),
+        AttackUsed(1, "rapide", "blesse", "Tackle", 2, Type.NORMAL, 0),
+        DamageDealt(1, "rapide", "blesse", 31, 9, Fraction(1)),
+    )
+    assert battle.turn == 1
+    assert battle.winner is None
+    assert battle.first.hp == 251
+    assert battle.first.pp == [2]
+    assert battle.first.potions == 2
+    assert battle.second.hp == 9
+    assert battle.second.pp == [3]
+    assert battle.second.potions == 1
+
 
 def testUnePotionEstRefuseeSiLesPvSontPleins():
     """Un combattant en pleine santé ne doit perdre ni potion ni PP."""

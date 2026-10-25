@@ -11,22 +11,42 @@ from uuid import UUID
 
 from pokemon_battle.application.battle_repository import StoredBattle, StoredTurn, TurnResult
 from pokemon_battle.domain import Attack, Category, Fighter, Species, Stats
-from pokemon_battle.engine import Battle, AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded
+from pokemon_battle.engine import Battle, AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded, PotionUsed
 from pokemon_battle.types import Type
-
+from pokemon_battle.domain import AttackAction, BattleAction, UsePotionAction
 logger = logging.getLogger(__name__)
 
+# Liste explicite des événements autorisés à être reconstruits depuis les reçus.
+EVENT_CLASSES = {
+    event.__name__: event
+    for event in (AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded, PotionUsed)
+}
+
+def _serialize_action(action: BattleAction) -> dict:
+    if isinstance(action, AttackAction):
+        return {"kind": "attack", "slot": action.slot}
+    if isinstance(action, UsePotionAction):
+        return {"kind": "potion"}
+    raise ValueError("Action de combat inconnue")
+
+def _deserialize_action(data: dict) -> BattleAction:
+    if data["kind"] == "attack":
+        return AttackAction(slot=data["slot"])
+    if data["kind"] == "potion":
+        return UsePotionAction()
+    raise ValueError("Action de combat inconnue")
 
 def _fighter(data: dict) -> Fighter:
     definition = data["species"]
     attacks = tuple(Attack(**{**attack, "type": Type(attack["type"]),
-                             "category": Category(attack["category"])})
+                              "category": Category(attack["category"])})
                     for attack in definition["attacks"])
     species = Species(definition["name"], tuple(Type(t) for t in definition["types"]),
                       Stats(**definition["stats"]), attacks)
     fighter = Fighter(data["id"], species, data["level"])
     fighter.hp = data["hp"]
     fighter.pp = data["pp"]
+    fighter.potions = data.get("potions", 2)
     return fighter
 
 
@@ -87,15 +107,17 @@ class _SqliteSession:
         if row is None:
             return None
         data = json.loads(row[3])
-        classes = {cls.__name__: cls for cls in (AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded)}
         events = []
         for item in data["events"]:
             kind = item.pop("type")
+            event_class = EVENT_CLASSES.get(kind)
+            if event_class is None:
+                raise ValueError(f"Type d'événement enregistré inconnu : {kind!r}")
             if kind == "DamageDealt":
                 item["effectiveness"] = Fraction(item["effectiveness"])
             if kind == "AttackUsed" and item.get("attack_type") is not None:
                 item["attack_type"] = Type(item["attack_type"])
-            events.append(classes[kind](**item))
+            events.append(event_class(**item))
         result = TurnResult(_record(battle_id, data["battle"]), tuple(events))
         return StoredTurn(row[0], row[1], row[2], result)
 

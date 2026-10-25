@@ -23,8 +23,8 @@ class TurnResult:
 @dataclass(frozen=True, slots=True)
 class StoredTurn:
     expected_turn: int
-    first_move: int
-    second_move: int
+    first_action: BattleAction
+    second_action: BattleAction
     result: TurnResult
 
 

@@ -50,6 +50,26 @@ def testLaRepetitionRetourneLaMemeReponseSansRejouer(context):
     assert SqliteBattleRepository(path).get(record.id) == before
 
 
+def testUnEvenementEnregistreInconnuEstRefuseExplicitement(context):
+    """Une version d'événement non reconnue ne doit ni être ignorée ni modifier le combat."""
+    client, path, record = context
+    body = payload()
+    assert client.post(f"/battles/{record.id}/turns", json=body).status_code == 200
+    repository = SqliteBattleRepository(path)
+    before = repository.get(record.id)
+    with closing(sqlite3.connect(path)) as connection:
+        stored = json.loads(connection.execute("SELECT result FROM battle_turns").fetchone()[0])
+        stored["events"][0]["type"] = "EvenementInconnu"
+        with connection:
+            connection.execute("UPDATE battle_turns SET result = ?", (json.dumps(stored),))
+
+    with pytest.raises(ValueError, match="Type d'événement enregistré inconnu : 'EvenementInconnu'"):
+        with repository.transaction() as session:
+            session.get_turn(record.id, UUID(body["idempotency_key"]))
+
+    assert repository.get(record.id) == before
+
+
 def testUnAncienRecuSansTypeNiSlotResteRejouable(context):
     """Les métadonnées d'animation ne doivent pas invalider les anciennes réponses stockées."""
     client, path, record = context
