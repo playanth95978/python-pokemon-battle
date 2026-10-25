@@ -135,17 +135,13 @@ class BattleEngine:
         actions = self._ordered_actions(actions)
         battle.turn += 1
         events: list[DomainEvent] = []
-        for actor, target, move in actions:
+        for actor, target, action in actions:
             if isinstance(action, UsePotionAction):
                 events.extend(self._execute_potion(battle.turn, actor))
             elif isinstance(action, AttackAction):
                 events.extend(
                     self._execute_attack(battle.turn, actor, target, action.slot)
                 )
-
-            # Sinon, appeler _execute_attack avec le slot de AttackAction.
-            # Une potion remplace l'attaque : exécuter une seule de ces deux branches.
-            events.extend(self._execute_attack(battle.turn, actor, target, move))
             if battle.winner is not None:
                 events.append(BattleEnded(battle.turn, actor.id))
                 break
