@@ -8,6 +8,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError
 from pokemon_battle.types import Type, effectiveness
 from .generation import ToolCall
 from .damage_estimation import estimate_move
+from .healing_estimation import estimate_healing
 from .tools_context import AttackDecision, MoveView, ToolsContext
 
 
@@ -37,16 +38,26 @@ class SelectAttackRequest(EmptyRequest):
 
 _DEFINITIONS = {
     "inspect_battle": ("Observer le tour, les PV et les types visibles des deux combattants.", EmptyRequest),
-    "list_legal_moves": ("Lister ses attaques jouables avec leurs slots, PP, types, puissance et précision.", EmptyRequest),
-    "evaluate_matchups": ("Consulter les multiplicateurs de types des attaques jouables ; ce ne sont pas des dégâts calculés.", EmptyRequest),
-    "estimate_damage": ("Comparer les dégâts des attaques jouables : plage si l'attaque touche, moyenne avec précision, probabilité de KO. Calcul du moteur sur l'état actuel, sans jouer le tour.", EmptyRequest),
-    "select_attack": ("Terminer la décision en sélectionnant un attack_slot jouable, sans exécuter le tour.", SelectAttackRequest),
+    "list_legal_moves": ("Lister ses attaques jouables avec leurs slots, PP, types, puissance et précision.",
+                         EmptyRequest),
+    "evaluate_matchups": (
+        "Consulter les multiplicateurs de types des attaques jouables ; ce ne sont pas des dégâts calculés.",
+        EmptyRequest),
+    "estimate_damage": (
+        "Comparer les dégâts des attaques jouables : plage si l'attaque touche, moyenne avec précision, probabilité de KO. Calcul du moteur sur l'état actuel, sans jouer le tour.",
+        EmptyRequest),
+    "select_attack": ("Terminer la décision en sélectionnant un attack_slot jouable, sans exécuter le tour.",
+                      SelectAttackRequest),
+    "estimate_healing": (
+        "Estimer les PV restaurés par une potion, les PV après soin et le nombre de potions restantes. Vérifie si le soin est possible sans consommer de potion ni jouer le tour.",
+        EmptyRequest,
+    ),
 }
 
 
 def tool_schemas() -> list[dict[str, Any]]:
     return [{"type": "function", "function": {"name": name, "description": description,
-             "parameters": request.model_json_schema()}}
+                                              "parameters": request.model_json_schema()}}
             for name, (description, request) in _DEFINITIONS.items()]
 
 
@@ -70,6 +81,14 @@ def execute_tool(context: ToolsContext, call: ToolCall) -> dict[str, Any]:
     elif call.name == "estimate_damage":
         result = {"estimates": [estimate_move(context, move) for move in context.legal_moves],
                   "assumption": "Attaque isolée sur les PV actuels ; suppose que l'acteur peut agir. Ne prédit ni le choix adverse ni un combat complet."}
+    elif call.name == "estimate_healing":
+        result = {
+            "estimate_healing": estimate_healing(context),
+            "assumption": (
+                "Estimation d'une potion restaurant jusqu'à 20 PV. "
+                "Ne prédit ni l'action adverse ni le déroulement du combat."
+            ),
+        }
     else:
         assert isinstance(request, SelectAttackRequest)
         if not any(move.attack_slot == request.attack_slot for move in context.legal_moves):

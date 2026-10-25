@@ -70,6 +70,27 @@ def testLeContexteEstUnInstantaneSansChoixPriveNiFighterMutable(record):
         ctx.view.fighter.hp = 5
 
 
+def testLeStockDePotionsExposeParLOutilResteCeluiDeLInstantane(record):
+    """Observer le stock ne doit ni le consommer ni suivre les changements ultérieurs du combat."""
+    record.battle.second.potions = 1
+    ctx = context(record)
+
+    observed = execute_tool(ctx, call("inspect_battle"))
+
+    assert observed["fighter"]["potions"] == 1
+    assert record.battle.second.potions == 1
+    record.battle.second.potions = 0
+
+    observed_again = execute_tool(ctx, call("inspect_battle", identifier="inspect-again"))
+
+    assert ctx.view.fighter.potions == 1
+    assert observed_again["fighter"]["potions"] == 1
+    assert observed["fighter"]["potions"] == 1
+    assert record.battle.second.potions == 0
+    with pytest.raises(FrozenInstanceError):
+        ctx.view.fighter.potions = 2
+
+
 @pytest.mark.parametrize("change, error", [("turn", TurnConflictError), ("finished", BattleFinishedError), ("fighter", InvalidMoveError), ("pp", InvalidMoveError)])
 def testUneDecisionInvalideEstRefuseeAvantLeModele(record, change, error):
     """Un état périmé, terminé, épuisé ou un combattant étranger ne doit pas démarrer une décision."""

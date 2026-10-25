@@ -20,11 +20,12 @@ class FighterView:
     max_hp: int
     types: tuple[Type, ...]
     stats: Stats
+    potions: int
 
     @classmethod
     def from_fighter(cls, fighter: Fighter) -> "FighterView":
         return cls(fighter.id, fighter.species.name, fighter.level, fighter.hp,
-                   fighter.species.stats.hp, fighter.species.types, fighter.species.stats)
+                   fighter.species.stats.hp, fighter.species.types, fighter.species.stats,fighter.potions)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +84,7 @@ class ToolsContext:
                                attack.accuracy, actor.pp[index], attack.max_pp)
                       for index, attack in enumerate(actor.species.attacks))
         context = cls(record.id, BattleView(battle.turn, FighterView.from_fighter(actor),
-                                           FighterView.from_fighter(opponent), moves))
+                                            FighterView.from_fighter(opponent), moves))
         if not context.legal_moves:
             raise InvalidMoveError("Le combattant IA n'a plus d'attaque disponible")
         return context

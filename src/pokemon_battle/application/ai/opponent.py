@@ -84,18 +84,27 @@ class ToolCallingOpponent:
     async def _run(self, context: ToolsContext) -> AttackDecision:
         # Cette liste est propre à l'appel : aucun historique ni contexte global partagé.
         messages = [Message("system", "Tu contrôles le combattant IA dans un duel Pokémon. "
-                            "Observe le combat avec les outils. Utilise uniquement les slots jouables. "
-                            "Les résultats des outils métier font référence, même s'ils contredisent tes connaissances. "
-                            "Consulte estimate_damage avant de sélectionner : il inclut les types, statistiques et arrondis du moteur. "
-                            "Compare expected_damage (précision comprise) et ko_probability ; ne confonds pas dégâts si touche et dégâts attendus. "
-                            "evaluate_matchups reste disponible pour expliquer les types. Regroupe les outils de lecture dans un même appel si utile. "
-                            "Un multiplicateur de 0 (immune) signifie aucun dégât ; inférieur à 1 (resisted), "
-                            "dégâts réduits ; 1 (neutral), efficacité normale ; supérieur à 1 (super_effective), "
-                            "dégâts amplifiés. Évite une attaque sans effet quand une autre attaque jouable peut toucher. "
-                            "Compare aussi puissance, précision et bonus du même type ; l'efficacité seule n'est pas un dégât. "
-                            "Utilise le nom et le champ attack_slot exacts des résultats, sans inventer d'emplacement. "
-                            "Termine avec select_attack. Le choix actuel du joueur est inconnu. "
-                            "Les commentaires sont de courtes répliques, pas un raisonnement détaillé."),
+                                      "Observe le combat avec les outils. Utilise uniquement les slots jouables. "
+                                      "Les résultats des outils métier font référence, même s'ils contredisent tes connaissances. "
+                                      "Consulte estimate_damage avant de sélectionner : il inclut les types, statistiques et arrondis du moteur. "
+                                      "Consulte estimate_healing lorsque tes PV sont inférieurs au maximum et que tu disposes de potions. "
+                                      "Compare l'intérêt de te soigner avec celui d'attaquer, en tenant compte des PV actuels, "
+                                      "des dégâts attendus, de la probabilité de KO adverse et du nombre de potions restantes. "
+                                      "Privilégie une attaque si elle permet probablement de terminer le combat immédiatement. "
+                                      "Envisage une potion si tes PV sont faibles et que le soin améliore tes chances de survie. "
+                                      "N'utilise pas de potion si les PV sont au maximum, si aucune potion n'est disponible, "
+                                      "ou si le combattant est KO. "
+                                      "Le soin consomme un tour et l'action adverse reste inconnue. "
+                                      "Compare expected_damage (précision comprise) et ko_probability ; ne confonds pas dégâts si touche et dégâts attendus. "
+                                      "evaluate_matchups reste disponible pour expliquer les types. Regroupe les outils de lecture dans un même appel si utile. "
+                                      "Un multiplicateur de 0 (immune) signifie aucun dégât ; inférieur à 1 (resisted), "
+                                      "dégâts réduits ; 1 (neutral), efficacité normale ; supérieur à 1 (super_effective), "
+                                      "dégâts amplifiés. Évite une attaque sans effet quand une autre attaque jouable peut toucher. "
+                                      "Compare aussi puissance, précision et bonus du même type ; l'efficacité seule n'est pas un dégât. "
+                                      "Utilise le nom et le champ attack_slot exacts des résultats, sans inventer d'emplacement. "
+                                      "Termine avec select_attack ou select_potion selon la meilleure décision tactique. "
+                                      "Le choix actuel du joueur est inconnu. "
+                                      "Les commentaires sont de courtes répliques, pas un raisonnement détaillé."),
                     Message("user", "Choisis ton attaque pour ce tour.")]
         count = 0
         for _ in range(self.max_rounds):
