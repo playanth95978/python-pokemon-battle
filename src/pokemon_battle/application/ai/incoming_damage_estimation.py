@@ -24,6 +24,7 @@ def estimate_incoming_damage(context: ToolsContext) -> dict[str, Any]:
         "attack_ko_before_riposte": finishing,
         "potion_prevents_ko": risk_now is not None and risk_now > 0 and risk_after == 0.0,
         "best_ko_before_riposte": _best(ko_chances),
+        "agent_first_probability": _FIRST_PROBABILITY[turn_order],
     }
     return {
         **verdict,
@@ -53,11 +54,23 @@ def _threat(context: ToolsContext, move: MoveView, hp_after_potion: int | None) 
     }
 
 
+# Probabilité que l'agent agisse avant l'adversaire si les deux attaquent ; une égalité est tirée au sort à 50 %.
+_FIRST_PROBABILITY = {"agent_attacks_first": 1.0, "random": 0.5, "opponent_attacks_first": 0.0}
+
+
+def guaranteed_ko_before_riposte(context: ToolsContext) -> list[str]:
+    """Attaques qui mettent l'adversaire KO à coup sûr avant qu'il n'agisse."""
+    actor, opponent = context.view.fighter, context.view.opponent
+    turn_order = _turn_order(actor.stats.speed, opponent.stats.speed)
+    return [name for name, probability in _ko_before_riposte(context, turn_order) if probability == 1.0]
+
+
 def _ko_before_riposte(context: ToolsContext, turn_order: str) -> list[tuple[str, float]]:
     # Un KO n'empêche la riposte que si l'agent agit avant l'adversaire.
-    if turn_order != "agent_attacks_first":
+    first = _FIRST_PROBABILITY[turn_order]
+    if first == 0:
         return []
-    return [(move.name, estimate_move(context, move)["ko_probability"]) for move in context.legal_moves]
+    return [(move.name, estimate_move(context, move)["ko_probability"] * first) for move in context.legal_moves]
 
 
 def _best(ko_chances: list[tuple[str, float]]) -> dict[str, Any] | None:
@@ -71,21 +84,31 @@ def _summary(verdict: dict[str, Any], risk_now: float | None, risk_after: float 
              threats: list[dict[str, Any]], turn_order: str) -> str:
     if not threats:
         return "Aucune attaque adverse révélée : le risque de KO n'est pas connu."
-    parts = [f"Avec {verdict['hp_now']} PV, une attaque adverse révélée te met KO ce tour avec une probabilité de {risk_now}."]
-    best = verdict["best_ko_before_riposte"]
-    if verdict["attack_ko_before_riposte"]:
-        parts.append(f"{', '.join(verdict['attack_ko_before_riposte'])} met l'adversaire KO à coup sûr avant sa riposte.")
-    elif turn_order != "agent_attacks_first":
-        parts.append("Tu n'agis pas avant l'adversaire : aucune attaque n'empêche sa riposte.")
-    elif best is not None:
-        parts.append(f"Aucun KO garanti avant la riposte ; meilleure chance : {best['name']} ({best['probability']}).")
+    risk = f"une attaque adverse révélée te met KO ce tour avec une probabilité de {risk_now}."
+    finishing = verdict["attack_ko_before_riposte"]
+    if finishing:
+        # Le fait décisif d'abord : un KO garanti avant la riposte annule la menace qui suit.
+        parts = [f"{', '.join(finishing)} met l'adversaire KO à coup sûr avant qu'il ne puisse riposter : "
+                 "son attaque n'aura pas lieu.",
+                 f"Sans ce KO, avec {verdict['hp_now']} PV, {risk}"]
     else:
-        parts.append("Aucune de tes attaques ne peut mettre l'adversaire KO avant sa riposte.")
+        parts = [f"Avec {verdict['hp_now']} PV, {risk}", _riposte_sentence(verdict["best_ko_before_riposte"], turn_order)]
     if verdict["hp_after_potion"] is not None:
         parts.append(f"Après une potion, tu aurais {verdict['hp_after_potion']} PV et ce risque serait de {risk_after}.")
     else:
         parts.append("Aucune potion n'est utilisable.")
     return " ".join(parts)
+
+
+def _riposte_sentence(best: dict[str, Any] | None, turn_order: str) -> str:
+    if turn_order == "opponent_attacks_first":
+        return "Tu n'agis pas avant l'adversaire : aucune attaque n'empêche sa riposte."
+    if turn_order == "random":
+        tie = "Les vitesses sont égales : tu as 50 % de chances d'agir en premier. Le KO avant la riposte n'est donc pas garanti"
+        return f"{tie} ; meilleure chance : {best['name']} ({best['probability']})." if best is not None else f"{tie}."
+    if best is not None:
+        return f"Aucun KO garanti avant la riposte ; meilleure chance : {best['name']} ({best['probability']})."
+    return "Aucune de tes attaques ne peut mettre l'adversaire KO avant sa riposte."
 
 
 def _turn_order(actor_speed: int, opponent_speed: int) -> str:

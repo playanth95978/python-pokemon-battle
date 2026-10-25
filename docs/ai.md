@@ -359,3 +359,5 @@ Chaque scénario vérifie aussi son issue après résolution (`expected_outcome`
 adversaire KO ou agent en vie), pour qu'un bon type d'action suivi d'une mort ne passe pas.
 `estimate_incoming_damage` ne déclare un KO avant riposte que s'il est garanti et que l'agent
 agit en premier ; sinon il donne la meilleure probabilité (`best_ko_before_riposte`).
+À vitesse égale, le moteur tire l'ordre au sort : l'outil annonce 50 % de chances d'agir en
+premier (`agent_first_probability`) et pondère d'autant la probabilité de KO avant riposte.

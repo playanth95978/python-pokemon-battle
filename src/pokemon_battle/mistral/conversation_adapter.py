@@ -26,6 +26,10 @@ class ConversationResponse(BaseModel):
     usage: dict[str, Any] = Field(default_factory=dict)
 
 
+# Chat Completions accepte "any" ; Conversations le refuse (422) et attend "required" pour imposer un outil.
+_CONVERSATIONS_TOOL_CHOICE = {"any": "required"}
+
+
 class MistralConversationAdapter:
     def __init__(self, client: MistralClient, state: ConversationState, memory: dict[str, Any]):
         self.client, self.state, self.memory = client, state, memory
@@ -43,7 +47,8 @@ class MistralConversationAdapter:
             inputs.append({"role": "user", "content": json.dumps(self.memory, ensure_ascii=False)})
         payload: dict[str, Any] = {
             "inputs": inputs, "store": True, "stream": False,
-            "completion_args": {"temperature": 0, "top_p": 1, "max_tokens": 700, "tool_choice": tool_choice},
+            "completion_args": {"temperature": 0, "top_p": 1, "max_tokens": 700,
+                                "tool_choice": _CONVERSATIONS_TOOL_CHOICE.get(tool_choice, tool_choice)},
         }
         if self.state.conversation_id is None:
             payload.update(model=self.model, tools=tools or [], instructions=(messages[0].content or "") +

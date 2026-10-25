@@ -81,7 +81,8 @@ def testLAdaptateurUtiliseLesEntreesMistralEtLeDernierIdentifiant():
     asyncio.run(run())
     assert server.requests[0][0] == "/v1/conversations"
     assert server.requests[0][1]["store"] is True
-    assert server.requests[0][1]["completion_args"]["tool_choice"] == "any"
+    # L'API Conversations refuse "any" (422) : l'adaptateur le traduit en "required".
+    assert server.requests[0][1]["completion_args"]["tool_choice"] == "required"
     path, payload = server.requests[1]
     assert path == "/v1/conversations/conv-1"
     assert "model" not in payload and "instructions" not in payload

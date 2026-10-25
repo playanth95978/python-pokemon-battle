@@ -11,7 +11,7 @@ from pokemon_battle.types import Type, effectiveness
 from .generation import ToolCall
 from .damage_estimation import estimate_move
 from .healing_estimation import estimate_healing
-from .incoming_damage_estimation import estimate_incoming_damage
+from .incoming_damage_estimation import estimate_incoming_damage, guaranteed_ko_before_riposte
 from .tools_context import AttackDecision, MoveView, ToolsContext
 
 
@@ -120,7 +120,8 @@ def execute_tool(context: ToolsContext, call: ToolCall) -> dict[str, Any]:
                 "Ne prédit ni l'action adverse ni le déroulement du combat."
             ),
         }
-        if healing["available"]:
+        # Pas d'invitation au soin quand une attaque gagne à coup sûr avant la riposte.
+        if healing["available"] and not guaranteed_ko_before_riposte(context):
             result["next_step"] = "Appeler select_potion pour appliquer ce soin à la place d'une attaque."
     elif call.name == "estimate_incoming_damage":
         result = estimate_incoming_damage(context)

@@ -148,3 +148,42 @@ def testUnAdversairePlusRapideEstSignaleDansLeResume():
     result = execute_tool(ctx, ToolCall("incoming05", "estimate_incoming_damage", "{}"))
     assert result["best_ko_before_riposte"] is None
     assert "Tu n'agis pas avant l'adversaire" in result["summary"]
+
+
+def testUneEgaliteDeVitesseDonneCinquantePourCentDAgirEnPremier():
+    """Le moteur tire l'ordre au sort : un KO certain ne vaut que 50 % avant la riposte, sans dire que l'agent passe après."""
+    from dataclasses import replace
+    record = SCENARIOS["finish_over_heal"].create()
+    ctx = ToolsContext.from_record(record, "agent", 0)
+    tied = replace(ctx.view.opponent.stats, speed=ctx.view.fighter.stats.speed)
+    ctx.view = replace(ctx.view, opponent=replace(ctx.view.opponent, stats=tied))
+    result = execute_tool(ctx, ToolCall("incoming06", "estimate_incoming_damage", "{}"))
+    assert result["turn_order"] == "random"
+    assert result["agent_first_probability"] == 0.5
+    assert result["attack_ko_before_riposte"] == []
+    assert result["best_ko_before_riposte"] == {"name": "Éclair", "probability": 0.5}
+    assert ("Les vitesses sont égales : tu as 50 % de chances d'agir en premier. "
+            "Le KO avant la riposte n'est donc pas garanti ; meilleure chance : Éclair (0.5).") in result["summary"]
+    assert "Tu n'agis pas avant" not in result["summary"]
+
+
+def testUnKoGarantiEstAnnonceAvantLaMenace():
+    """finish_over_heal : le KO garanti ouvre le résumé, la menace n'est décrite qu'ensuite."""
+    _, _, result = incoming("finish_over_heal")
+    assert result["summary"] == (
+        "Éclair met l'adversaire KO à coup sûr avant qu'il ne puisse riposter : son attaque n'aura pas lieu. "
+        "Sans ce KO, avec 20 PV, une attaque adverse révélée te met KO ce tour avec une probabilité de 1.0. "
+        "Après une potion, tu aurais 40 PV et ce risque serait de 0.0.")
+
+
+@pytest.mark.parametrize("name, suggested", [
+    ("finish_over_heal", False),
+    ("heal_to_survive", True),
+    ("potion_only", True),
+])
+def testEstimateHealingNInviteAuSoinQueSansKoGaranti(name, suggested):
+    """next_step ne pousse pas vers la potion quand une attaque gagne avant la riposte."""
+    ctx = ToolsContext.from_record(SCENARIOS[name].create(), "agent", 0)
+    result = execute_tool(ctx, ToolCall("heal01", "estimate_healing", "{}"))
+    assert result["estimate_healing"]["available"] is True
+    assert ("next_step" in result) is suggested
