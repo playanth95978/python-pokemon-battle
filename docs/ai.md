@@ -56,6 +56,11 @@ La décision porte alors `action_type: "potion"` et `attack_slot: null` ; le mot
 résout la potion. Les reçus antérieurs, sans `action_type`, restent exposés comme attaques.
 Une décision démarre dès qu'une action est jouable : sans PP, une potion utilisable
 suffit. Le secours local choisit une attaque, ou la potion s'il ne reste aucun PP.
+`list_legal_moves` indique `potion_available` et, sans attaque jouable, invite à
+`select_potion` ; `estimate_healing` ajoute `next_step` quand le soin est possible.
+Le dernier round de la boucle n'offre que les outils de sélection possibles, pour qu'un
+modèle qui observe sans conclure doive choisir. Avec Conversations, Mistral conserve les
+outils déclarés à la création : cette restriction n'y a pas d'effet.
 
 `estimate_damage` accepte `{}` et retourne `estimates` ainsi qu'une hypothèse explicite.
 Il utilise la même fonction pure `damage_for_roll` que le moteur : niveau, attaque/défense

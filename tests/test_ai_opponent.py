@@ -340,3 +340,37 @@ def testLaBoucleFonctionneAvecLAdaptateurMistralEtUnTransportSimule(record):
     assert len(payloads) == 2
     assert "Choix privé" not in json.dumps(payloads)
     assert asdict(record) == before
+
+
+def testLeDernierRoundNOffreQueLesSelectionsPossibles(record):
+    """Un modèle qui observe sans conclure reçoit au dernier round uniquement les outils de sélection jouables."""
+    record.battle.second.pp[:] = [0, 0, 0]
+    client = ScriptedClient(*[Completion(None, {}, (call("inspect_battle", identifier=f"inspect-{index}"),)) for index in range(3)],
+                            Completion(None, {}, (call("select_potion", identifier="potion"),)))
+    choice = asyncio.run(ToolCallingOpponent(client, max_rounds=4).choose(context(record)))
+    assert (choice.action_type, choice.source) == ("potion", "llm")
+    assert len(client.requests[0][1]["tools"]) == len(tool_schemas())
+    assert [tool["function"]["name"] for tool in client.requests[3][1]["tools"]] == ["select_potion"]
+
+
+def testLeDernierRoundProposeAttaqueEtPotionQuandLesDeuxSontPossibles(record):
+    """Avec des PP et des PV entamés, les deux sélections restent offertes au dernier round."""
+    client = ScriptedClient(Completion(None, {}, (call("select_attack", '{"attack_slot":1}'),)))
+    asyncio.run(ToolCallingOpponent(client, max_rounds=1).choose(context(record)))
+    assert [tool["function"]["name"] for tool in client.requests[0][1]["tools"]] == ["select_attack", "select_potion"]
+
+
+def testLesOutilsIndiquentLaPotionQuandAucuneAttaqueNEstJouable(record):
+    """list_legal_moves et estimate_healing orientent le modèle vers select_potion."""
+    record.battle.second.pp[:] = [0, 0, 0]
+    ctx = context(record)
+    moves = execute_tool(ctx, call("list_legal_moves"))
+    assert moves["moves"] == [] and moves["potion_available"] is True
+    assert "select_potion" in moves["note"]
+    assert "select_potion" in execute_tool(ctx, call("estimate_healing", identifier="heal"))["next_step"]
+
+
+def testEstimateHealingNeSuggerePasUnePotionImpossible(record):
+    """Avec des PV pleins, aucune invitation à appeler select_potion."""
+    record.battle.second.hp = 101
+    assert "next_step" not in execute_tool(context(record), call("estimate_healing"))

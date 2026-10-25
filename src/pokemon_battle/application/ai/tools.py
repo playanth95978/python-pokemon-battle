@@ -70,6 +70,14 @@ def tool_schemas() -> list[dict[str, Any]]:
             for name, (description, request) in _DEFINITIONS.items()]
 
 
+def selection_tool_schemas(context: ToolsContext) -> list[dict[str, Any]]:
+    """Seuls les outils de sélection réellement possibles : le dernier round doit conclure."""
+    allowed = {"select_attack"} if context.legal_moves else set()
+    if context.can_use_potion:
+        allowed.add("select_potion")
+    return [schema for schema in tool_schemas() if schema["function"]["name"] in allowed]
+
+
 def tools_version() -> str:
     """Empreinte du contrat d'outils : une conversation créée avec un autre contrat doit être recréée."""
     contract = json.dumps(tool_schemas(), ensure_ascii=False, sort_keys=True)
@@ -90,20 +98,25 @@ def execute_tool(context: ToolsContext, call: ToolCall) -> dict[str, Any]:
         result = {"battle_id": str(context.battle_id), "turn": context.view.turn,
                   "fighter": asdict(context.view.fighter), "opponent": asdict(context.view.opponent)}
     elif call.name == "list_legal_moves":
-        result = {"moves": [asdict(move) for move in context.legal_moves]}
+        result = {"moves": [asdict(move) for move in context.legal_moves], "potion_available": context.can_use_potion}
+        if not context.legal_moves:
+            result["note"] = "Aucune attaque jouable : utilise select_potion pour agir ce tour."
     elif call.name == "evaluate_matchups":
         result = {"matchups": [_matchup(move, context.view.opponent.types) for move in context.legal_moves]}
     elif call.name == "estimate_damage":
         result = {"estimates": [estimate_move(context, move) for move in context.legal_moves],
                   "assumption": "Attaque isolée sur les PV actuels ; suppose que l'acteur peut agir. Ne prédit ni le choix adverse ni un combat complet."}
     elif call.name == "estimate_healing":
+        healing = estimate_healing(context)
         result = {
-            "estimate_healing": estimate_healing(context),
+            "estimate_healing": healing,
             "assumption": (
                 "Estimation d'une potion restaurant jusqu'à 20 PV. "
                 "Ne prédit ni l'action adverse ni le déroulement du combat."
             ),
         }
+        if healing["available"]:
+            result["next_step"] = "Appeler select_potion pour appliquer ce soin à la place d'une attaque."
     elif call.name == "select_potion":
         assert isinstance(request, SelectPotionRequest)
         # Même contrôle que l'estimation, elle-même alignée sur le moteur.

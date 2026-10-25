@@ -12,7 +12,7 @@ from pokemon_battle.application.battle_service import InvalidMoveError
 from pokemon_battle.core.exceptions import MissingCredentials, MistralTimeout, MistralUnavailable
 from pokemon_battle.types import effectiveness
 from .generation import Completion, Message, ToolCall
-from .tools import execute_tool, tool_schemas
+from .tools import execute_tool, selection_tool_schemas, tool_schemas
 from .tools_context import AttackDecision, ToolsContext
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,13 @@ class ToolCallingOpponent:
         finally:
             context.metrics.elapsed_ms = round((perf_counter() - started) * 1000, 3)
 
+    def _round_tools(self, context: ToolsContext, round_index: int) -> list[dict[str, Any]]:
+        # Le dernier round n'offre que les sélections possibles, pour éviter une observation sans fin.
+        # Avec Conversations, Mistral garde les outils déclarés à la création : la restriction y est ignorée.
+        if round_index == self.max_rounds - 1:
+            return selection_tool_schemas(context)
+        return tool_schemas()
+
     async def _fallback(self, context: ToolsContext, reason: str) -> AttackDecision:
         logger.warning("Décision IA locale combat=%s tour=%s cause=%s", context.battle_id, context.view.turn, reason)
         choice = await LocalOpponent().choose(context)
@@ -111,14 +118,15 @@ class ToolCallingOpponent:
                                       "Les commentaires sont de courtes répliques, pas un raisonnement détaillé."),
                     Message("user", "Choisis ton action pour ce tour : une attaque ou une potion.")]
         count = 0
-        for _ in range(self.max_rounds):
+        for round_index in range(self.max_rounds):
             # Une copie évite qu'un client conserve une liste modifiée après sa requête.
             metrics = context.metrics
             metrics.model_requests += 1
             metrics.event("model_request", request=metrics.model_requests)
             started = perf_counter()
             try:
-                completion = await self.client.complete(list(messages), tools=tool_schemas(), tool_choice="any")
+                completion = await self.client.complete(list(messages), tools=self._round_tools(context, round_index),
+                                                        tool_choice="any")
             finally:
                 metrics.model_time_ms += (perf_counter() - started) * 1000
             metrics.model_responses += 1
