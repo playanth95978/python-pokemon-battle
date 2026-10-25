@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, asdict
 from fractions import Fraction
 from random import Random
 
@@ -10,6 +10,7 @@ from pokemon_battle import (
 )
 
 from pokemon_battle.engine import PotionUsed
+from pokemon_battle.domain import AttackAction, UsePotionAction
 class Rolls:
     def __init__(self, *values):
         self.values = iter(values)
@@ -200,6 +201,80 @@ def testUnePotionEstRefuseeSiLeCombattantEstKo():
     assert actor.hp == 0
     assert actor.potions == 2
     assert actor.pp == [3]
+
+
+def testLaValidationActionsAccepteUneAttaqueEtUnePotionSansMutation():
+    """La validation seule ne soigne pas et ne consomme ni PP, potion ou hasard."""
+    first, second = fighter("a"), fighter("b")
+    second.hp = 100
+    before = (asdict(first), asdict(second))
+
+    BattleEngine(Rolls())._validate_actions([
+        (first, second, AttackAction(0)), (second, first, UsePotionAction()),
+    ])
+
+    assert (asdict(first), asdict(second)) == before
+
+
+@pytest.mark.parametrize("slot", [-1, 1, True, "0"])
+def testLaValidationActionsRefuseUnSlotInvalide(slot):
+    """Une action d'attaque ne doit accepter ni indice absent ni conversion implicite."""
+    first, second = fighter("a"), fighter("b")
+    with pytest.raises(ValueError, match="slot"):
+        BattleEngine(Rolls())._validate_actions([(first, second, AttackAction(slot))])
+    assert first.pp == [3]
+
+
+def testLaValidationActionsRefuseUneAttaqueSansPp():
+    """L'enveloppe AttackAction ne doit pas permettre de jouer une attaque épuisée."""
+    first, second = fighter("a"), fighter("b")
+    first.pp[0] = 0
+    with pytest.raises(ValueError, match="PP"):
+        BattleEngine(Rolls())._validate_actions([(first, second, AttackAction(0))])
+    assert first.pp == [0]
+
+
+@pytest.mark.parametrize("hp, potions, message", [
+    (251, 2, "vie est pleine"), (100, 0, "plus de potions"), (0, 2, "KO"),
+])
+def testUneSecondeActionPotionInvalideNeModifiePasLeCombat(hp, potions, message):
+    """Un second choix interdit doit être refusé avant la première action et les tirages."""
+    battle = Battle(fighter("a"), fighter("b"))
+    battle.first.hp = 100
+    battle.second.hp = hp
+    battle.second.potions = potions
+    before = asdict(battle)
+    with pytest.raises(ValueError, match=message):
+        BattleEngine(Rolls())._validate_actions([
+            (battle.first, battle.second, UsePotionAction()),
+            (battle.second, battle.first, UsePotionAction()),
+        ])
+    assert asdict(battle) == before
+
+
+def testLaValidationActionsRefuseUnTypeDActionInconnu():
+    """Une entrée qui n'est ni attaque ni potion ne doit pas passer silencieusement."""
+    first, second = fighter("a"), fighter("b")
+    with pytest.raises(ValueError, match="Invalid battle action"):
+        BattleEngine(Rolls())._validate_actions([(first, second, object())])
+
+
+@pytest.mark.parametrize("first_action, second_action, expected_first", [
+    (UsePotionAction(), AttackAction(0), "a"),
+    (AttackAction(0), UsePotionAction(), "b"),
+    (UsePotionAction(), UsePotionAction(), "a"),
+    (AttackAction(0), AttackAction(0), "b"),
+])
+def testLOrdreDesActionsPrioriseLesPotionsPuisLaVitesse(first_action, second_action, expected_first):
+    """Une potion prime sur la vitesse ; deux attaques restent ordonnées par vitesse sans tirage inutile."""
+    first, second = fighter("a", speed=41), fighter("b", speed=92)
+    actions = [(first, second, first_action), (second, first, second_action)]
+
+    ordered = BattleEngine(Rolls())._ordered_actions(actions)
+
+    assert ordered[0][0].id == expected_first
+    assert ordered[1][0].id != expected_first
+    assert actions[0][0].id == "a"
 
 
 def testUneGraineReproduitLeCombat():
