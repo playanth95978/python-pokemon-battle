@@ -10,8 +10,9 @@ from pokemon_battle.application.battle_service import (
     BattleService, UnknownSpeciesError, BattleNotFoundError, BattleFinishedError, InvalidMoveError, TurnConflictError,
 )
 
-from .dependencies import get_battle_service
-from .schemas import BattleResponse, CreateBattleRequest, PlayTurnRequest, PlayTurnResponse
+from .dependencies import get_battle_service, get_ai_battle_service
+from .schemas import BattleResponse, CreateBattleRequest, PlayTurnRequest, PlayTurnResponse, PlayAiTurnRequest, PlayAiTurnResponse
+from pokemon_battle.application.ai.ai_battle_service import AiBattleService
 
 router = APIRouter(prefix="/battles", tags=["Combats"])
 
@@ -67,3 +68,20 @@ def play_turn(
     except InvalidMoveError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     return PlayTurnResponse.from_result(result)
+
+
+@router.post("/{battle_id}/ai-turns", response_model=PlayAiTurnResponse, summary="Jouer contre l'IA Mistral")
+async def play_ai_turn(battle_id: UUID, request: PlayAiTurnRequest,
+                       service: Annotated[AiBattleService, Depends(get_ai_battle_service)]) -> PlayAiTurnResponse:
+    """Le premier combattant est humain ; le second choisit avec ses outils et sa conversation."""
+    try:
+        result = await service.play_turn(battle_id, request.player_move, expected_turn=request.expected_turn,
+                                         idempotency_key=request.idempotency_key)
+    except BattleNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except (BattleFinishedError, TurnConflictError) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except InvalidMoveError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    response = PlayTurnResponse.from_result(result.turn)
+    return PlayAiTurnResponse(**response.model_dump(), decision=result.decision, metrics=result.metrics)

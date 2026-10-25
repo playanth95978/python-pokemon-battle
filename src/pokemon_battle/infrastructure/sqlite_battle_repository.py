@@ -45,6 +45,26 @@ class _SqliteSession:
     def __init__(self, connection: sqlite3.Connection):
         self.connection = connection
 
+    def get_ai_state(self, battle_id: UUID) -> dict | None:
+        row = self.connection.execute("SELECT state FROM battle_ai_sessions WHERE battle_id = ?",
+                                      (str(battle_id),)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_ai_state(self, battle_id: UUID, state: dict) -> None:
+        self.connection.execute(
+            "INSERT INTO battle_ai_sessions (battle_id, state) VALUES (?, ?) "
+            "ON CONFLICT(battle_id) DO UPDATE SET state = excluded.state",
+            (str(battle_id), json.dumps(state, ensure_ascii=False)))
+
+    def get_ai_request(self, battle_id: UUID, key: UUID) -> dict | None:
+        row = self.connection.execute("SELECT request FROM battle_ai_requests WHERE battle_id = ? AND request_key = ?",
+                                      (str(battle_id), str(key))).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_ai_request(self, battle_id: UUID, key: UUID, request: dict) -> None:
+        self.connection.execute("INSERT INTO battle_ai_requests (battle_id, request_key, request) VALUES (?, ?, ?)",
+                                (str(battle_id), str(key), json.dumps(request, ensure_ascii=False)))
+
     def save(self, record: StoredBattle) -> None:
         self.connection.execute(
             "INSERT INTO battles (id, snapshot) VALUES (?, ?) "
@@ -129,6 +149,20 @@ class SqliteBattleRepository:
                     result TEXT NOT NULL,
                     PRIMARY KEY (battle_id, idempotency_key),
                     UNIQUE (battle_id, expected_turn)
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS battle_ai_sessions (
+                    battle_id TEXT PRIMARY KEY NOT NULL REFERENCES battles(id),
+                    state TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS battle_ai_requests (
+                    battle_id TEXT NOT NULL REFERENCES battles(id),
+                    request_key TEXT NOT NULL,
+                    request TEXT NOT NULL,
+                    PRIMARY KEY (battle_id, request_key)
                 )
             """)
 

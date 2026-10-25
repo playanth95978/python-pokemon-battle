@@ -5,11 +5,12 @@ import json
 import logging
 from time import perf_counter
 from typing import Any, Protocol
+from collections.abc import Callable
 
 from pokemon_battle.application.battle_service import InvalidMoveError
 from pokemon_battle.core.exceptions import MissingCredentials, MistralTimeout, MistralUnavailable
 from pokemon_battle.types import effectiveness
-from .generation import Completion, Message
+from .generation import Completion, Message, ToolCall
 from .tools import execute_tool, tool_schemas
 from .tools_context import AttackDecision, ToolsContext
 
@@ -43,7 +44,8 @@ class LocalOpponent:
 
 class ToolCallingOpponent:
     def __init__(self, client: CompletionClient, *, max_rounds: int = 4,
-                 max_tool_calls: int = 8, timeout_seconds: float = 8):
+                 max_tool_calls: int = 8, timeout_seconds: float = 8,
+                 on_tool_result: Callable[[ToolCall, dict[str, Any]], None] | None = None):
         if type(max_rounds) is not int or max_rounds < 1 or type(max_tool_calls) is not int or max_tool_calls < 1:
             raise ValueError("Les budgets d'appels doivent être des entiers positifs")
         if not 0 < timeout_seconds < float("inf"):
@@ -52,6 +54,7 @@ class ToolCallingOpponent:
         self.max_rounds = max_rounds
         self.max_tool_calls = max_tool_calls
         self.timeout_seconds = timeout_seconds
+        self.on_tool_result = on_tool_result
 
     async def choose(self, context: ToolsContext) -> AttackDecision:
         if context.decision is not None:
@@ -117,6 +120,8 @@ class ToolCallingOpponent:
             messages.append(Message("assistant", completion.text, tool_calls=completion.tool_calls))
             for call in completion.tool_calls:
                 result = execute_tool(context, call)
+                if self.on_tool_result is not None:
+                    self.on_tool_result(call, result)
                 metrics.tool_calls_executed += 1
                 metrics.tool_errors += int("error" in result)
                 metrics.event("tool_result", tool=call.name, call_id=call.id,

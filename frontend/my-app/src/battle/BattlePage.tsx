@@ -17,16 +17,18 @@ const species = [{id: 'pikachu', name: 'Pikachu'}, {id: 'bulbasaur', name: 'Bulb
     name: 'Carapuce'
 }]
 
-function BattleSession({battle, events, busy, needsSync, playTurn}: {
+function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: {
     battle: Battle;
     events: BattleEvent[];
     busy: boolean;
     needsSync: boolean;
-    playTurn: (moves: MoveChoices) => Promise<void>
+    playTurn: (moves: MoveChoices) => Promise<void>;
+    playAiTurn: (move: number) => Promise<void>
 }) {
     const [firstMove, setFirstMove] = useState<number | null>(null)
     const [secondMove, setSecondMove] = useState<number | null>(null)
     const [animations, setAnimations] = useState(true)
+    const [aiOpponent, setAiOpponent] = useState(false)
     const firstArtwork = usePokemonArtwork(battle.first.species)
     const secondArtwork = usePokemonArtwork(battle.second.species)
     const {active, isPlaying, reducedMotion, revealedCount, impact} = useAttackPlayback(events, animations)
@@ -55,23 +57,27 @@ function BattleSession({battle, events, busy, needsSync, playTurn}: {
             <h2 id="attacks-heading">{finished ? 'Combat terminé' : 'Choisis les attaques'}</h2>
             {finished ?
                 <p className="muted">{winner?.species} remporte le duel. Lance un nouveau combat pour rejouer.</p> : <>
-                    <p className="muted text-sm mb-4">Une attaque par combattant, puis le serveur résout le tour.</p>
+                    <label className="motion-toggle"><input type="checkbox" checked={aiOpponent}
+                        disabled={blocked || battle.turn > 0} onChange={(event) => setAiOpponent(event.target.checked)}/>
+                        Adversaire IA Mistral</label>
+                    <p className="muted text-sm mb-4">{aiOpponent ? 'Choisis ton attaque. L’IA choisit la sienne sans connaître ton choix.' : 'Une attaque par combattant, puis le serveur résout le tour.'}</p>
                     <div className="grid gap-5">
                         <AttackPanel fighter={displayed.first} label="Attaque 1" selected={firstMove} disabled={blocked}
                                      onSelect={setFirstMove}/>
-                        <AttackPanel fighter={displayed.second} label="Attaque 2" selected={secondMove} disabled={blocked}
-                                     onSelect={setSecondMove}/>
+                        {!aiOpponent && <AttackPanel fighter={displayed.second} label="Attaque 2" selected={secondMove} disabled={blocked}
+                                     onSelect={setSecondMove}/>}
                     </div>
                     <div className="bottom"><span
                         className="muted text-sm">{isPlaying ? 'Lecture des attaques' : 'À toi de jouer !'}</span>
-                        <button className="button-primary" disabled={blocked || !firstValid || !secondValid}
+                        <button className="button-primary" disabled={blocked || !firstValid || (!aiOpponent && !secondValid)}
                                 onClick={() => {
-                                    if (firstMove !== null && secondMove !== null) void playTurn({
+                                    if (aiOpponent && firstMove !== null) void playAiTurn(firstMove)
+                                    else if (firstMove !== null && secondMove !== null) void playTurn({
                                         first_move: firstMove,
                                         second_move: secondMove
                                     })
                                 }}>
-                            {busy ? 'Résolution en cours' : isPlaying ? 'Animations en cours' : 'Jouer le tour'}
+                            {busy ? aiOpponent ? 'Décision IA et résolution en cours' : 'Résolution en cours' : isPlaying ? 'Animations en cours' : 'Jouer le tour'}
                         </button>
                     </div>
                 </>}
@@ -91,6 +97,7 @@ export function BattlePage() {
         canRetry,
         createBattle,
         playTurn,
+        playAiTurn,
         retryLastTurn,
         refresh
     } = useBattle()
@@ -156,7 +163,7 @@ export function BattlePage() {
         {notice && <p role="status" className="message">{notice}</p>}
         <p className="sr-only" role="status">{busy ? 'Requête en cours' : ''}</p>
         {battle ? <BattleSession key={battle.id} battle={battle} events={events} busy={busy} needsSync={needsSync}
-                                 playTurn={playTurn}/>
+                                 playTurn={playTurn} playAiTurn={playAiTurn}/>
             : <section className="arena arena-empty"><span aria-hidden="true" className="empty-ball">◉</span>
                 <h2>L’arène t’attend</h2><p>Choisis deux Pokémon et crée ton premier combat.</p></section>}
         <footer className="credits">Illustrations : <a href="https://pokeapi.co/" target="_blank"

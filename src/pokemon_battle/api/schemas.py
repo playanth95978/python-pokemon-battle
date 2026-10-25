@@ -28,6 +28,13 @@ class PlayTurnRequest(BaseModel):
     idempotency_key: UUID
 
 
+class PlayAiTurnRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    player_move: int = Field(ge=0, le=3, strict=True)
+    expected_turn: int = Field(ge=0, strict=True)
+    idempotency_key: UUID
+
+
 class AttackResponse(BaseModel):
     slot: int
     name: str
@@ -135,3 +142,15 @@ class PlayTurnResponse(BaseModel):
     def from_result(cls, result: TurnResult) -> "PlayTurnResponse":
         return cls(battle=BattleResponse.from_record(result.record),
                    events=[event_response(event) for event in result.events])
+
+
+class AiDecisionResponse(BaseModel):
+    slot: int
+    source: Literal["llm", "local"]
+    comment: str
+    fallback_reason: str | None
+
+
+class PlayAiTurnResponse(PlayTurnResponse):
+    decision: AiDecisionResponse
+    metrics: dict

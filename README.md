@@ -221,8 +221,19 @@ Les arguments sont validés avec Pydantic et la décision ne modifie aucun comba
 L'outil `estimate_damage` partage la formule du moteur et fournit les dégâts possibles,
 la moyenne tenant compte de la précision et la probabilité de KO sur les PV actuels.
 Il ne consomme ni PP ni hasard ; ses résultats figurent dans les observations du rapport.
-La route d'adversaire IA et son interface React restent à brancher : le mode de jeu
-actuel conserve les deux choix manuels. Voir `docs/ai.md` pour le contrat et les limites.
+La route `POST /battles/{id}/ai-turns` et le mode **Adversaire IA Mistral** de l'arène
+sont branchés : cocher le mode avant le premier tour, puis choisir seulement l'attaque
+du premier combattant. Configurer `MISTRAL_API_KEY` uniquement côté backend et relancer
+Uvicorn après mise à jour du code. En cas de panne, le tour utilise un secours local
+explicitement signalé.
+
+L'API Conversations conserve les échanges chez Mistral. SQLite conserve la référence
+et les résultats d'outils en attente ; une rotation après trois décisions ou au seuil
+de 12 000 tokens de prompt réinjecte seulement les trois derniers tours résolus.
+L'appel réseau se fait hors transaction. Combat, session et reçus idempotents sont
+sauvegardés atomiquement après revérification du tour. Les tables supplémentaires
+sont créées au démarrage, sans suppression des combats existants.
+Voir `docs/ai.md` pour le contrat, la consommation de contexte et les limites.
 Le module de sécurité importé d'un autre projet,
 inutilisé et dépendant de `app.*`, a été retiré ; aucune authentification n'est ajoutée.
 

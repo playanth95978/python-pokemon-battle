@@ -7,3 +7,7 @@ from pokemon_battle.application.battle_service import BattleService
 
 def get_battle_service(request: Request) -> BattleService:
     return request.app.state.battle_service
+
+
+def get_ai_battle_service(request: Request):
+    return request.app.state.ai_battle_service

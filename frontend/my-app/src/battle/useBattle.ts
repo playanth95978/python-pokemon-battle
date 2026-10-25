@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, battleApi } from './api'
-import type { Battle, BattleChoices, BattleEvent, MoveChoices, TurnCommand } from './types'
+import type { AiTurnCommand, Battle, BattleChoices, BattleEvent, MoveChoices, TurnCommand } from './types'
 
 type Pending = 'create' | 'turn' | 'refresh' | null
 
@@ -17,7 +17,7 @@ export function useBattle() {
     const [needsSync, setNeedsSync] = useState(false)
     const [notice, setNotice] = useState<string | null>(null)
     const [canRetry, setCanRetry] = useState(false)
-    const uncertainTurn = useRef<{ battleId: string; command: TurnCommand } | null>(null)
+    const uncertainTurn = useRef<{ battleId: string; command: TurnCommand | AiTurnCommand } | null>(null)
     const inFlight = useRef<AbortController | null>(null)
     const mounted = useRef(true)
 
@@ -43,7 +43,8 @@ export function useBattle() {
             setError(cause instanceof Error ? cause.message : 'Une erreur inattendue est survenue.')
             if (kind === 'turn') {
                 setNeedsSync(true)
-                setCanRetry(uncertainTurn.current !== null && (!(cause instanceof ApiError) || cause.status >= 500))
+                setCanRetry(uncertainTurn.current !== null && (!(cause instanceof ApiError) || cause.status >= 500
+                    || (cause.status === 409 && 'player_move' in uncertainTurn.current.command)))
             }
         } finally {
             inFlight.current = null
@@ -72,8 +73,19 @@ export function useBattle() {
         })
     }
 
-    async function executeTurn(battleId: string, command: TurnCommand, signal: AbortSignal, retry: boolean) {
-        const result = await battleApi.playTurn(battleId, command, signal)
+    async function playAiTurn(playerMove: number) {
+        if (!session || session.battle.winner !== null || needsSync) return
+        await run('turn', async (signal) => {
+            const command = {player_move: playerMove, expected_turn: session.battle.turn, idempotency_key: crypto.randomUUID()}
+            uncertainTurn.current = {battleId: session.battle.id, command}
+            await executeTurn(session.battle.id, command, signal, false)
+        })
+    }
+
+    async function executeTurn(battleId: string, command: TurnCommand | AiTurnCommand, signal: AbortSignal, retry: boolean) {
+        const result = 'player_move' in command
+            ? await battleApi.playAiTurn(battleId, command, signal)
+            : await battleApi.playTurn(battleId, command, signal)
         // Une réponse idempotente peut être ancienne : relire l'état courant après une reprise.
         const battle = retry ? await battleApi.get(battleId, signal) : result.battle
         if (!mounted.current) return
@@ -84,7 +96,8 @@ export function useBattle() {
         uncertainTurn.current = null
         setCanRetry(false)
         setNeedsSync(false)
-        setNotice(retry ? 'Résultat récupéré sans rejouer un tour déjà enregistré. État courant relu.' : null)
+        setNotice(retry ? 'Résultat récupéré sans rejouer un tour déjà enregistré. État courant relu.'
+            : result.decision ? `${result.decision.source === 'llm' ? 'Mistral' : 'Stratégie locale de secours'} : ${result.decision.comment || 'Attaque sélectionnée.'}` : null)
     }
 
     async function retryLastTurn() {
@@ -108,6 +121,6 @@ export function useBattle() {
 
     return {
         battle: session?.battle ?? null, events: session?.events ?? [],
-        pending, error, notice, needsSync, canRetry, createBattle, playTurn, retryLastTurn, refresh
+        pending, error, notice, needsSync, canRetry, createBattle, playTurn, playAiTurn, retryLastTurn, refresh
     }
 }

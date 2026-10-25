@@ -1,4 +1,4 @@
-import type { Battle, BattleChoices, TurnCommand, TurnResponse } from './types'
+import type { AiTurnCommand, Battle, BattleChoices, TurnCommand, TurnResponse } from './types'
 import type { Catalogue } from './catalogueTypes'
 
 export class ApiError extends Error {
@@ -10,14 +10,14 @@ export class ApiError extends Error {
     }
 }
 
-async function request<T>(path: string, signal: AbortSignal, body?: unknown): Promise<T> {
+async function request<T>(path: string, signal: AbortSignal, body?: unknown, timeout = 15000): Promise<T> {
     let response: Response
     try {
         response = await fetch(`/api${path}`, {
             method: body === undefined ? 'GET' : 'POST',
             headers: body === undefined ? undefined : {'Content-Type': 'application/json'},
             body: body === undefined ? undefined : JSON.stringify(body),
-            signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+            signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
         })
     } catch {
         throw new Error('Le serveur ne répond pas. Vérifie que FastAPI est démarré, puis réessaie.')
@@ -40,4 +40,6 @@ export const battleApi = {
     get: (id: string, signal: AbortSignal) => request<Battle>(`/battles/${encodeURIComponent(id)}`, signal),
     playTurn: (id: string, moves: TurnCommand, signal: AbortSignal) =>
         request<TurnResponse>(`/battles/${encodeURIComponent(id)}/turns`, signal, moves),
+    playAiTurn: (id: string, command: AiTurnCommand, signal: AbortSignal) =>
+        request<TurnResponse>(`/battles/${encodeURIComponent(id)}/ai-turns`, signal, command, 45000),
 }

@@ -2,7 +2,8 @@
 
 Le moteur de combat reste indépendant de FastAPI, SQLite et Mistral. Le module
 `application/ai` produit seulement une `AttackDecision` ; il ne résout pas de tour
-et ne persiste aucune modification. Il n'y a pas de MCP, de RAG ou d'embeddings.
+et ne résout aucune modification directement. `AiBattleService` orchestre ensuite
+la résolution et la persistance du tour. Il n'y a pas de MCP, de RAG ou d'embeddings.
 
 ## Contexte et outils
 
@@ -15,8 +16,8 @@ Le contexte ne conserve aucun `Fighter` mutable ou repository.
 
 La mémoire `observations` et la décision sélectionnée appartiennent à ce contexte
 uniquement. Créer un nouveau contexte par décision ; ne pas le réutiliser après
-une évolution du combat. Les conversations et budgets sont également propres à
-chaque appel, même lorsqu'une instance de stratégie sert plusieurs combats.
+une évolution du combat. Les budgets et le contexte d'outils sont propres à chaque
+décision ; la conversation distante peut continuer entre plusieurs tours du même combat.
 
 | Outil | Résultat |
 | --- | --- |
@@ -97,11 +98,84 @@ policy = ToolCallingOpponent(MistralLLMAdapter(client))
 decision = await policy.choose(context)
 ```
 
-Le branchement HTTP et React n'est pas encore réalisé. Le futur service devra
-lire l'instantané avant la décision, appeler la stratégie hors transaction, puis
-revérifier le tour et les PP sous transaction avant de résoudre. L'idempotence
-devra porter sur la demande du joueur et ne pas dépendre d'un choix IA régénéré.
-Le contexte ne constitue donc pas une autorisation d'appliquer un tour périmé.
+Le branchement HTTP et React est disponible via `POST /battles/{battle_id}/ai-turns`.
+Le premier combattant est humain, le second contrôlé par l'IA. La demande contient
+seulement `player_move`, `expected_turn` et `idempotency_key` ; `second_move` est interdit.
+La réponse contient `battle`, `events`, `decision` et `metrics`.
+
+Dans l'arène, cocher **Adversaire IA Mistral** avant le premier tour. Seule l'attaque
+du premier combattant doit alors être sélectionnée. Le mode est verrouillé après
+le premier tour et réinitialisé au nouveau combat. Une réponse de secours est affichée
+comme telle. Les PV, PP, événements et vainqueur restent ceux du serveur.
+
+## Conversations persistantes et mémoire tactique
+
+`MistralConversationAdapter` utilise l'API Conversations avec le modèle configuré,
+sans création d'agent distant ni nouvelle dépendance. Les appels HTTP sont faits
+par `MistralClient`, partagé pendant la durée de vie de l'application et fermé à l'arrêt.
+La configuration est chargée seulement au premier usage de l'IA ; aucune clé ne sort du backend.
+
+- Création : `POST /v1/conversations`, `model`, `instructions`, `tools`, `inputs`,
+  `store=true`, `stream=false` et paramètres sous `completion_args`.
+- Continuation : `POST /v1/conversations/{id}`, seulement les nouvelles entrées et
+  les paramètres autorisés. Le dernier `conversation_id` retourné remplace l'ancien.
+- Les sorties `function.call` sont validées, puis exécutées localement avec les
+  mêmes schémas Pydantic et budgets que Chat Completions.
+- Chaque résultat est une entrée `function.result` avec `tool_call_id` et `result`
+  JSON sérialisé. Le résultat de `select_attack` reste en attente en SQLite ; il
+  rejoint la prochaine continuation avec la demande du tour suivant, sans appel
+  supplémentaire au modèle après la sélection.
+
+SQLite conserve deux tables ajoutées sans modifier les combats existants :
+
+| Table | Contenu |
+| --- | --- |
+| `battle_ai_sessions` | Une session pour le second combattant du combat : curseur distant, résultats en attente, modèle, compteurs, trois derniers tours résolus et réservation temporaire |
+| `battle_ai_requests` | Commande humaine, décision et métriques, pour rejouer la réponse sans régénérer l'IA |
+
+Les événements des trois derniers tours résolus forment une mémoire structurée,
+sans résumé généré par un LLM. Le choix humain en cours et le catalogue des attaques
+adverses n'y sont jamais envoyés. Les outils lisent un nouvel instantané immuable
+à chaque tour : les anciennes valeurs de PV/PP ne font pas référence.
+
+Pour borner l'historique distant utilisé, le service démarre une nouvelle conversation
+après trois décisions validées, ou lorsque le dernier appel a signalé au moins
+12 000 tokens de prompt. Le résumé des trois tours est transmis à la nouvelle
+conversation ; les anciennes estimations et messages ne sont pas recopiés.
+Ces seuils sont configurables au constructeur. Le seuil de tokens déclenche une
+rotation au tour suivant : ce n'est pas une limite stricte de tokens par requête.
+Les anciennes conversations restent stockées chez Mistral ; la rotation ne les efface pas.
+Un changement de modèle ou une décision interrompue invalide aussi le curseur.
+
+L'historique réutilisé peut consommer des tokens ; `usage` est enregistré sans
+inventer de coût ou de cache hit. La reprise n'est pas un thread Python suspendu :
+aucun travail n'est actif pendant l'attente du joueur.
+
+## Concurrence et idempotence du tour IA
+
+1. Une courte transaction vérifie le reçu, le tour, les PP du joueur et réserve
+   le combat pour une décision. Le reçu est vérifié avant l'état actuel, même après KO.
+2. Mistral et les outils s'exécutent hors transaction, avec un délai global de
+   30 secondes. La réservation SQLite de 120 secondes protège aussi plusieurs workers.
+3. Une nouvelle transaction vérifie la réservation, le tour et les PP, puis résout
+   avec le moteur partagé. Combat, reçu du tour, session IA et reçu de commande humaine
+   sont validés ensemble. Toute erreur de sauvegarde annule ces écritures ensemble.
+4. Une répétition de la même commande retourne le reçu, sans appel Mistral. Une
+   clé réutilisée avec un contenu différent ou une décision concurrente reçoit 409.
+
+Une réservation expirée peut être reprise après un crash ; son ancien propriétaire
+ne peut plus sauvegarder. Une annulation ne déclenche pas de stratégie de secours.
+Une panne du fournisseur ou un budget épuisé utilise la stratégie locale et abandonne
+le dialogue distant incomplet. Un tour manuel concurrent peut gagner ; dans ce cas
+la décision IA est refusée comme périmée. Le client conserve la commande pour réessayer
+avec la même clé, ou propose de relire l'état du combat.
+
+Références du contrat : [Conversations](https://docs.mistral.ai/api/endpoint/beta/conversations)
+et [Function Calling des agents](https://docs.mistral.ai/studio/agents/agent-tools/function-calling).
+Les tests couvrent ce format avec `httpx.MockTransport`, sans clé réelle ni facturation.
+Les commandes `ai_smoke` ci-dessous conservent le parcours Chat Completions afin de
+comparer les évaluations existantes ; la conversation persistante se teste dans l'arène
+ou via cette route HTTP.
 
 ## Vérifications
 

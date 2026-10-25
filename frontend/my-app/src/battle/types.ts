@@ -40,6 +40,7 @@ export type BattleEvent =
 export interface TurnResponse {
     battle: Battle;
     events: BattleEvent[]
+    decision?: { slot: number; source: 'llm' | 'local'; comment: string; fallback_reason: string | null }
 }
 
 export interface BattleChoices {
@@ -53,6 +54,12 @@ export interface MoveChoices {
 }
 
 export interface TurnCommand extends MoveChoices {
+    expected_turn: number;
+    idempotency_key: string
+}
+
+export interface AiTurnCommand {
+    player_move: number;
     expected_turn: number;
     idempotency_key: string
 }

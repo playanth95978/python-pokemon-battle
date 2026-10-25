@@ -37,6 +37,24 @@ vi.mock('./pokemonArtwork', () => ({
 afterEach(() => vi.unstubAllGlobals())
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {status})
 
+it('joue contre Mistral sans demander au joueur de choisir l’attaque adverse', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(initialBattle, 201))
+        .mockResolvedValueOnce(json({...resolvedTurn,
+            decision: {slot: 0, source: 'llm', comment: 'À toi de jouer !', fallback_reason: null}}))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<BattlePage/>)
+    fireEvent.click(screen.getByRole('button', {name: 'Créer le combat'}))
+    const mode = await screen.findByRole('checkbox', {name: 'Adversaire IA Mistral'})
+    fireEvent.click(mode)
+    expect(screen.queryByRole('group', {name: 'Attaque 2 : Salamèche'})).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('group', {name: 'Attaque 1 : Bulbizarre'})).getAllByRole('radio')[0])
+    fireEvent.click(screen.getByRole('button', {name: 'Jouer le tour'}))
+    expect(await screen.findByText('Mistral : À toi de jouer !')).toBeInTheDocument()
+    expect(fetchMock.mock.calls[1][0]).toBe(`/api/battles/${initialBattle.id}/ai-turns`)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({player_move: 0, expected_turn: 0, idempotency_key: expect.any(String)})
+    expect(mode).toBeDisabled()
+})
+
 it('crée, joue jusqu’au KO puis redémarre avec les valeurs du serveur', async () => {
     const finished = {
         battle: {

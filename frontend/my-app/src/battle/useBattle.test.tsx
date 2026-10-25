@@ -8,13 +8,48 @@ import type { TurnResponse } from './types'
 
 vi.mock('./api', async (importOriginal) => ({
     ...await importOriginal<typeof import('./api')>(),
-    battleApi: {create: vi.fn(), get: vi.fn(), playTurn: vi.fn()},
+    battleApi: {create: vi.fn(), get: vi.fn(), playTurn: vi.fn(), playAiTurn: vi.fn()},
 }))
 afterEach(() => vi.resetAllMocks())
 const choices = {first_species: 'bulbizarre', second_species: 'salameche'}
 const moves = {first_move: 0, second_move: 1}
 
 describe('useBattle', () => {
+    it('envoie seulement le choix humain en mode IA et bloque les doubles clics', async () => {
+        vi.mocked(battleApi.create).mockResolvedValue(initialBattle)
+        const pending = deferred<TurnResponse>()
+        vi.mocked(battleApi.playAiTurn).mockReturnValue(pending.promise)
+        const {result} = renderHook(() => useBattle())
+        await act(async () => result.current.createBattle(choices))
+        act(() => {
+            void result.current.playAiTurn(0)
+            void result.current.playAiTurn(0)
+        })
+        expect(battleApi.playAiTurn).toHaveBeenCalledTimes(1)
+        expect(battleApi.playTurn).not.toHaveBeenCalled()
+        expect(battleApi.playAiTurn).toHaveBeenCalledWith(initialBattle.id,
+            {player_move: 0, expected_turn: initialBattle.turn, idempotency_key: expect.any(String)}, expect.any(AbortSignal))
+        expect(result.current.battle).toEqual(initialBattle)
+        await act(async () => pending.resolve({...resolvedTurn, decision: {slot: 1, source: 'local', comment: '', fallback_reason: 'timeout'}}))
+        expect(result.current.battle).toEqual(resolvedTurn.battle)
+        expect(result.current.notice).toContain('Stratégie locale de secours')
+    })
+
+    it('reprend un tour IA avec la même clé et la même route après perte de réponse', async () => {
+        vi.mocked(battleApi.create).mockResolvedValue(initialBattle)
+        vi.mocked(battleApi.playAiTurn).mockRejectedValueOnce(new Error('Réponse perdue')).mockResolvedValue(resolvedTurn)
+        vi.mocked(battleApi.get).mockResolvedValue(resolvedTurn.battle)
+        const {result} = renderHook(() => useBattle())
+        await act(async () => result.current.createBattle(choices))
+        await act(async () => result.current.playAiTurn(0))
+        const command = vi.mocked(battleApi.playAiTurn).mock.calls[0][1]
+        expect(result.current.canRetry).toBe(true)
+        await act(async () => result.current.retryLastTurn())
+        expect(vi.mocked(battleApi.playAiTurn).mock.calls[1][1]).toEqual(command)
+        expect(battleApi.playTurn).not.toHaveBeenCalled()
+        expect(result.current.events).toEqual(resolvedTurn.events)
+    })
+
     it('ne crée pas de combat automatiquement sous StrictMode', () => {
         renderHook(() => useBattle(), {wrapper: StrictMode})
         expect(battleApi.create).not.toHaveBeenCalled()
