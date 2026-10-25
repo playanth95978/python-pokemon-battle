@@ -296,8 +296,8 @@ exécute ensuite un tour en mémoire. `--dry-run` teste le même parcours sans m
 réel ni lecture de configuration. Les critères, métriques, codes de sortie et
 limites sont décrits dans `docs/ai.md`.
 
-Pour comparer plusieurs décisions, la suite propose six scénarios (immunité,
-slots inversés, faiblesse, résistance, PP épuisés, double faiblesse) :
+Pour comparer plusieurs décisions, la suite propose sept scénarios (immunité,
+slots inversés, faiblesse, résistance, PP épuisés, double faiblesse et potion sans PP) :
 
 ```powershell
 .venv/Scripts/python.exe -m pokemon_battle.ai_smoke --suite --repeat 3 --output artifacts/ai-suite-real.json
@@ -309,3 +309,9 @@ inefficace reste autorisé et fait échouer le critère stratégique. Le rapport
 distingue `provider_responded` de `agent_checks_passed`, conserve chaque tentative
 et agrège les taux de réussite et de repli sans masquer les mauvaises décisions.
 Ajouter `--dry-run` pour simuler la suite sans Mistral.
+
+Pour tester une sélection réelle de potion, utiliser
+`--scenario potion_only --repeat 3 --timeout 30 --output artifacts/ai-potion-real.json`
+avec la même commande `python -m pokemon_battle.ai_smoke`. L'IA commence blessée,
+sans PP, avec une dernière potion ; les critères vérifient le soin, sa priorité,
+le stock et la survie. Sans `--dry-run`, ces commandes appellent réellement Mistral.

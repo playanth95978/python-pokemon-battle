@@ -19,7 +19,7 @@ from .application.ai.scenarios import SCENARIOS
 from .application.ai.tools_context import ToolsContext
 from .application.battle_repository import StoredBattle
 from .core.config import Settings
-from .engine import BattleEngine
+from .engine import BattleEngine, PotionUsed
 from .mistral.client import MistralClient
 from .mistral.llm_adapter import MistralLLMAdapter
 from .types import effectiveness
@@ -37,9 +37,13 @@ class SimulatedClient:
     async def complete(self, messages, **kwargs) -> Completion:
         if not any(message.role == "tool" for message in messages):
             return Completion(None, {}, tuple(ToolCall(f"sim-{index}", name, "{}") for index, name in enumerate((
-                "inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage",
+                "inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage", "estimate_healing",
             ))))
         results = {message.name: json.loads(message.content) for message in messages if message.role == "tool"}
+        if not results["estimate_damage"]["estimates"]:
+            if results["estimate_healing"]["estimate_healing"]["available"]:
+                return Completion(None, {}, (ToolCall("sim-potion", "select_potion", "{}"),))
+            raise ValueError("Aucune action jouable dans la simulation")
         move = max(results["estimate_damage"]["estimates"], key=lambda item: (item["expected_damage"], -item["attack_slot"]))
         return Completion(None, {}, (ToolCall("sim-select", "select_attack", json.dumps({"attack_slot": move["attack_slot"]})),))
 
@@ -56,19 +60,26 @@ async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeo
     move = next((move for move in context.legal_moves if move.attack_slot == decision.attack_slot), None)
     potion = decision.action_type == "potion"
     checks = {
-        # Une potion validée par select_potion est légale ; les scénarios attendent toutefois une attaque.
         "legal_move": potion or move is not None,
         "avoids_immunity": potion or (move is not None and effectiveness(move.type, context.view.opponent.types) > 0),
-        "expected_slot": decision.attack_slot in definition.expected_slots,
+        "expected_action": decision.action_type == definition.expected_action,
+        "expected_slot": (potion and definition.expected_action == "potion") or decision.attack_slot in definition.expected_slots,
         "llm_selected": decision.source == "llm",
         "battle_unchanged_during_decision": asdict(record.battle) == before,
     }
-    passed = all(checks.values())
     logger.info("Décision : action=%s attack_slot=%s attaque=%s source=%s repli=%s", decision.action_type,
                 decision.attack_slot, move.name if move else "aucune", decision.source, decision.fallback_reason)
-    logger.info("Critères : %s", checks)
     # Le choix du joueur n'entre qu'ici, après la décision de l'agent.
     events = BattleEngine(Random(seed)).play_turn(record.battle, 0, decision.action())
+    if definition.expected_action == "potion":
+        healing = next((event for event in events if isinstance(event, PotionUsed) and event.actor == "agent"), None)
+        checks["healing_applied"] = healing is not None and healing.healed == 20 and healing.hp_remaining == 30
+        checks["potion_consumed_once"] = (healing is not None and healing.potions_remaining == 0
+                                          and record.battle.second.potions == before["second"]["potions"] - 1)
+        checks["healed_before_attack"] = bool(events) and events[0] is healing
+        checks["survives_turn"] = record.battle.second.hp > 0
+    passed = all(checks.values())
+    logger.info("Critères : %s", checks)
     logger.info("Tour résolu : %s=%s PV, %s=%s PV", record.battle.second.species.name, record.battle.second.hp,
                 record.battle.first.species.name, record.battle.first.hp)
     metrics = asdict(context.metrics)
@@ -172,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, help="Enregistrer le rapport JSON à cet emplacement")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--scenario", choices=list(SCENARIOS), default="pikachu_vs_ground", help="Scénario à exécuter")
-    selection.add_argument("--suite", action="store_true", help="Exécuter les six scénarios")
+    selection.add_argument("--suite", action="store_true", help="Exécuter tous les scénarios")
     parser.add_argument("--repeat", type=_repeat, default=1, help="Répétitions indépendantes par scénario")
     args = parser.parse_args(argv)
     # Les bibliothèques HTTP ne journalisent pas leurs requêtes dans cette démonstration.

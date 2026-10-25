@@ -1,37 +1,41 @@
 {
+  "schema_version": 2,
   "scenario": "pikachu_vs_ground",
   "mode": "mistral",
   "model": "mistral-small-latest",
-  "timestamp_utc": "2026-10-24T23:44:09.752700+00:00",
+  "timestamp_utc": "2026-10-25T03:53:22.226246+00:00",
   "seed": 42,
-  "passed": false,
-  "real_agent_verified": false,
+  "passed": true,
+  "provider_responded": true,
+  "agent_checks_passed": true,
   "checks": {
     "legal_move": true,
-    "avoids_immunity": false,
-    "expected_slot": false,
+    "avoids_immunity": true,
+    "expected_action": true,
+    "expected_slot": true,
     "llm_selected": true,
     "battle_unchanged_during_decision": true
   },
   "decision": {
-    "slot": 0,
+    "attack_slot": 1,
     "source": "llm",
-    "comment": "Super efficace contre un sol !",
-    "fallback_reason": null
+    "comment": "Charge est la seule attaque viable : Éclair est inefficace (immunité au type Électrique).",
+    "fallback_reason": null,
+    "action_type": "attack"
   },
-  "selected_attack": "Éclair",
+  "selected_attack": "Charge",
   "metrics": {
     "model_requests": 3,
     "model_responses": 3,
-    "tool_calls_requested": 4,
-    "tool_calls_executed": 4,
+    "tool_calls_requested": 6,
+    "tool_calls_executed": 6,
     "tool_errors": 0,
-    "model_time_ms": 3173.228,
-    "elapsed_ms": 3179.531,
+    "model_time_ms": 2227.934,
+    "elapsed_ms": 2229.918,
     "tokens": {
-      "prompt_tokens": 1873,
-      "completion_tokens": 47,
-      "total_tokens": 1920
+      "prompt_tokens": 4823,
+      "completion_tokens": 77,
+      "total_tokens": 4900
     },
     "usage_reports": 3,
     "complete_usage_reports": 3,
@@ -43,19 +47,33 @@
       {
         "event": "model_response",
         "request": 1,
-        "tool_calls": 2
+        "tool_calls": 4
       },
       {
         "event": "tool_result",
         "tool": "inspect_battle",
-        "call_id": "Hr1xaZqu3",
+        "call_id": "rFjFJvapm",
         "status": "ok",
         "selected_slot": null
       },
       {
         "event": "tool_result",
         "tool": "list_legal_moves",
-        "call_id": "2arix8NKI",
+        "call_id": "xzWDG7NYb",
+        "status": "ok",
+        "selected_slot": null
+      },
+      {
+        "event": "tool_result",
+        "tool": "estimate_damage",
+        "call_id": "VcjgpBuAi",
+        "status": "ok",
+        "selected_slot": null
+      },
+      {
+        "event": "tool_result",
+        "tool": "estimate_healing",
+        "call_id": "wZMsAGhtO",
         "status": "ok",
         "selected_slot": null
       },
@@ -71,7 +89,7 @@
       {
         "event": "tool_result",
         "tool": "evaluate_matchups",
-        "call_id": "miR6mKBCQ",
+        "call_id": "R9aByw9xd",
         "status": "ok",
         "selected_slot": null
       },
@@ -87,13 +105,14 @@
       {
         "event": "tool_result",
         "tool": "select_attack",
-        "call_id": "vieYsXSYt",
+        "call_id": "TOXArQTDH",
         "status": "ok",
-        "selected_slot": 0
+        "selected_slot": 1
       },
       {
         "event": "decision",
-        "slot": 0,
+        "action_type": "attack",
+        "attack_slot": 1,
         "source": "llm"
       }
     ],
@@ -111,7 +130,16 @@
         "max_hp": 110,
         "types": [
           "electric"
-        ]
+        ],
+        "stats": {
+          "hp": 110,
+          "attack": 65,
+          "defense": 54,
+          "special_attack": 73,
+          "special_defense": 62,
+          "speed": 91
+        },
+        "potions": 2
       },
       "opponent": {
         "id": "player",
@@ -121,13 +149,22 @@
         "max_hp": 135,
         "types": [
           "ground"
-        ]
+        ],
+        "stats": {
+          "hp": 135,
+          "attack": 74,
+          "defense": 86,
+          "special_attack": 43,
+          "special_defense": 55,
+          "speed": 47
+        },
+        "potions": 2
       }
     },
     "list_legal_moves": {
       "moves": [
         {
-          "slot": 0,
+          "attack_slot": 0,
           "name": "Éclair",
           "type": "electric",
           "category": "special",
@@ -137,7 +174,7 @@
           "max_pp": 30
         },
         {
-          "slot": 1,
+          "attack_slot": 1,
           "name": "Charge",
           "type": "normal",
           "category": "physical",
@@ -148,29 +185,89 @@
         }
       ]
     },
+    "estimate_damage": {
+      "estimates": [
+        {
+          "attack_slot": 0,
+          "name": "Éclair",
+          "category": "special",
+          "type_multiplier": 0.0,
+          "stab_multiplier": 1.5,
+          "hit_probability": 1.0,
+          "min_damage_on_hit": 0,
+          "max_damage_on_hit": 0,
+          "mean_damage_on_hit": 0.0,
+          "expected_damage": 0.0,
+          "ko_probability": 0.0
+        },
+        {
+          "attack_slot": 1,
+          "name": "Charge",
+          "category": "physical",
+          "type_multiplier": 1.0,
+          "stab_multiplier": 1.0,
+          "hit_probability": 1.0,
+          "min_damage_on_hit": 12,
+          "max_damage_on_hit": 15,
+          "mean_damage_on_hit": 13.375,
+          "expected_damage": 13.375,
+          "ko_probability": 0.0
+        }
+      ],
+      "assumption": "Attaque isolée sur les PV actuels ; suppose que l'acteur peut agir. Ne prédit ni le choix adverse ni un combat complet."
+    },
+    "estimate_healing": {
+      "estimate_healing": {
+        "available": false,
+        "reason": "Les PV sont déjà pleins"
+      },
+      "assumption": "Estimation d'une potion restaurant jusqu'à 20 PV. Ne prédit ni l'action adverse ni le déroulement du combat."
+    },
     "evaluate_matchups": {
       "matchups": [
         {
-          "slot": 0,
+          "attack_slot": 0,
+          "name": "Éclair",
           "type": "electric",
-          "multiplier": 0.0
+          "target_types": [
+            "ground"
+          ],
+          "multiplier": 0.0,
+          "effectiveness": "immune",
+          "explanation": "Aucun dégât : la cible est immunisée contre ce type."
         },
         {
-          "slot": 1,
+          "attack_slot": 1,
+          "name": "Charge",
           "type": "normal",
-          "multiplier": 1.0
+          "target_types": [
+            "ground"
+          ],
+          "multiplier": 1.0,
+          "effectiveness": "neutral",
+          "explanation": "Efficacité normale pour ce type."
         }
       ]
     },
     "select_attack": {
-      "selected_slot": 0
+      "selected_slot": 1
     }
   },
   "turn": {
     "number": 1,
-    "pikachu_hp": 88,
-    "sandshrew_hp": 135,
-    "winner": null
+    "winner": null,
+    "fighters": [
+      {
+        "id": "player",
+        "species": "Sabelette",
+        "hp": 122
+      },
+      {
+        "id": "agent",
+        "species": "Pikachu",
+        "hp": 86
+      }
+    ]
   },
   "events": [
     {
@@ -178,19 +275,19 @@
       "turn": 1,
       "actor": "agent",
       "target": "player",
-      "attack": "Éclair",
-      "pp_remaining": 29,
-      "attack_type": "electric",
-      "attack_slot": 0
+      "attack": "Charge",
+      "pp_remaining": 34,
+      "attack_type": "normal",
+      "attack_slot": 1
     },
     {
       "type": "DamageDealt",
       "turn": 1,
       "actor": "agent",
       "target": "player",
-      "damage": 0,
-      "hp_remaining": 135,
-      "effectiveness": 0.0
+      "damage": 13,
+      "hp_remaining": 122,
+      "effectiveness": 1.0
     },
     {
       "type": "AttackUsed",
@@ -207,8 +304,8 @@
       "turn": 1,
       "actor": "player",
       "target": "agent",
-      "damage": 22,
-      "hp_remaining": 88,
+      "damage": 24,
+      "hp_remaining": 86,
       "effectiveness": 1.0
     }
   ]

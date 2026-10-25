@@ -18,12 +18,18 @@ class Scenario:
     expected_slots: tuple[int, ...]
     reverse_moves: bool = False
     exhausted_slots: tuple[int, ...] = ()
+    actor_hp: int | None = None
+    potions: int = 2
+    expected_action: str = "attack"
 
     def create(self) -> StoredBattle:
         actor = self.actor
         if self.reverse_moves:
             actor = Species(actor.name, actor.types, actor.stats, tuple(reversed(actor.attacks)))
         ai = Fighter("agent", actor)
+        if self.actor_hp is not None:
+            ai.hp = self.actor_hp
+        ai.potions = self.potions
         for attack_slot in self.exhausted_slots:
             ai.pp[attack_slot] = 0
         return StoredBattle(UUID("00000000-0000-0000-0000-000000000025"), Battle(Fighter("player", self.opponent), ai))
@@ -51,5 +57,8 @@ SCENARIOS = {
         Scenario("grass_resistance", "Préférer Charge à Éclair résisté, à puissance identique", _PIKACHU, _target("Bulbizarre", (Type.GRASS, Type.POISON), special_defense=93), (1,)),
         Scenario("exhausted_move", "L'attaque super efficace n'a plus de PP", _PIKACHU, _target("Carapuce", (Type.WATER,)), (1,), exhausted_slots=(0,)),
         Scenario("double_weakness", "Exploiter une double faiblesse au Feu", _CHARMANDER, _target("Paras", (Type.GRASS, Type.BUG)), (1,)),
+        Scenario("potion_only", "Se soigner sans PP pour survivre au prochain coup", _PIKACHU,
+                 _target("Sabelette", (Type.GROUND,)), (), exhausted_slots=(0, 1),
+                 actor_hp=10, potions=1, expected_action="potion"),
     )
 }

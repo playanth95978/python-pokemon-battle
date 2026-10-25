@@ -19,7 +19,7 @@ from pokemon_battle.core.exceptions import MistralUnavailable
 from pokemon_battle.mistral.client import MistralClient
 
 
-def testLaSimulationExecuteLesCinqOutilsEtUnTourSansChargerLaConfiguration(tmp_path, monkeypatch, capsys):
+def testLaSimulationExecuteLesOutilsEtUnTourSansChargerLaConfiguration(tmp_path, monkeypatch, capsys):
     """Le mode sans réseau ne doit jamais lire la configuration réelle et reste identifié comme simulation."""
     def forbidden():
         pytest.fail("Le mode simulation ne doit pas charger Settings")
@@ -32,7 +32,7 @@ def testLaSimulationExecuteLesCinqOutilsEtUnTourSansChargerLaConfiguration(tmp_p
     assert report["agent_checks_passed"] is False
     assert report["selected_attack"] == "Charge"
     assert report["metrics"]["model_requests"] == 2
-    assert report["metrics"]["tool_calls_executed"] == 5
+    assert report["metrics"]["tool_calls_executed"] == 6
     assert report["metrics"]["tokens"] == {}
     assert report["metrics"]["usage_complete"] is False
     assert report["turn"] == {"number": 1, "winner": None, "fighters": [
@@ -203,7 +203,7 @@ def testUneAttaqueImmuniseeResteSelectionnablePourNePasMasquerLesErreursDuModele
     assert ctx.decision.source == "llm"
 
 
-def testLaSuiteRepeteSixScenariosAvecDesSlotsDifferentsSansReseau(monkeypatch, tmp_path, capsys):
+def testLaSuiteRepeteSeptScenariosAvecDesActionsDifferentesSansReseau(monkeypatch, tmp_path, capsys):
     """Chaque répétition démarre un combat neuf ; les slots inversés et les PP épuisés changent le choix attendu."""
     def forbidden():
         pytest.fail("La simulation ne doit pas lire la configuration")
@@ -212,17 +212,54 @@ def testLaSuiteRepeteSixScenariosAvecDesSlotsDifferentsSansReseau(monkeypatch, t
     assert ai_smoke.main(["--dry-run", "--suite", "--repeat", "2", "--output", str(path)]) == 0
     report = json.loads(path.read_text(encoding="utf-8"))
     assert report["schema_version"] == 2
-    assert report["summary"]["runs"] == 12
-    assert report["summary"]["passed"] == 12
+    assert report["summary"]["runs"] == 14
+    assert report["summary"]["passed"] == 14
     assert report["summary"]["fallback_rate"] == 0
     assert report["summary"]["tokens"] == {}
     assert report["summary"]["usage_complete"] is False
     assert report["summary"]["per_scenario"]["reversed_slots"]["selected_slots"] == {"0": 2}
     assert report["summary"]["per_scenario"]["exhausted_move"]["selected_slots"] == {"1": 2}
-    assert [run["repetition"] for run in report["runs"]] == [1, 2] * 6
+    assert [run["repetition"] for run in report["runs"]] == [1, 2] * 7
+    assert report["summary"]["per_scenario"]["potion_only"]["selected_slots"] == {"potion": 2}
     assert all(not run["provider_responded"] and not run["agent_checks_passed"] for run in report["runs"])
     assert all(run["checks"]["battle_unchanged_during_decision"] for run in report["runs"])
     capsys.readouterr()
+
+
+def testLeScenarioPotionVerifieLeSoinLeStockEtLaSurvieSansReseau(monkeypatch, tmp_path, capsys):
+    """Une IA sans PP doit choisir sa dernière potion, se soigner avant le coup et ne rien muter pendant sa décision."""
+    def forbidden():
+        pytest.fail("Le mode simulation ne doit pas charger Settings")
+    monkeypatch.setattr(ai_smoke, "Settings", forbidden)
+    path = tmp_path / "potion.json"
+    assert ai_smoke.main(["--dry-run", "--scenario", "potion_only", "--output", str(path)]) == 0
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["passed"] is True
+    assert all(report["checks"].values())
+    assert report["decision"]["action_type"] == "potion"
+    assert report["decision"]["attack_slot"] is None
+    assert report["observations"]["list_legal_moves"]["moves"] == []
+    assert report["observations"]["estimate_healing"]["estimate_healing"] == {
+        "available": True, "healed": 20, "hp_after_healing": 30, "potions_remaining_after_use": 0,
+    }
+    assert report["events"][0] == {"type": "PotionUsed", "turn": 1, "actor": "agent",
+                                    "healed": 20, "hp_remaining": 30, "potions_remaining": 0}
+    assert report["turn"]["fighters"][1]["hp"] == 8
+    assert [event["actor"] for event in report["events"] if event["type"] == "AttackUsed"] == ["player"]
+    capsys.readouterr()
+
+
+def testUnePotionDeSecoursNeValidePasUnTestDuLlm():
+    """La bonne action choisie localement ne doit pas compter comme une réussite de Mistral."""
+    class FailingClient:
+        async def complete(self, *args, **kwargs):
+            raise MistralUnavailable()
+    report = asyncio.run(ai_smoke.run_scenario(FailingClient(), mode="mistral", model="fake", timeout=1, scenario_name="potion_only"))
+    assert report["decision"]["action_type"] == "potion"
+    assert report["decision"]["source"] == "local"
+    assert report["checks"]["healing_applied"] is True
+    assert report["checks"]["llm_selected"] is False
+    assert report["passed"] is False
 
 
 def testLeBilanNAssimilePasLesReplisAuxBonnesDecisionsDuModele():

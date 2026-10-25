@@ -282,7 +282,22 @@ identifie les combattants par nom et identifiant, pour les scénarios hors Pikac
 
 ## Suite et répétitions
 
-Les six scénarios emploient des statistiques et kits simplifiés, construits pour
+Pour tester réellement la sélection d'une potion :
+
+```powershell
+.venv/Scripts/python.exe -m pokemon_battle.ai_smoke --scenario potion_only --repeat 3 --timeout 30 --output artifacts/ai-potion-real.json
+```
+
+Pikachu commence à 10/110 PV, sans PP et avec une potion. Le modèle doit choisir
+`select_potion` ; le moteur soigne de 20 PV avant le coup adverse et consomme le stock.
+Le rapport vérifie `expected_action`, `healing_applied`, `potion_consumed_once`,
+`healed_before_attack` et `survives_turn`, ainsi que l'absence de mutation pendant la décision.
+Un repli local ne valide pas le test du fournisseur. Ajouter `--dry-run` pour simuler
+sans réseau. Ce cas vérifie le parcours de la seule action jouable, pas un arbitrage
+stratégique entre plusieurs bonnes options. La graine contrôle les dégâts du moteur,
+pas les décisions du modèle. Chaque répétition commence avec un combat neuf.
+
+Les sept scénarios emploient des statistiques et kits simplifiés, construits pour
 tester des propriétés ciblées :
 
 | Identifiant | Propriété vérifiée | Slot attendu |
@@ -293,6 +308,7 @@ tester des propriétés ciblées :
 | `grass_resistance` | Préférer Charge à Éclair résisté dans cette configuration | 1 |
 | `exhausted_move` | Écarter Éclair sans PP même s'il serait super efficace | 1 |
 | `double_weakness` | Exploiter la double faiblesse de Paras au Feu | 1 |
+| `potion_only` | Se soigner à 10 PV, sans PP, avec une dernière potion ; survivre au tour | Potion |
 
 Les réponses attendues servent seulement aux contrôles et logs locaux. Elles ne
 sont pas transmises au modèle et ne sont pas utilisées pour remplacer ses choix.
@@ -300,7 +316,7 @@ La consigne est identique pour tous les scénarios. La table n'est pas une reche
 de stratégie optimale dans l'ensemble des règles Pokémon.
 
 ```powershell
-# 6 scénarios, 3 répétitions chacun : 18 décisions réelles, séquentielles.
+# 7 scénarios, 3 répétitions chacun : 21 décisions réelles, séquentielles.
 .venv/Scripts/python.exe -m pokemon_battle.ai_smoke --suite --repeat 3 --timeout 30 --output artifacts/ai-suite-real.json
 
 # Rejouer seulement l'immunité avec les slots inversés.
