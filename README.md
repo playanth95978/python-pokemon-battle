@@ -9,8 +9,30 @@ Les colonnes historiques SQLite sont conservées ; les actions JSON des nouveaux
 reçus font référence. La valeur technique -1 dans une colonne historique indique
 une action non offensive et n'est jamais utilisée pour résoudre le tour.
 Recharger le frontend et relancer le backend ensemble après cette évolution de contrat.
-Le branchement HTTP des potions reste une étape distincte ; les routes de tour
-existantes acceptent encore leurs indices `first_move`, `second_move` ou `player_move`.
+Les routes de tour acceptent les actions complètes, ainsi que les anciens indices
+`first_move`, `second_move` ou `player_move` pour les attaques.
+
+Dans l'arène, sélectionner **Utiliser une potion**, puis **Jouer le tour**.
+Chaque combattant dispose de deux potions qui rendent au plus 20 PV. Une potion
+remplace l'attaque et agit avant les attaques ; son bouton est désactivé à pleine
+santé, sans stock ou pendant une requête. Le stock et le soin affichés viennent
+du serveur. En mode IA, le joueur peut se soigner pendant que Mistral choisit son
+attaque ; la décision IA n'a pas accès au choix du joueur en cours.
+
+Exemple de corps pour `POST /battles/{id}/turns` :
+
+```json
+{
+  "first_action": {"action_type": "potion"},
+  "second_action": {"action_type": "attack", "attack_slot": 0},
+  "expected_turn": 0,
+  "idempotency_key": "00000000-0000-0000-0000-000000000001"
+}
+```
+
+Sur `/ai-turns`, envoyer `player_action` à la place des deux actions. Les réponses
+incluent `potions` pour chaque combattant et l'événement `potion_used` avec le soin
+réel et le stock restant. Les commandes mixtes anciens/nouveaux champs sont refusées.
 
 Python 3.12+ domain package, independent of the API, storage and React frontend.
 Species, stats and attack definitions are frozen dataclasses; each `Fighter` owns its
@@ -36,8 +58,9 @@ Damage uses the level/power/attack/defense base formula, physical or special sta
 1.5× same-type bonus, the complete modern 18-type chart, and the damage roll.
 Base divisions round down; combined modifiers round down once, with a minimum of one
 damage except for immunities. This is a documented simplified ruleset, not a full
-generation-specific Pokémon simulator. No critical hits, priority, status conditions,
-abilities, items, switching, healing, or automatic Struggle. Exhausted moves are rejected.
+generation-specific Pokémon simulator. Potions provide the documented healing action
+with priority over attacks. No critical hits, attack priority, status conditions,
+abilities, switching, other items, or automatic Struggle. Exhausted moves are rejected.
 
 Events are immutable typed dataclasses returned in execution order: attack used,
 miss or damage, then KO and battle ended if applicable. Damage records actual HP lost.

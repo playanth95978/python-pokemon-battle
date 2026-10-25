@@ -310,6 +310,34 @@ def testLaRouteExposeUnTourIaSansChoixAdverseDuClient(tmp_path):
     assert len(server.requests) == 2
 
 
+def testLaRouteIaAccepteUnePotionHumaineEtRejoueLeRecu(tmp_path):
+    """Soigner en mode IA reste idempotent et ne transmet pas le choix humain au modèle."""
+    server = Server()
+    client = client_for(server)
+    app = create_app(tmp_path / "potion-ai.sqlite3", conversation_adapter_factory=lambda state, memory: MistralConversationAdapter(client, state, memory))
+    try:
+        with TestClient(app) as http:
+            service = app.state.battle_service
+            record = service.create_battle("pikachu", "charmander")
+            record.battle.first.hp = 50
+            service.repository.save(record)
+            body = {"player_action": {"action_type": "potion"}, "expected_turn": 0, "idempotency_key": str(uuid4())}
+            url = f"/battles/{record.id}/ai-turns"
+            response = http.post(url, json=body)
+            assert response.status_code == 200
+            assert response.json()["events"][0]["type"] == "potion_used"
+            assert response.json()["battle"]["first"]["potions"] == 1
+            assert http.post(url, json=body).json() == response.json()
+            changed = {**body, "player_action": {"action_type": "attack", "attack_slot": 0}}
+            assert http.post(url, json=changed).status_code == 409
+    finally:
+        asyncio.run(client.aclose())
+    assert len(server.requests) == 2
+    memory = json.loads(server.requests[0][1]["inputs"][0]["content"])
+    assert "player_action" not in memory
+    assert memory["recent_resolved_turns"] == []
+
+
 @pytest.mark.parametrize("payload", [
     {"conversation_id": "", "outputs": []},
     {"conversation_id": "conv", "outputs": [{"type": "function.call", "name": "select_attack", "arguments": {}}]},

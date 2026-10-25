@@ -801,6 +801,8 @@
 @keyframes crowd-clap { from { transform: rotate(-45deg); } to { transform: rotate(45deg); } }
 @keyframes crowd-jump { to { transform: translateY(-7px); } }
 @media (prefers-reduced-motion: reduce) { .crowd-flat * { animation: none !important; } }
+.potion-button { margin-top: 12px; width: 100%; }
+.potion-button[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }
 .scene-camera-controls { position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 3; }
 .scene-camera-controls button { padding: 6px 12px; font-size: 12px; background: #172c47; }
 .scene-hint { position: absolute; bottom: 8px; width: 100%; text-align: center; color: #e0e9f4; font-size: 11px; pointer-events: none; }

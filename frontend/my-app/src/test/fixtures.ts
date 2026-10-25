@@ -2,9 +2,9 @@ import type { Battle, TurnResponse } from '../battle/types'
 
 export const initialBattle: Battle = {
   id: 'battle-1', turn: 0, winner: null,
-  first: { id: 'first', species: 'Bulbizarre', level: 50, hp: 120, max_hp: 120,
+  first: { id: 'first', species: 'Bulbizarre', level: 50, hp: 120, max_hp: 120, potions: 2,
     attacks: [{ attack_slot: 0, name: 'Charge', pp: 35, max_pp: 35 }, { attack_slot: 1, name: 'Fouet Lianes', pp: 25, max_pp: 25 }] },
-  second: { id: 'second', species: 'Salamèche', level: 50, hp: 114, max_hp: 114,
+  second: { id: 'second', species: 'Salamèche', level: 50, hp: 114, max_hp: 114, potions: 2,
     attacks: [{ attack_slot: 0, name: 'Charge', pp: 35, max_pp: 35 }, { attack_slot: 1, name: 'Flammèche', pp: 25, max_pp: 25 }] },
 }
 

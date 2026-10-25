@@ -11,6 +11,7 @@ export interface Fighter {
     level: number
     hp: number
     max_hp: number
+    potions: number
     attacks: Attack[]
 }
 
@@ -23,6 +24,7 @@ export interface Battle {
 }
 
 export type BattleEvent =
+    | { type: 'potion_used'; turn: number; actor: string; healed: number; hp_remaining: number; potions_remaining: number }
     | { type: 'attack_used'; turn: number; actor: string; target: string; attack: string; pp_remaining: number; attack_type?: string | null; attack_slot?: number | null }
     | { type: 'attack_missed'; turn: number; actor: string; target: string }
     | {
@@ -48,18 +50,24 @@ export interface BattleChoices {
     second_species: string
 }
 
+export type BattleAction = {action_type: 'attack'; attack_slot: number} | {action_type: 'potion'}
+
 export interface MoveChoices {
     first_move: number;
     second_move: number
 }
 
-export interface TurnCommand extends MoveChoices {
+export interface ActionChoices {
+    first_action: BattleAction;
+    second_action: BattleAction
+}
+
+export type TurnCommand = (MoveChoices | ActionChoices) & {
     expected_turn: number;
     idempotency_key: string
 }
 
-export interface AiTurnCommand {
-    player_move: number;
+export type AiTurnCommand = ({player_move: number} | {player_action: BattleAction}) & {
     expected_turn: number;
     idempotency_key: string
 }

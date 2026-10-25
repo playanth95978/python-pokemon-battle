@@ -15,6 +15,25 @@ const choices = {first_species: 'bulbizarre', second_species: 'salameche'}
 const moves = {first_move: 0, second_move: 1}
 
 describe('useBattle', () => {
+    it.each([false, true])('réessaie une potion avec la même commande et la même clé, mode IA=%s', async (ai) => {
+        vi.mocked(battleApi.create).mockResolvedValue(initialBattle)
+        const api = ai ? battleApi.playAiTurn : battleApi.playTurn
+        vi.mocked(api).mockRejectedValueOnce(new Error('Réponse perdue')).mockResolvedValue(resolvedTurn)
+        vi.mocked(battleApi.get).mockResolvedValue(resolvedTurn.battle)
+        const {result} = renderHook(() => useBattle())
+        await act(async () => result.current.createBattle(choices))
+        await act(async () => {
+            if (ai) await result.current.playAiTurn({action_type: 'potion'})
+            else await result.current.playTurn({first_action: {action_type: 'potion'}, second_action: {action_type: 'attack', attack_slot: 0}})
+        })
+        const command = vi.mocked(api).mock.calls[0][1]
+        expect(result.current.canRetry).toBe(true)
+        await act(async () => result.current.retryLastTurn())
+        expect(vi.mocked(api).mock.calls[1][1]).toEqual(command)
+        expect(api).toHaveBeenCalledTimes(2)
+        expect(result.current.needsSync).toBe(false)
+    })
+
     it('envoie seulement le choix humain en mode IA et bloque les doubles clics', async () => {
         vi.mocked(battleApi.create).mockResolvedValue(initialBattle)
         const pending = deferred<TurnResponse>()

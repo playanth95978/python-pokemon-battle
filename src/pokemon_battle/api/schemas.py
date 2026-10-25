@@ -7,9 +7,9 @@ from typing import Annotated, Literal
 
 from pokemon_battle.application.battle_repository import StoredBattle
 from pokemon_battle.application.battle_service import TurnResult
-from pokemon_battle.domain import Fighter
+from pokemon_battle.domain import Fighter, AttackAction, UsePotionAction
 from pokemon_battle.types import Type
-from pokemon_battle.engine import AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded, DomainEvent
+from pokemon_battle.engine import AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded, DomainEvent, PotionUsed
 
 
 class CreateBattleRequest(BaseModel):
@@ -35,6 +35,41 @@ class PlayAiTurnRequest(BaseModel):
     idempotency_key: UUID
 
 
+class AttackActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action_type: Literal["attack"]
+    attack_slot: int = Field(ge=0, le=3, strict=True)
+
+    def to_domain(self) -> AttackAction:
+        return AttackAction(self.attack_slot)
+
+
+class PotionActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action_type: Literal["potion"]
+
+    def to_domain(self) -> UsePotionAction:
+        return UsePotionAction()
+
+
+ActionRequest = Annotated[AttackActionRequest | PotionActionRequest, Field(discriminator="action_type")]
+
+
+class PlayActionTurnRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    first_action: ActionRequest
+    second_action: ActionRequest
+    expected_turn: int = Field(ge=0, strict=True)
+    idempotency_key: UUID
+
+
+class PlayAiActionTurnRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    player_action: ActionRequest
+    expected_turn: int = Field(ge=0, strict=True)
+    idempotency_key: UUID
+
+
 class AttackResponse(BaseModel):
     attack_slot: int = Field(validation_alias=AliasChoices("attack_slot", "slot"))
     name: str
@@ -48,12 +83,13 @@ class FighterResponse(BaseModel):
     level: int
     hp: int
     max_hp: int
+    potions: int
     attacks: list[AttackResponse]
 
     @classmethod
     def from_fighter(cls, fighter: Fighter) -> "FighterResponse":
         return cls(id=fighter.id, species=fighter.species.name, level=fighter.level,
-                   hp=fighter.hp, max_hp=fighter.species.stats.hp,
+                   hp=fighter.hp, max_hp=fighter.species.stats.hp, potions=fighter.potions,
                    attacks=[AttackResponse(attack_slot=i, name=attack.name, pp=fighter.pp[i],
                                            max_pp=attack.max_pp)
                             for i, attack in enumerate(fighter.species.attacks)])
@@ -114,8 +150,17 @@ class BattleEndedResponse(BaseModel):
     winner: str
 
 
+class PotionUsedResponse(BaseModel):
+    type: Literal["potion_used"] = "potion_used"
+    turn: int
+    actor: str
+    healed: int
+    hp_remaining: int
+    potions_remaining: int
+
+
 EventResponse = Annotated[
-    AttackUsedResponse | AttackMissedResponse | DamageDealtResponse | KnockedOutResponse | BattleEndedResponse,
+    AttackUsedResponse | AttackMissedResponse | DamageDealtResponse | KnockedOutResponse | BattleEndedResponse | PotionUsedResponse,
     Field(discriminator="type"),
 ]
 
@@ -130,6 +175,7 @@ def event_response(event: DomainEvent) -> EventResponse:
         AttackMissed: AttackMissedResponse,
         KnockedOut: KnockedOutResponse,
         BattleEnded: BattleEndedResponse,
+        PotionUsed: PotionUsedResponse,
     }
     return models[type(event)](**data)
 

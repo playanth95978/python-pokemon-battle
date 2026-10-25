@@ -4,6 +4,8 @@ function describe(event: BattleEvent, battle: Battle): string {
     const name = (id: string) => id === battle.first.id
         ? `${battle.first.species} (1)` : id === battle.second.id ? `${battle.second.species} (2)` : id
     switch (event.type) {
+        case 'potion_used':
+            return `${name(event.actor)} utilise une potion et récupère ${event.healed} PV (${event.potions_remaining} potions restantes).`
         case 'attack_used':
             return `${name(event.actor)} utilise ${event.attack}. Il reste ${event.pp_remaining} PP.`
         case 'attack_missed':
@@ -26,7 +28,7 @@ export function BattleLog({events, battle}: { events: BattleEvent[]; battle: Bat
         <section aria-labelledby="battle-log-heading" className="card">
             <h2 id="battle-log-heading">Journal du combat</h2>
             {events.length === 0 ?
-                <p className="muted text-sm">Choisis les deux attaques pour jouer le premier tour.</p> : (
+                <p className="muted text-sm">Choisis les actions pour jouer le premier tour.</p> : (
                     <ol aria-live="polite" aria-relevant="additions"
                         className="log">
                         {events.map((event, index) => (

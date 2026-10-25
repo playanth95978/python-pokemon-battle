@@ -13,6 +13,7 @@ from pokemon_battle.application.battle_service import (
 from .dependencies import get_battle_service, get_ai_battle_service
 from .schemas import BattleResponse, CreateBattleRequest, PlayTurnRequest, PlayTurnResponse, PlayAiTurnRequest, PlayAiTurnResponse
 from pokemon_battle.application.ai.ai_battle_service import AiBattleService
+from .schemas import PlayActionTurnRequest, PlayAiActionTurnRequest
 
 router = APIRouter(prefix="/battles", tags=["Combats"])
 
@@ -54,12 +55,14 @@ def get_battle(
              response_model=PlayTurnResponse, summary="Jouer un tour")
 def play_turn(
     battle_id: UUID,
-    request: PlayTurnRequest,
+    request: PlayTurnRequest | PlayActionTurnRequest,
     service: Annotated[BattleService, Depends(get_battle_service)],
 ) -> PlayTurnResponse:
     """Résoudre un tour et retourner l'état enregistré avec ses événements."""
     try:
-        result = service.play_turn(battle_id, request.first_move, request.second_move,
+        first = request.first_action.to_domain() if isinstance(request, PlayActionTurnRequest) else request.first_move
+        second = request.second_action.to_domain() if isinstance(request, PlayActionTurnRequest) else request.second_move
+        result = service.play_turn(battle_id, first, second,
                                    expected_turn=request.expected_turn, idempotency_key=request.idempotency_key)
     except BattleNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
@@ -71,11 +74,12 @@ def play_turn(
 
 
 @router.post("/{battle_id}/ai-turns", response_model=PlayAiTurnResponse, summary="Jouer contre l'IA Mistral")
-async def play_ai_turn(battle_id: UUID, request: PlayAiTurnRequest,
+async def play_ai_turn(battle_id: UUID, request: PlayAiTurnRequest | PlayAiActionTurnRequest,
                        service: Annotated[AiBattleService, Depends(get_ai_battle_service)]) -> PlayAiTurnResponse:
     """Le premier combattant est humain ; le second choisit avec ses outils et sa conversation."""
     try:
-        result = await service.play_turn(battle_id, request.player_move, expected_turn=request.expected_turn,
+        action = request.player_action.to_domain() if isinstance(request, PlayAiActionTurnRequest) else request.player_move
+        result = await service.play_turn(battle_id, action, expected_turn=request.expected_turn,
                                          idempotency_key=request.idempotency_key)
     except BattleNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error

@@ -37,6 +37,45 @@ vi.mock('./pokemonArtwork', () => ({
 afterEach(() => vi.unstubAllGlobals())
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {status})
 
+it.each([false, true])('utilise une potion et affiche le résultat serveur, mode IA=%s', async (ai) => {
+    const wounded = {...initialBattle, first: {...initialBattle.first, hp: 50}}
+    const result = {...resolvedTurn, battle: {...resolvedTurn.battle, first: {...wounded.first, hp: 16, potions: 1}}, events: [
+        {type: 'potion_used', turn: 1, actor: 'first', healed: 20, hp_remaining: 70, potions_remaining: 1},
+        resolvedTurn.events[0],
+        {type: 'damage_dealt', turn: 1, actor: 'second', target: 'first', damage: 54, hp_remaining: 16, effectiveness: 1},
+    ]}
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(wounded, 201)).mockResolvedValueOnce(json(result))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<BattlePage/>)
+    fireEvent.click(screen.getByRole('button', {name: 'Créer le combat'}))
+    await screen.findByRole('group', {name: 'Attaque 1 : Bulbizarre'})
+    fireEvent.click(screen.getByRole('checkbox', {name: 'Animations d’attaque'}))
+    if (ai) fireEvent.click(screen.getByRole('checkbox', {name: 'Adversaire IA Mistral'}))
+    const first = screen.getByRole('group', {name: 'Attaque 1 : Bulbizarre'})
+    fireEvent.click(within(first).getByRole('button', {name: 'Utiliser une potion (2)'}))
+    if (!ai) fireEvent.click(within(screen.getByRole('group', {name: 'Attaque 2 : Salamèche'})).getAllByRole('radio')[0])
+    const play = screen.getByRole('button', {name: 'Jouer le tour'})
+    fireEvent.click(play)
+    fireEvent.click(play)
+    expect(await screen.findByText(/récupère 20 PV/)).toBeInTheDocument()
+    expect(within(first).getByRole('button', {name: 'Utiliser une potion (1)'})).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', {name: 'PV de Bulbizarre, combattant 1'})).toHaveAttribute('aria-valuenow', '16')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body)
+    expect(body).toEqual(ai
+        ? {player_action: {action_type: 'potion'}, expected_turn: 0, idempotency_key: expect.any(String)}
+        : {first_action: {action_type: 'potion'}, second_action: {action_type: 'attack', attack_slot: 0}, expected_turn: 0, idempotency_key: expect.any(String)})
+    expect(fetchMock.mock.calls[1][0]).toContain(ai ? '/ai-turns' : '/turns')
+})
+
+it.each([{hp: 120, potions: 2}, {hp: 50, potions: 0}, {hp: 0, potions: 2}])('désactive une potion indisponible : %j', async (state) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({...initialBattle, first: {...initialBattle.first, ...state}})))
+    render(<BattlePage/>)
+    fireEvent.click(screen.getByRole('button', {name: 'Créer le combat'}))
+    const first = await screen.findByRole('group', {name: 'Attaque 1 : Bulbizarre'})
+    expect(within(first).getByRole('button', {name: `Utiliser une potion (${state.potions})`})).toBeDisabled()
+})
+
 it('joue contre Mistral sans demander au joueur de choisir l’attaque adverse', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(json(initialBattle, 201))
         .mockResolvedValueOnce(json({...resolvedTurn,

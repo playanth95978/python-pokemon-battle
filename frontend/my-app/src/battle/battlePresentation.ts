@@ -8,8 +8,13 @@ export function battlePresentation(battle: Battle, events: BattleEvent[], reveal
 
     function fighterPresentation(fighter: Fighter): Fighter {
         let hp = fighter.hp
+        let potions = fighter.potions
         const attacks = fighter.attacks.map((attack) => ({...attack}))
         for (const event of [...pending].reverse()) {
+            if (event.type === 'potion_used' && event.actor === fighter.id) {
+                hp = event.hp_remaining - event.healed
+                potions = event.potions_remaining + 1
+            }
             if (event.type === 'damage_dealt' && event.target === fighter.id) hp = event.hp_remaining + event.damage
             if (event.type === 'attack_used' && event.actor === fighter.id) {
                 // Les anciens reçus n'ont pas de numéro de attack_slot ; conserver leur lisibilité.
@@ -17,7 +22,7 @@ export function battlePresentation(battle: Battle, events: BattleEvent[], reveal
                 if (attack) attack.pp = event.pp_remaining + 1
             }
         }
-        return {...fighter, hp, attacks}
+        return {...fighter, hp, potions, attacks}
     }
 
     return {

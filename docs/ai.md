@@ -106,13 +106,18 @@ decision = await policy.choose(context)
 
 Le branchement HTTP et React est disponible via `POST /battles/{battle_id}/ai-turns`.
 Le premier combattant est humain, le second contrôlé par l'IA. La demande contient
-seulement `player_move`, `expected_turn` et `idempotency_key` ; `second_move` est interdit.
+`player_action` (`{"action_type":"potion"}` ou une attaque avec `attack_slot`),
+`expected_turn` et `idempotency_key`. L'ancien `player_move` reste accepté seul pour
+une attaque ; `second_move` et les commandes mélangeant les deux formats sont interdits.
 La réponse contient `battle`, `events`, `decision` et `metrics`.
 
 Dans l'arène, cocher **Adversaire IA Mistral** avant le premier tour. Seule l'attaque
-du premier combattant doit alors être sélectionnée. Le mode est verrouillé après
+ou la potion du premier combattant doit alors être sélectionnée. Le mode est verrouillé après
 le premier tour et réinitialisé au nouveau combat. Une réponse de secours est affichée
-comme telle. Les PV, PP, événements et vainqueur restent ceux du serveur.
+comme telle. Les PV, PP, potions, événements et vainqueur restent ceux du serveur.
+L'IA continue de choisir parmi ses attaques ; le soin est ici une action disponible
+pour le joueur. Les reçus IA comparent l'action humaine complète, avec relecture
+compatible des anciens reçus contenant `player_move`.
 
 ## Conversations persistantes et mémoire tactique
 

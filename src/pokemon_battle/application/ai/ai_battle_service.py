@@ -8,6 +8,7 @@ import json
 from time import time
 from typing import Any
 from uuid import UUID, uuid4
+from pokemon_battle.domain import AttackAction, BattleAction
 
 from pokemon_battle.application.battle_repository import BattleSession, StoredBattle, TurnResult
 from pokemon_battle.application.battle_service import (
@@ -36,7 +37,7 @@ class AiBattleService:
         self.timeout, self.clock = timeout, clock
         self.rotation_turns, self.max_prompt_tokens = rotation_turns, max_prompt_tokens
 
-    async def play_turn(self, battle_id: UUID, player_move: int, *, expected_turn: int,
+    async def play_turn(self, battle_id: UUID, player_move: int | BattleAction, *, expected_turn: int,
                         idempotency_key: UUID) -> AiTurnResult:
         self._validate_command(player_move, expected_turn, idempotency_key)
         owner = str(uuid4())
@@ -53,10 +54,14 @@ class AiBattleService:
         finally:
             await asyncio.shield(asyncio.to_thread(self._release, battle_id, owner))
 
-    def _validate_command(self, move: int, turn: int, key: UUID) -> None:
-        if (type(move) is not int or not 0 <= move <= 3
-                or type(turn) is not int or turn < 0 or not isinstance(key, UUID)):
+    def _validate_command(self, move: int | BattleAction, turn: int, key: UUID) -> None:
+        self.battles.normalize_action(move)
+        if type(turn) is not int or turn < 0 or not isinstance(key, UUID):
             raise InvalidMoveError("Slot, tour et clé UUID valides obligatoires")
+
+    def _action_data(self, move: int | BattleAction) -> dict:
+        action = self.battles.normalize_action(move)
+        return {"action_type": "attack", "attack_slot": action.attack_slot} if isinstance(action, AttackAction) else {"action_type": "potion"}
 
     async def _choose_attack(self, context: ToolsContext, state: dict[str, Any]) -> None:
         conversation = self._prepare_conversation(context, state)
@@ -96,7 +101,7 @@ class AiBattleService:
             # Après un échec ambigu, ne jamais reprendre des appels en attente inconnus.
             state["conversation"] = asdict(ConversationState())
 
-    def _claim(self, battle_id: UUID, move: int, turn: int, key: UUID,
+    def _claim(self, battle_id: UUID, move: int | BattleAction, turn: int, key: UUID,
                owner: str) -> AiTurnResult | tuple[StoredBattle, dict[str, Any]]:
         with self.battles.repository.transaction() as session:
             replay = self._replay_request(session, battle_id, move, turn, key)
@@ -106,26 +111,28 @@ class AiBattleService:
             state = self._reserve_decision(session, record, owner)
             return record, state
 
-    def _replay_request(self, session: BattleSession, battle_id: UUID, move: int,
+    def _replay_request(self, session: BattleSession, battle_id: UUID, move: int | BattleAction,
                         turn: int, key: UUID) -> AiTurnResult | None:
         # Consulter le reçu avant l'état actuel permet aussi la reprise après KO.
         receipt = session.get_ai_request(battle_id, key)
         if receipt is not None:
-            if (receipt["player_move"], receipt["expected_turn"]) != (move, turn):
+            previous = receipt.get("player_action")
+            if previous is None:
+                previous = self._action_data(receipt["player_move"])
+            if (previous, receipt["expected_turn"]) != (self._action_data(move), turn):
                 raise TurnConflictError("Clé déjà utilisée avec une autre demande")
             return AiTurnResult(session.get_turn(battle_id, key).result, receipt["decision"], receipt["metrics"])
         if session.get_turn(battle_id, key) is not None:
             raise TurnConflictError("Clé déjà utilisée pour un tour manuel")
         return None
 
-    def _load_playable_battle(self, session: BattleSession, battle_id: UUID, move: int,
+    def _load_playable_battle(self, session: BattleSession, battle_id: UUID, move: int | BattleAction,
                               turn: int) -> StoredBattle:
         record = session.get(battle_id)
         if record is None:
             raise BattleNotFoundError("Le combat n'existe pas")
         ToolsContext.from_record(record, record.battle.second.id, turn)
-        if not 0 <= move < len(record.battle.first.pp) or record.battle.first.pp[move] <= 0:
-            raise InvalidMoveError("Attaque du joueur indisponible")
+        self.battles.validate_action(record.battle.first, self.battles.normalize_action(move))
         return record
 
     def _reserve_decision(self, session: BattleSession, record: StoredBattle, owner: str) -> dict[str, Any]:
@@ -138,7 +145,7 @@ class AiBattleService:
         session.save_ai_state(record.id, state)
         return state
 
-    def _commit(self, battle_id: UUID, move: int, turn: int, key: UUID, owner: str,
+    def _commit(self, battle_id: UUID, move: int | BattleAction, turn: int, key: UUID, owner: str,
                 state: dict[str, Any], context: ToolsContext) -> AiTurnResult:
         with self.battles.repository.transaction() as session:
             self._validate_reservation(session, battle_id, owner)
@@ -168,9 +175,9 @@ class AiBattleService:
         metrics["usage_complete"] = context.metrics.complete_usage_reports == context.metrics.model_requests
         return metrics
 
-    def _save_request_receipt(self, session: BattleSession, battle_id: UUID, move: int,
+    def _save_request_receipt(self, session: BattleSession, battle_id: UUID, move: int | BattleAction,
                               turn: int, key: UUID, response: AiTurnResult) -> None:
-        session.save_ai_request(battle_id, key, {"player_move": move, "expected_turn": turn,
+        session.save_ai_request(battle_id, key, {"player_action": self._action_data(move), "expected_turn": turn,
                                                "decision": response.decision, "metrics": response.metrics})
 
     def _release(self, battle_id: UUID, owner: str) -> None:

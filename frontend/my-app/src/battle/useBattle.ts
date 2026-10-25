@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, battleApi } from './api'
-import type { AiTurnCommand, Battle, BattleChoices, BattleEvent, MoveChoices, TurnCommand } from './types'
+import type { ActionChoices, AiTurnCommand, Battle, BattleAction, BattleChoices, BattleEvent, MoveChoices, TurnCommand } from './types'
 
 type Pending = 'create' | 'turn' | 'refresh' | null
 
@@ -44,7 +44,7 @@ export function useBattle() {
             if (kind === 'turn') {
                 setNeedsSync(true)
                 setCanRetry(uncertainTurn.current !== null && (!(cause instanceof ApiError) || cause.status >= 500
-                    || (cause.status === 409 && 'player_move' in uncertainTurn.current.command)))
+                    || (cause.status === 409 && ('player_move' in uncertainTurn.current.command || 'player_action' in uncertainTurn.current.command))))
             }
         } finally {
             inFlight.current = null
@@ -64,7 +64,7 @@ export function useBattle() {
         })
     }
 
-    async function playTurn(moves: MoveChoices) {
+    async function playTurn(moves: MoveChoices | ActionChoices) {
         if (!session || session.battle.winner !== null || needsSync) return
         await run('turn', async (signal) => {
             const command = {...moves, expected_turn: session.battle.turn, idempotency_key: crypto.randomUUID()}
@@ -73,17 +73,18 @@ export function useBattle() {
         })
     }
 
-    async function playAiTurn(playerMove: number) {
+    async function playAiTurn(playerMove: number | BattleAction) {
         if (!session || session.battle.winner !== null || needsSync) return
         await run('turn', async (signal) => {
-            const command = {player_move: playerMove, expected_turn: session.battle.turn, idempotency_key: crypto.randomUUID()}
+            const action = typeof playerMove === 'number' ? {player_move: playerMove} : {player_action: playerMove}
+            const command = {...action, expected_turn: session.battle.turn, idempotency_key: crypto.randomUUID()}
             uncertainTurn.current = {battleId: session.battle.id, command}
             await executeTurn(session.battle.id, command, signal, false)
         })
     }
 
     async function executeTurn(battleId: string, command: TurnCommand | AiTurnCommand, signal: AbortSignal, retry: boolean) {
-        const result = 'player_move' in command
+        const result = 'player_move' in command || 'player_action' in command
             ? await battleApi.playAiTurn(battleId, command, signal)
             : await battleApi.playTurn(battleId, command, signal)
         // Une réponse idempotente peut être ancienne : relire l'état courant après une reprise.

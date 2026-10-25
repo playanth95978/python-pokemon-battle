@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
-import type { Battle, BattleEvent, MoveChoices } from './types'
+import type { ActionChoices, Battle, BattleAction, BattleEvent, MoveChoices } from './types'
 import { AttackPanel } from './AttackPanel'
 import { BattleArena } from './BattleArena'
 import { BattleLog } from './BattleLog'
@@ -22,11 +22,13 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
     events: BattleEvent[];
     busy: boolean;
     needsSync: boolean;
-    playTurn: (moves: MoveChoices) => Promise<void>;
-    playAiTurn: (move: number) => Promise<void>
+    playTurn: (moves: MoveChoices | ActionChoices) => Promise<void>;
+    playAiTurn: (move: number | BattleAction) => Promise<void>
 }) {
     const [firstMove, setFirstMove] = useState<number | null>(null)
     const [secondMove, setSecondMove] = useState<number | null>(null)
+    const [firstPotion, setFirstPotion] = useState(false)
+    const [secondPotion, setSecondPotion] = useState(false)
     const [animations, setAnimations] = useState(true)
     const [aiOpponent, setAiOpponent] = useState(false)
     const firstArtwork = usePokemonArtwork(battle.first.species)
@@ -36,8 +38,9 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
     const displayed = battlePresentation(battle, events, revealedCount)
     const finished = displayed.winner !== null
     const blocked = busy || needsSync || isPlaying
-    const firstValid = battle.first.attacks.some((attack) => attack.attack_slot === firstMove && attack.pp > 0)
-    const secondValid = battle.second.attacks.some((attack) => attack.attack_slot === secondMove && attack.pp > 0)
+    const potionAvailable = (fighter: Battle['first']) => fighter.potions > 0 && fighter.hp > 0 && fighter.hp < fighter.max_hp
+    const firstValid = firstPotion ? potionAvailable(battle.first) : battle.first.attacks.some((attack) => attack.attack_slot === firstMove && attack.pp > 0)
+    const secondValid = secondPotion ? potionAvailable(battle.second) : battle.second.attacks.some((attack) => attack.attack_slot === secondMove && attack.pp > 0)
     const winner = [displayed.first, displayed.second].find((fighter) => fighter.id === displayed.winner)
 
     return <div className="battle-layout" aria-busy={busy}>
@@ -54,24 +57,37 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
             <BattleArena battle={displayed} firstArtwork={firstArtwork} secondArtwork={secondArtwork} active={active} impact={impact} motion={animations && !reducedMotion}/>
         </div>
         <section className="card battle-commands" aria-labelledby="attacks-heading">
-            <h2 id="attacks-heading">{finished ? 'Combat terminé' : 'Choisis les attaques'}</h2>
+            <h2 id="attacks-heading">{finished ? 'Combat terminé' : 'Choisis les actions'}</h2>
             {finished ?
                 <p className="muted">{winner?.species} remporte le duel. Lance un nouveau combat pour rejouer.</p> : <>
                     <label className="motion-toggle"><input type="checkbox" checked={aiOpponent}
                         disabled={blocked || battle.turn > 0} onChange={(event) => setAiOpponent(event.target.checked)}/>
                         Adversaire IA Mistral</label>
-                    <p className="muted text-sm mb-4">{aiOpponent ? 'Choisis ton attaque. L’IA choisit la sienne sans connaître ton choix.' : 'Une attaque par combattant, puis le serveur résout le tour.'}</p>
+                    <p className="muted text-sm mb-4">{aiOpponent ? 'Choisis une attaque ou une potion. L’IA choisit sans connaître ton action.' : 'Une attaque ou une potion par combattant, puis le serveur résout le tour.'}</p>
                     <div className="grid gap-5">
                         <AttackPanel fighter={displayed.first} label="Attaque 1" selected={firstMove} disabled={blocked}
-                                     onSelect={setFirstMove}/>
+                                     onSelect={(attackSlot) => {setFirstMove(attackSlot); setFirstPotion(false)}}
+                                     potionSelected={firstPotion} onPotion={() => {setFirstPotion(true); setFirstMove(null)}}/>
                         {!aiOpponent && <AttackPanel fighter={displayed.second} label="Attaque 2" selected={secondMove} disabled={blocked}
-                                     onSelect={setSecondMove}/>}
+                                     onSelect={(attackSlot) => {setSecondMove(attackSlot); setSecondPotion(false)}}
+                                     potionSelected={secondPotion} onPotion={() => {setSecondPotion(true); setSecondMove(null)}}/>}
                     </div>
                     <div className="bottom"><span
                         className="muted text-sm">{isPlaying ? 'Lecture des attaques' : 'À toi de jouer !'}</span>
                         <button className="button-primary" disabled={blocked || !firstValid || (!aiOpponent && !secondValid)}
                                 onClick={() => {
-                                    if (aiOpponent && firstMove !== null) void playAiTurn(firstMove)
+                                    if (blocked || !firstValid || (!aiOpponent && !secondValid)) return
+                                    if (aiOpponent) {
+                                        if (firstPotion) void playAiTurn({action_type: 'potion'})
+                                        else if (firstMove !== null) void playAiTurn(firstMove)
+                                        return
+                                    }
+                                    const firstAction: BattleAction | null = firstPotion ? {action_type: 'potion'}
+                                        : firstMove !== null ? {action_type: 'attack', attack_slot: firstMove} : null
+                                    const secondAction: BattleAction | null = secondPotion ? {action_type: 'potion'}
+                                        : secondMove !== null ? {action_type: 'attack', attack_slot: secondMove} : null
+                                    if (!firstAction || !secondAction) return
+                                    if (firstPotion || secondPotion) void playTurn({first_action: firstAction, second_action: secondAction})
                                     else if (firstMove !== null && secondMove !== null) void playTurn({
                                         first_move: firstMove,
                                         second_move: secondMove
