@@ -9,7 +9,7 @@ from pokemon_battle import (
     Category, DamageDealt, Fighter, KnockedOut, Species, Stats, Type, effectiveness,
 )
 
-
+from pokemon_battle.engine import PotionUsed
 class Rolls:
     def __init__(self, *values):
         self.values = iter(values)
@@ -130,6 +130,77 @@ def testLesAttaquesSpecialesUtilisentLesStatsSpeciales():
     events = BattleEngine(Rolls(1, 100, 1, 100)).play_turn(battle, 0, 0)
     assert events[1].damage == 48
 
+def testUnePotionSoigneSansDepasserLesPvMaximum():
+    """Le soin est limité aux PV manquants et consomme une potion."""
+    actor = fighter("a")  # Maximum : 251 PV
+    actor.hp = 244
+
+    events = BattleEngine(Rolls())._execute_potion(1, actor)
+
+    assert actor.hp == 251
+    assert actor.potions == 1
+    assert actor.pp == [3]
+    assert events == (
+        PotionUsed(
+            turn=1,
+            actor="a",
+            healed=7,
+            hp_remaining=251,
+            potions_remaining=1,
+        ),
+    )
+def testUnePotionSoigneAuMaximumVingtPv():
+    """Une blessure importante ne doit pas augmenter la puissance du soin."""
+    actor = fighter("a")
+    actor.hp = 100
+
+    events = BattleEngine(Rolls())._execute_potion(1, actor)
+
+    assert actor.hp == 120
+    assert actor.potions == 1
+    assert actor.pp == [3]
+    assert events == (
+        PotionUsed(1, "a", 20, 120, 1),
+    )
+
+def testUnePotionEstRefuseeSiLesPvSontPleins():
+    """Un combattant en pleine santé ne doit perdre ni potion ni PP."""
+    actor = fighter("a")
+
+    with pytest.raises(ValueError, match="vie est pleine"):
+        BattleEngine(Rolls())._execute_potion(1, actor)
+
+    assert actor.hp == 251
+    assert actor.potions == 2
+    assert actor.pp == [3]
+
+
+def testUnePotionEstRefuseeSiLeStockEstVide():
+    """Un combattant blessé sans potion ne doit recevoir aucun soin ni consommer de PP."""
+    actor = fighter("a")
+    actor.hp = 100
+    actor.potions = 0
+
+    with pytest.raises(ValueError, match="plus de potions"):
+        BattleEngine(Rolls())._execute_potion(1, actor)
+
+    assert actor.hp == 100
+    assert actor.potions == 0
+    assert actor.pp == [3]
+
+
+def testUnePotionEstRefuseeSiLeCombattantEstKo():
+    """Une potion ne doit pas ranimer un combattant ni diminuer son stock lorsqu'il est KO."""
+    actor = fighter("a")
+    actor.hp = 0
+
+    with pytest.raises(ValueError, match="(?i)ko"):
+        BattleEngine(Rolls())._execute_potion(1, actor)
+
+    assert actor.hp == 0
+    assert actor.potions == 2
+    assert actor.pp == [3]
+
 
 def testUneGraineReproduitLeCombat():
     """Deux moteurs indépendants reproduisent événements et état final."""
@@ -140,6 +211,7 @@ def testUneGraineReproduitLeCombat():
     assert run() == run()
 
 
+
 @pytest.mark.parametrize("kwargs", [{"power": 0}, {"accuracy": 101}, {"max_pp": -1}])
 def testLesDefinitionsInvalidesSontRefusees(kwargs):
     """Les valeurs invalides sont rejetées à la frontière du domaine."""
@@ -147,3 +219,4 @@ def testLesDefinitionsInvalidesSontRefusees(kwargs):
     values.update(kwargs)
     with pytest.raises(ValueError):
         Attack(**values)
+

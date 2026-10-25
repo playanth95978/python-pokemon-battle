@@ -13,49 +13,85 @@ class RandomSource(Protocol):
     def randint(self, a: int, b: int) -> int: ...
 
 
+# =========================
+# Base events
+# =========================
+
 @dataclass(frozen=True, slots=True)
-class AttackUsed:
+class BattleEvent:
     turn: int
+
+
+@dataclass(frozen=True, slots=True)
+class ActorEvent(BattleEvent):
     actor: str
+
+
+@dataclass(frozen=True, slots=True)
+class TargetedAction(ActorEvent):
     target: str
+
+
+# =========================
+# Domain events
+# =========================
+
+@dataclass(frozen=True, slots=True)
+class PotionUsed(ActorEvent):
+    healed: int
+    hp_remaining: int
+    potions_remaining: int
+
+
+@dataclass(frozen=True, slots=True)
+class AttackUsed(TargetedAction):
     attack: str
     pp_remaining: int
-    # Facultatifs pour relire les reçus enregistrés avant l'enrichissement des événements.
+
+    # Compatibilité avec les anciens événements sérialisés.
     attack_type: Type | None = None
     attack_slot: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class AttackMissed:
-    turn: int
-    actor: str
-    target: str
+class AttackMissed(TargetedAction):
+    pass
 
 
 @dataclass(frozen=True, slots=True)
-class DamageDealt:
-    turn: int
-    actor: str
-    target: str
+class DamageDealt(TargetedAction):
     damage: int
     hp_remaining: int
     effectiveness: Fraction
 
 
 @dataclass(frozen=True, slots=True)
-class KnockedOut:
-    turn: int
+class KnockedOut(BattleEvent):
     fighter: str
 
 
 @dataclass(frozen=True, slots=True)
-class BattleEnded:
-    turn: int
+class BattleEnded(BattleEvent):
     winner: str
 
 
-type DomainEvent = AttackUsed | AttackMissed | DamageDealt | KnockedOut | BattleEnded
+# =========================
+# Domain event types
+# =========================
 
+type DomainEvent = (
+        PotionUsed
+        | AttackUsed
+        | AttackMissed
+        | DamageDealt
+        | KnockedOut
+        | BattleEnded
+)
+
+
+# =========================
+# Battle aggregate
+# =========================
 
 @dataclass(slots=True)
 class Battle:
@@ -106,7 +142,7 @@ class BattleEngine:
                 raise ValueError("Attack has no PP remaining")
 
     def _ordered_actions(
-        self, actions: list[tuple[Fighter, Fighter, int]],
+            self, actions: list[tuple[Fighter, Fighter, int]],
     ) -> list[tuple[Fighter, Fighter, int]]:
         first_speed = actions[0][0].species.stats.speed
         second_speed = actions[1][0].species.stats.speed
@@ -115,7 +151,7 @@ class BattleEngine:
         return actions
 
     def _execute_attack(
-        self, turn: int, actor: Fighter, target: Fighter, move: int,
+            self, turn: int, actor: Fighter, target: Fighter, move: int,
     ) -> tuple[DomainEvent, ...]:
         attack = actor.species.attacks[move]
         actor.pp[move] -= 1
@@ -131,6 +167,30 @@ class BattleEngine:
         events.append(DamageDealt(turn, actor.id, target.id, damage, target.hp, multiplier))
         if target.knocked_out:
             events.append(KnockedOut(turn, target.id))
+        return tuple(events)
+
+    def _execute_potion(self, turn: int, actor: Fighter) -> tuple[PotionUsed, ...]:
+        """Soigner le combattant et décrire le résultat sans consommer de PP ni de hasard."""
+        # 1. Calculer les PV manquants à partir du maximum de l'espèce et des PV actuels.
+        if actor.species.stats.hp == actor.hp:
+            raise ValueError("Impossible d'utiliser une potion, votre vie est pleine")
+        if actor.potions == 0:
+            raise ValueError("Vous n'avez plus de potions en stock")
+        if actor.knocked_out:
+            raise ValueError(" Fighter ko")
+        missing_hp: int = actor.species.stats.hp - actor.hp
+        # 2. Limiter le soin à 20 PV ou aux PV manquants pour ne pas dépasser le maximum.
+        healed: int = min(20, missing_hp)
+        # 3. Ajouter le soin réel aux PV du combattant.
+        actor.hp += healed
+        # 4. Décrémenter le stock d'une potion.
+        actor.potions -= 1
+        # 5. Construire PotionUsed avec le tour, l'acteur, le soin réel, les PV et le stock restants.
+        potion_used = PotionUsed(turn, actor.id, healed, actor.hp, actor.potions)
+        # 6. Retourner cet événement dans un tuple contenant un seul élément.
+        events: list[DomainEvent] = []
+        events.append(potion_used)
+        # Les refus d'utilisation seront ajoutés lors de l'étape de validation des actions.
         return tuple(events)
 
     def _damage(self, actor: Fighter, target: Fighter, attack: Attack, multiplier: Fraction) -> int:

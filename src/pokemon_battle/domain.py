@@ -77,6 +77,7 @@ class Fighter:
     level: int = 50
     hp: int = field(init=False)
     pp: list[int] = field(init=False)
+    potions: int = field(default=2, init=False)
 
     def __post_init__(self) -> None:
         if not self.id.strip():
@@ -89,3 +90,16 @@ class Fighter:
     @property
     def knocked_out(self) -> bool:
         return self.hp == 0
+
+
+@dataclass(frozen=True, slots=True)
+class AttackAction:
+    slot: int
+
+
+@dataclass(frozen=True, slots=True)
+class UsePotionAction:
+    pass
+
+
+type BattleAction = AttackAction | UsePotionAction
