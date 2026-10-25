@@ -26,7 +26,7 @@ def testLaResistanceCompareLesDegatsPhysiquesEtSpeciauxSansModifierLeCombat():
     ctx, result = estimate(record)
     electric, normal = result["estimates"]
     assert electric == {
-        "slot": 0, "name": "Éclair", "category": "special", "type_multiplier": 0.5,
+        "attack_slot": 0, "name": "Éclair", "category": "special", "type_multiplier": 0.5,
         "stab_multiplier": 1.5, "hit_probability": 1.0, "min_damage_on_hit": 9,
         "max_damage_on_hit": 11, "mean_damage_on_hit": 9.9375,
         "expected_damage": 9.9375, "ko_probability": 0.0,
@@ -40,12 +40,12 @@ def testLaResistanceCompareLesDegatsPhysiquesEtSpeciauxSansModifierLeCombat():
 
 
 def testUneImmuniteProduitZeroDegatEtLesPpEpuisesSontExclus():
-    """Un slot légal immunisé reste visible, tandis qu'une attaque sans PP n'est pas proposée."""
+    """Un attack_slot légal immunisé reste visible, tandis qu'une attaque sans PP n'est pas proposée."""
     _, result = estimate(SCENARIOS["pikachu_vs_ground"].create())
     electric = result["estimates"][0]
     assert [electric[key] for key in ("min_damage_on_hit", "max_damage_on_hit", "expected_damage", "ko_probability")] == [0, 0, 0.0, 0.0]
     _, depleted = estimate(SCENARIOS["exhausted_move"].create())
-    assert [item["slot"] for item in depleted["estimates"]] == [1]
+    assert [item["attack_slot"] for item in depleted["estimates"]] == [1]
 
 
 def testLesDegatsSontBornesAuxPvEtLeKoInclutLaProbabiliteDeRater():
@@ -83,7 +83,7 @@ def testLesBornesCorrespondentAuxDegatsReelsPourChaqueTirage(name):
                 def randint(self, lower, upper):
                     return roll if (lower, upper) == (85, 100) else lower
             fresh = SCENARIOS[name].create()
-            events = BattleEngine(FixedRandom()).play_turn(fresh.battle, 0, item["slot"])
+            events = BattleEngine(FixedRandom()).play_turn(fresh.battle, 0, item["attack_slot"])
             damages.append(next(event.damage for event in events if isinstance(event, DamageDealt) and event.actor == "agent"))
         assert min(damages) == item["min_damage_on_hit"]
         assert max(damages) == item["max_damage_on_hit"]
@@ -91,7 +91,7 @@ def testLesBornesCorrespondentAuxDegatsReelsPourChaqueTirage(name):
 
 
 def testLeResultatEstTransmisAuModeleAvantSaSelection():
-    """L'agent reçoit les estimations avec le bon identifiant, puis reste libre de choisir son slot."""
+    """L'agent reçoit les estimations avec le bon identifiant, puis reste libre de choisir son attack_slot."""
     class Client:
         async def complete(self, messages, **kwargs):
             if len(messages) == 2:
@@ -101,9 +101,9 @@ def testLeResultatEstTransmisAuModeleAvantSaSelection():
             assert messages[-1].tool_call_id == "estimate01"
             result = json.loads(messages[-1].content)
             assert result["estimates"][1]["expected_damage"] == 13.375
-            return Completion(None, {}, (ToolCall("select001", "select_attack", '{"slot":1}'),))
+            return Completion(None, {}, (ToolCall("select001", "select_attack", '{"attack_slot":1}'),))
     ctx = ToolsContext.from_record(SCENARIOS["grass_resistance"].create(), "agent", 0)
     decision = asyncio.run(ToolCallingOpponent(Client()).choose(ctx))
-    assert (decision.slot, decision.source) == (1, "llm")
+    assert (decision.attack_slot, decision.source) == (1, "llm")
     assert ctx.metrics.tool_calls_executed == 2
     assert ctx.metrics.tool_errors == 0

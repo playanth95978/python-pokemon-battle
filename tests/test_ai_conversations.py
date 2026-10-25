@@ -46,7 +46,7 @@ class Server:
         else:
             assert inputs[0]["type"] == "function.result"
             assert "estimates" in json.loads(inputs[0]["result"])
-            name, args = "select_attack", {"slot": 0, "comment": "Je joue."}
+            name, args = "select_attack", {"attack_slot": 0, "comment": "Je joue."}
         return httpx.Response(200, json={"conversation_id": f"conv-{index}", "outputs": [
             {"type": "function.call", "tool_call_id": f"call-{index}", "name": name, "arguments": args}],
             "usage": {"prompt_tokens": 111, "completion_tokens": 7, "total_tokens": 118}})

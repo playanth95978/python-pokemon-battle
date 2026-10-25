@@ -33,7 +33,7 @@ it('ne rembobine pas un GET plus récent que les événements récupérés', () 
   expect(battlePresentation(newer, events, 0)).toBe(newer)
 })
 
-it('supporte les anciens reçus sans slot et les échecs sans dégâts', () => {
+it('supporte les anciens reçus sans attack_slot et les échecs sans dégâts', () => {
   const missed: BattleEvent[] = [
     {type: 'attack_used', turn: 1, actor: 'second', target: 'first', attack: 'Charge', pp_remaining: 34},
     {type: 'attack_missed', turn: 1, actor: 'second', target: 'first'},

@@ -1,5 +1,5 @@
 export interface Attack {
-    slot: number;
+    attack_slot: number;
     name: string;
     pp: number;
     max_pp: number
@@ -40,7 +40,7 @@ export type BattleEvent =
 export interface TurnResponse {
     battle: Battle;
     events: BattleEvent[]
-    decision?: { slot: number; source: 'llm' | 'local'; comment: string; fallback_reason: string | null }
+    decision?: { attack_slot: number; source: 'llm' | 'local'; comment: string; fallback_reason: string | null }
 }
 
 export interface BattleChoices {

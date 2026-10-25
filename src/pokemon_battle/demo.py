@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"{battle.first.species.name} contre {battle.second.species.name} (graine {args.seed})")
         while battle.winner is None:
             # Préférer l'attaque élémentaire, puis Charge si ses PP sont épuisés.
-            moves = [next((slot for slot in (1, 0) if fighter.pp[slot] > 0), None)
+            moves = [next((attack_slot for attack_slot in (1, 0) if fighter.pp[attack_slot] > 0), None)
                      for fighter in (battle.first, battle.second)]
             if None in moves:
                 print("Combat interrompu : toutes les attaques d'un combattant sont épuisées.")

@@ -142,7 +142,7 @@ class AiBattleService:
                 state: dict[str, Any], context: ToolsContext) -> AiTurnResult:
         with self.battles.repository.transaction() as session:
             self._validate_reservation(session, battle_id, owner)
-            result = self.battles.resolve_turn(session, battle_id, move, context.decision.slot,
+            result = self.battles.resolve_turn(session, battle_id, move, context.decision.attack_slot,
                                               expected_turn=turn, idempotency_key=key)
             self._save_resolved_session(session, result, state)
             response = AiTurnResult(result, asdict(context.decision), self._decision_metrics(context))

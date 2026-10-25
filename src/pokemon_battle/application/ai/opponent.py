@@ -36,9 +36,9 @@ class LocalOpponent:
         # Aucun tirage ni calcul réel de dégâts n'est effectué par cette stratégie.
         move = max(context.legal_moves, key=lambda move: (
             move.power * move.accuracy * effectiveness(move.type, context.view.opponent.types)
-            * (3 if move.type in context.view.fighter.types else 2), -move.slot,
+            * (3 if move.type in context.view.fighter.types else 2), -move.attack_slot,
         ))
-        context.decision = AttackDecision(move.slot, "local")
+        context.decision = AttackDecision(move.attack_slot, "local")
         return context.decision
 
 
@@ -77,8 +77,8 @@ class ToolCallingOpponent:
     async def _fallback(self, context: ToolsContext, reason: str) -> AttackDecision:
         logger.warning("Décision IA locale combat=%s tour=%s cause=%s", context.battle_id, context.view.turn, reason)
         choice = await LocalOpponent().choose(context)
-        context.decision = AttackDecision(choice.slot, "local", fallback_reason=reason)
-        context.metrics.event("fallback", reason=reason, slot=choice.slot)
+        context.decision = AttackDecision(choice.attack_slot, "local", fallback_reason=reason)
+        context.metrics.event("fallback", reason=reason, attack_slot=choice.attack_slot)
         return context.decision
 
     async def _run(self, context: ToolsContext) -> AttackDecision:
@@ -93,7 +93,7 @@ class ToolCallingOpponent:
                             "dégâts réduits ; 1 (neutral), efficacité normale ; supérieur à 1 (super_effective), "
                             "dégâts amplifiés. Évite une attaque sans effet quand une autre attaque jouable peut toucher. "
                             "Compare aussi puissance, précision et bonus du même type ; l'efficacité seule n'est pas un dégât. "
-                            "Fais correspondre le nom et le slot exacts des résultats, sans inventer de slot. "
+                            "Utilise le nom et le champ attack_slot exacts des résultats, sans inventer d'emplacement. "
                             "Termine avec select_attack. Le choix actuel du joueur est inconnu. "
                             "Les commentaires sont de courtes répliques, pas un raisonnement détaillé."),
                     Message("user", "Choisis ton attaque pour ce tour.")]
@@ -129,6 +129,6 @@ class ToolCallingOpponent:
                 messages.append(Message("tool", json.dumps(result, ensure_ascii=False),
                                         tool_call_id=call.id, name=call.name))
             if context.decision is not None:
-                metrics.event("decision", slot=context.decision.slot, source=context.decision.source)
+                metrics.event("decision", attack_slot=context.decision.attack_slot, source=context.decision.source)
                 return context.decision
         return await self._fallback(context, "round_budget")

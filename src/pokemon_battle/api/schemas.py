@@ -1,6 +1,6 @@
 """Contrats d'entrée des routes de combat."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from uuid import UUID
 from dataclasses import asdict
 from typing import Annotated, Literal
@@ -36,7 +36,7 @@ class PlayAiTurnRequest(BaseModel):
 
 
 class AttackResponse(BaseModel):
-    slot: int
+    attack_slot: int = Field(validation_alias=AliasChoices("attack_slot", "slot"))
     name: str
     pp: int
     max_pp: int
@@ -54,7 +54,7 @@ class FighterResponse(BaseModel):
     def from_fighter(cls, fighter: Fighter) -> "FighterResponse":
         return cls(id=fighter.id, species=fighter.species.name, level=fighter.level,
                    hp=fighter.hp, max_hp=fighter.species.stats.hp,
-                   attacks=[AttackResponse(slot=i, name=attack.name, pp=fighter.pp[i],
+                   attacks=[AttackResponse(attack_slot=i, name=attack.name, pp=fighter.pp[i],
                                            max_pp=attack.max_pp)
                             for i, attack in enumerate(fighter.species.attacks)])
 
@@ -145,7 +145,7 @@ class PlayTurnResponse(BaseModel):
 
 
 class AiDecisionResponse(BaseModel):
-    slot: int
+    attack_slot: int = Field(validation_alias=AliasChoices("attack_slot", "slot"))
     source: Literal["llm", "local"]
     comment: str
     fallback_reason: str | None

@@ -12,8 +12,8 @@ export function battlePresentation(battle: Battle, events: BattleEvent[], reveal
         for (const event of [...pending].reverse()) {
             if (event.type === 'damage_dealt' && event.target === fighter.id) hp = event.hp_remaining + event.damage
             if (event.type === 'attack_used' && event.actor === fighter.id) {
-                // Les anciens reçus n'ont pas de numéro de slot ; conserver leur lisibilité.
-                const attack = attacks.find((item) => event.attack_slot != null ? item.slot === event.attack_slot : item.name === event.attack)
+                // Les anciens reçus n'ont pas de numéro de attack_slot ; conserver leur lisibilité.
+                const attack = attacks.find((item) => event.attack_slot != null ? item.attack_slot === event.attack_slot : item.name === event.attack)
                 if (attack) attack.pp = event.pp_remaining + 1
             }
         }

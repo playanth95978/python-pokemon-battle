@@ -6,6 +6,7 @@ from typing import Protocol
 from uuid import UUID
 
 from pokemon_battle.engine import Battle, DomainEvent
+from pokemon_battle.domain import BattleAction
 
 
 @dataclass(frozen=True, slots=True)

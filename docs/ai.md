@@ -7,6 +7,12 @@ la résolution et la persistance du tour. Il n'y a pas de MCP, de RAG ou d'embed
 
 ## Contexte et outils
 
+Les réponses des outils et les décisions utilisent `attack_slot` pour désigner
+l'emplacement d'attaque. `select_attack` attend `{"attack_slot": 0}` ; l'ancien
+argument `slot` reste accepté pour les conversations déjà créées. Une décision
+HTTP est toujours exposée avec `attack_slot`, même lors de la reprise d'un ancien reçu.
+Les types d'événements conservent leur champ `type` : ce ne sont pas des actions.
+
 `ToolsContext.from_record(record, fighter_id, expected_turn)` refuse les combats
 terminés, les tours périmés, les combattants étrangers et l'absence d'attaque jouable.
 Il copie dans des dataclasses immuables les informations visibles : tour, identité,
@@ -24,17 +30,17 @@ décision ; la conversation distante peut continuer entre plusieurs tours du mê
 | `inspect_battle` | Tour et vues visibles des deux combattants |
 | `list_legal_moves` | Slots jouables, PP, puissance, précision, catégorie et type |
 | `evaluate_matchups` | Efficacité issue de la table métier, sans prédiction de dégâts |
-| `estimate_damage` | Dégâts minimum/maximum si touche, moyenne avec précision et probabilité de KO pour chaque slot jouable |
+| `estimate_damage` | Dégâts minimum/maximum si touche, moyenne avec précision et probabilité de KO pour chaque emplacement d’attaque jouable |
 | `select_attack` | Slot validé et commentaire facultatif de 160 caractères maximum |
 
 Les schémas JSON proviennent des modèles Pydantic utilisés pour la validation.
-Les paramètres supplémentaires sont interdits ; le slot doit être un entier strict
+Les paramètres supplémentaires sont interdits ; l’emplacement d’attaque doit être un entier strict
 de 0 à 3, présent et doté de PP. Un outil inconnu ou un appel invalide retourne une
 erreur structurée au modèle, qui peut se corriger dans le budget restant.
 Le premier `select_attack` valide termine la décision ; les autres appels du même
 lot ne peuvent ni remplacer ce choix ni modifier le combat.
 
-Les résultats de `evaluate_matchups` associent le slot et le nom de l'attaque à
+Les résultats de `evaluate_matchups` associent l’emplacement d’attaque et le nom de l'attaque à
 son type, aux types de la cible, au multiplicateur, à un libellé (`immune`,
 `resisted`, `neutral`, `super_effective`) et à une explication. La consigne générale
 du modèle lui demande de consulter `estimate_damage` et de faire référence aux résultats métier,
@@ -79,7 +85,7 @@ déclenche `LocalOpponent`. Une annulation par le demandeur reste une annulation
 sans décision tardive de secours. Les erreurs de programmation ne sont pas masquées.
 
 La stratégie locale classe les attaques jouables par puissance × précision ×
-efficacité × bonus du même type. Les égalités favorisent le plus petit slot. Cette
+efficacité × bonus du même type. Les égalités favorisent le plus petit emplacement d’attaque. Cette
 heuristique déterministe n'est pas la formule de dégâts et ne consomme pas le hasard
 du moteur. Le résultat indique `source="llm"` ou `source="local"` et, dans ce dernier
 cas après repli, un `fallback_reason`. Les logs de repli ne contiennent ni clé,
@@ -202,16 +208,16 @@ Le script appelle réellement Mistral par défaut. `--model` permet de remplacer
 `MISTRAL_CHAT_MODEL`. Il n'a besoin ni de FastAPI lancé, ni du frontend, ni d'une
 base de données : il crée un combat temporaire en mémoire, sans toucher aux parties.
 
-Le scénario est volontairement simple : Pikachu possède Éclair (slot 0) et Charge
-(slot 1), face à Sabelette de type Sol. Le choix attendu est Charge ; Éclair est
+Le scénario est volontairement simple : Pikachu possède Éclair (attack_slot 0) et Charge
+(attack_slot 1), face à Sabelette de type Sol. Le choix attendu est Charge ; Éclair est
 légal mais inefficace. L'agent peut inspecter la situation, lister les attaques et
-consulter les types avant de sélectionner son slot. L'ordre et le nombre d'appels
+consulter les types avant de sélectionner son emplacement d’attaque. L'ordre et le nombre d'appels
 ne sont pas imposés au LLM. Le choix du joueur n'est utilisé qu'après cette décision.
 Le moteur résout alors un tour avec une graine fixe. Cette graine ne rend pas le
 modèle déterministe.
 
 Les logs console montrent chaque demande/réponse modèle, chaque résultat d'outil,
-le slot retenu, la source de décision et un éventuel repli. Pour les conserver dans
+l’emplacement d’attaque retenu, la source de décision et un éventuel repli. Pour les conserver dans
 PowerShell, ajouter `2> artifacts/ai-real.log` à la commande. Un refus HTTP est
 diagnostiqué par son statut, sans journaliser les en-têtes ou le corps fournisseur.
 Les commentaires courts éventuels sont dans la décision du rapport ; aucun
@@ -219,9 +225,9 @@ raisonnement interne du modèle n'est demandé ou enregistré.
 
 Le rapport JSON comprend :
 
-- `checks` : slot légal, évitement de l'immunité, slot attendu, sélection par l'agent,
+- `checks` : attack_slot légal, évitement de l'immunité, attack_slot attendu, sélection par l'agent,
   absence de mutation pendant la décision ;
-- `decision` : slot, source et motif éventuel du repli ;
+- `decision` : attack_slot, source et motif éventuel du repli ;
 - `metrics` : nombre de tentatives/réponses modèle, appels d'outils demandés/traités,
   erreurs d'outils, durée globale, temps passé en appels modèle, tokens communiqués ;
 - `metrics.trace` et `observations` : séquence des étapes et résultats des outils ;

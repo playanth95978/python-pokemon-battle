@@ -24,8 +24,8 @@ class Scenario:
         if self.reverse_moves:
             actor = Species(actor.name, actor.types, actor.stats, tuple(reversed(actor.attacks)))
         ai = Fighter("agent", actor)
-        for slot in self.exhausted_slots:
-            ai.pp[slot] = 0
+        for attack_slot in self.exhausted_slots:
+            ai.pp[attack_slot] = 0
         return StoredBattle(UUID("00000000-0000-0000-0000-000000000025"), Battle(Fighter("player", self.opponent), ai))
 
 

@@ -5,7 +5,7 @@ import logging
 from random import Random
 from uuid import uuid4, UUID
 
-from pokemon_battle.domain import Fighter, Species
+from pokemon_battle.domain import AttackAction, Fighter, Species
 from pokemon_battle.engine import Battle, BattleEngine
 
 from .battle_repository import BattleRepository, StoredBattle, StoredTurn, TurnResult
@@ -80,8 +80,8 @@ class BattleService:
         receipt = session.get_turn(battle_id, idempotency_key)
         # Rejouer la réponse avant toute vérification de l'état actuel (même après KO).
         if receipt is not None:
-            if (receipt.expected_turn, receipt.first_move, receipt.second_move) != (
-                expected_turn, first_move, second_move,
+            if (receipt.expected_turn, receipt.first_action, receipt.second_action) != (
+                expected_turn, AttackAction(first_move), AttackAction(second_move),
             ):
                 raise TurnConflictError("Cette clé d'idempotence a déjà été utilisée avec un autre contenu")
             logger.info("Réponse de tour réutilisée id=%s clé=%s", battle_id, idempotency_key)
@@ -109,7 +109,7 @@ class BattleService:
         session.save(record)
         result = TurnResult(record, events)
         session.save_turn(battle_id, idempotency_key, StoredTurn(
-            expected_turn, first_move, second_move, result,
+            expected_turn, AttackAction(first_move), AttackAction(second_move), result,
         ))
         # Le succès HTTP attend la validation de la transaction appelante.
         logger.info("Tour résolu id=%s tour=%s pv_premier=%s pv_second=%s",

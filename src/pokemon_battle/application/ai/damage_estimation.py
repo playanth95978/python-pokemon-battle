@@ -19,7 +19,7 @@ def estimate_move(context: ToolsContext, move: MoveView) -> dict[str, Any]:
     hit_probability = Fraction(move.accuracy, 100)
     mean_on_hit = Fraction(sum(damages), len(damages))
     return {
-        "slot": move.slot, "name": move.name, "category": move.category.value,
+        "attack_slot": move.attack_slot, "name": move.name, "category": move.category.value,
         "type_multiplier": float(multiplier), "stab_multiplier": 1.5 if move.type in actor.types else 1.0,
         "hit_probability": float(hit_probability),
         "min_damage_on_hit": min(damages), "max_damage_on_hit": max(damages),

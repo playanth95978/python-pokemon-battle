@@ -36,8 +36,8 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
     const displayed = battlePresentation(battle, events, revealedCount)
     const finished = displayed.winner !== null
     const blocked = busy || needsSync || isPlaying
-    const firstValid = battle.first.attacks.some((attack) => attack.slot === firstMove && attack.pp > 0)
-    const secondValid = battle.second.attacks.some((attack) => attack.slot === secondMove && attack.pp > 0)
+    const firstValid = battle.first.attacks.some((attack) => attack.attack_slot === firstMove && attack.pp > 0)
+    const secondValid = battle.second.attacks.some((attack) => attack.attack_slot === secondMove && attack.pp > 0)
     const winner = [displayed.first, displayed.second].find((fighter) => fighter.id === displayed.winner)
 
     return <div className="battle-layout" aria-busy={busy}>

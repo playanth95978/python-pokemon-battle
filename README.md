@@ -1,5 +1,17 @@
 # Pokémon battle domain
 
+Les positions d'attaque utilisent désormais le nom `attack_slot` dans le domaine,
+les réponses HTTP, les outils IA et React : `AttackAction(attack_slot=0)`.
+Les actions sauvegardées s'écrivent `{"action_type": "attack", "attack_slot": 0}`
+ou `{"action_type": "potion"}`. La lecture reste compatible avec les anciens noms
+`kind`/`slot` et les anciens reçus contenant seulement des indices d'attaque.
+Les colonnes historiques SQLite sont conservées ; les actions JSON des nouveaux
+reçus font référence. La valeur technique -1 dans une colonne historique indique
+une action non offensive et n'est jamais utilisée pour résoudre le tour.
+Recharger le frontend et relancer le backend ensemble après cette évolution de contrat.
+Le branchement HTTP des potions reste une étape distincte ; les routes de tour
+existantes acceptent encore leurs indices `first_move`, `second_move` ou `player_move`.
+
 Python 3.12+ domain package, independent of the API, storage and React frontend.
 Species, stats and attack definitions are frozen dataclasses; each `Fighter` owns its
 mutable HP and PP. Species stats are the fighter's effective stats (no EV/IV calculation).
@@ -268,7 +280,7 @@ slots inversés, faiblesse, résistance, PP épuisés, double faiblesse) :
 .venv/Scripts/python.exe -m pokemon_battle.ai_smoke --suite --repeat 3 --output artifacts/ai-suite-real.json
 ```
 
-Les résultats d'outils donnent maintenant le nom, le slot et un libellé explicite
+Les résultats d'outils donnent maintenant le nom, l’emplacement d’attaque et un libellé explicite
 d'efficacité. La consigne générale demande de respecter ces résultats ; un choix
 inefficace reste autorisé et fait échouer le critère stratégique. Le rapport v2
 distingue `provider_responded` de `agent_checks_passed`, conserve chaque tentative

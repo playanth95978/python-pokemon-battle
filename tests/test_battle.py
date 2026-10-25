@@ -241,12 +241,12 @@ def testLaValidationActionsAccepteUneAttaqueEtUnePotionSansMutation():
     assert (asdict(first), asdict(second)) == before
 
 
-@pytest.mark.parametrize("slot", [-1, 1, True, "0"])
-def testLaValidationActionsRefuseUnSlotInvalide(slot):
+@pytest.mark.parametrize("attack_slot", [-1, 1, True, "0"])
+def testLaValidationActionsRefuseUnSlotInvalide(attack_slot):
     """Une action d'attaque ne doit accepter ni indice absent ni conversion implicite."""
     first, second = fighter("a"), fighter("b")
     with pytest.raises(ValueError, match="slot"):
-        BattleEngine(Rolls())._validate_actions([(first, second, AttackAction(slot))])
+        BattleEngine(Rolls())._validate_actions([(first, second, AttackAction(attack_slot))])
     assert first.pp == [3]
 
 

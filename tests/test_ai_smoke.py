@@ -57,7 +57,7 @@ def testLeRapportDistingueUneMauvaiseDecisionDuLlmDuneReussite():
     class BadDecisionClient:
         async def complete(self, *args, **kwargs):
             return Completion(None, {"prompt_tokens": 18, "completion_tokens": 4, "total_tokens": 22},
-                              (ToolCall("select001", "select_attack", '{"slot":0}'),))
+                              (ToolCall("select001", "select_attack", '{"attack_slot":0}'),))
     report = asyncio.run(ai_smoke.run_scenario(BadDecisionClient(), mode="mistral", model="fake", timeout=1))
     assert report["checks"]["legal_move"] is True
     assert report["checks"]["avoids_immunity"] is False
@@ -103,7 +103,7 @@ def testLeModeReelBrancheLAdaptateurEtFermeLeClientAvecUnTransportSimule(monkeyp
         payload = json.loads(request.content)
         assert payload["model"] == "modele-de-test"
         return httpx.Response(200, json={"usage": {"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13}, "choices": [{"message": {"content": None, "tool_calls": [
-            {"id": "select001", "type": "function", "function": {"name": "select_attack", "arguments": '{"slot":1}'}},
+            {"id": "select001", "type": "function", "function": {"name": "select_attack", "arguments": '{"attack_slot":1}'}},
         ]}}]})
     def factory(settings):
         client = MistralClient(settings, transport=httpx.MockTransport(handle))
@@ -130,22 +130,22 @@ def testLeDelaiDoitEtreBorneEtPositif(value):
     assert error.value.code == 2
 
 
-@pytest.mark.parametrize("name, slot, multiplier, label", [
+@pytest.mark.parametrize("name, attack_slot, multiplier, label", [
     ("pikachu_vs_ground", 0, 0.0, "immune"),
     ("pikachu_vs_ground", 1, 1.0, "neutral"),
     ("water_weakness", 0, 2.0, "super_effective"),
     ("grass_resistance", 0, 0.5, "resisted"),
     ("double_weakness", 1, 4.0, "super_effective"),
 ])
-def testLEfficaciteAssocieUnLibelleEtLeNomAuMultiplicateurMetier(name, slot, multiplier, label):
-    """Les explications lisibles et les identifiants de slot doivent rester cohérents avec le calcul métier."""
+def testLEfficaciteAssocieUnLibelleEtLeNomAuMultiplicateurMetier(name, attack_slot, multiplier, label):
+    """Les explications lisibles et les identifiants de attack_slot doivent rester cohérents avec le calcul métier."""
     record = SCENARIOS[name].create()
     ctx = ToolsContext.from_record(record, "agent", 0)
     result = execute_tool(ctx, ToolCall("matchup01", "evaluate_matchups", "{}"))
-    item = next(item for item in result["matchups"] if item["slot"] == slot)
+    item = next(item for item in result["matchups"] if item["attack_slot"] == attack_slot)
     assert item["multiplier"] == multiplier
     assert item["effectiveness"] == label
-    assert item["name"] == record.battle.second.species.attacks[slot].name
+    assert item["name"] == record.battle.second.species.attacks[attack_slot].name
     assert item["target_types"] == [kind.value for kind in record.battle.first.species.types]
     assert item["explanation"]
 
@@ -153,7 +153,7 @@ def testLEfficaciteAssocieUnLibelleEtLeNomAuMultiplicateurMetier(name, slot, mul
 def testUneAttaqueImmuniseeResteSelectionnablePourNePasMasquerLesErreursDuModele():
     """La validation métier ne doit pas transformer un test stratégique en réussite forcée."""
     ctx = ToolsContext.from_record(SCENARIOS["pikachu_vs_ground"].create(), "agent", 0)
-    assert execute_tool(ctx, ToolCall("select001", "select_attack", '{"slot":0}')) == {"selected_slot": 0}
+    assert execute_tool(ctx, ToolCall("select001", "select_attack", '{"attack_slot":0}')) == {"selected_slot": 0}
     assert ctx.decision.source == "llm"
 
 
@@ -183,7 +183,7 @@ def testLeBilanNAssimilePasLesReplisAuxBonnesDecisionsDuModele():
     """Le taux stratégique du modèle doit exclure les secours locaux sans cacher les échecs de la suite."""
     class WrongClient:
         async def complete(self, *args, **kwargs):
-            return Completion(None, {}, (ToolCall("wrong0001", "select_attack", '{"slot":0}'),))
+            return Completion(None, {}, (ToolCall("wrong0001", "select_attack", '{"attack_slot":0}'),))
     class FailingClient:
         async def complete(self, *args, **kwargs):
             raise MistralUnavailable()

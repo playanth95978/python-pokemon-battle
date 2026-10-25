@@ -24,15 +24,19 @@ EVENT_CLASSES = {
 
 def _serialize_action(action: BattleAction) -> dict:
     if isinstance(action, AttackAction):
-        return {"kind": "attack", "slot": action.slot}
+        return {"action_type": "attack", "attack_slot": action.attack_slot}
     if isinstance(action, UsePotionAction):
-        return {"kind": "potion"}
+        return {"action_type": "potion"}
     raise ValueError("Action de combat inconnue")
 
 def _deserialize_action(data: dict) -> BattleAction:
-    if data["kind"] == "attack":
-        return AttackAction(slot=data["slot"])
-    if data["kind"] == "potion":
+    action_type = data.get("action_type", data.get("kind"))
+    if action_type == "attack":
+        attack_slot = data.get("attack_slot", data.get("slot"))
+        if type(attack_slot) is not int or not 0 <= attack_slot <= 3:
+            raise ValueError("Emplacement d'attaque enregistré invalide")
+        return AttackAction(attack_slot=attack_slot)
+    if action_type == "potion":
         return UsePotionAction()
     raise ValueError("Action de combat inconnue")
 
@@ -109,17 +113,19 @@ class _SqliteSession:
         data = json.loads(row[3])
         events = []
         for item in data["events"]:
-            kind = item.pop("type")
-            event_class = EVENT_CLASSES.get(kind)
+            event_type = item.pop("type")
+            event_class = EVENT_CLASSES.get(event_type)
             if event_class is None:
-                raise ValueError(f"Type d'événement enregistré inconnu : {kind!r}")
-            if kind == "DamageDealt":
+                raise ValueError(f"Type d'événement enregistré inconnu : {event_type!r}")
+            if event_type == "DamageDealt":
                 item["effectiveness"] = Fraction(item["effectiveness"])
-            if kind == "AttackUsed" and item.get("attack_type") is not None:
+            if event_type == "AttackUsed" and item.get("attack_type") is not None:
                 item["attack_type"] = Type(item["attack_type"])
             events.append(event_class(**item))
         result = TurnResult(_record(battle_id, data["battle"]), tuple(events))
-        return StoredTurn(row[0], row[1], row[2], result)
+        first_action = _deserialize_action(data["first_action"]) if "first_action" in data else AttackAction(row[1])
+        second_action = _deserialize_action(data["second_action"]) if "second_action" in data else AttackAction(row[2])
+        return StoredTurn(row[0], first_action, second_action, result)
 
     def save_turn(self, battle_id: UUID, key: UUID, receipt: StoredTurn) -> None:
         events = []
@@ -128,13 +134,18 @@ class _SqliteSession:
             if isinstance(event, DamageDealt):
                 item["effectiveness"] = str(event.effectiveness)
             events.append(item)
-        snapshot = json.dumps({"battle": asdict(receipt.result.record.battle), "events": events},
+        snapshot = json.dumps({"battle": asdict(receipt.result.record.battle), "events": events,
+                               "first_action": _serialize_action(receipt.first_action),
+                               "second_action": _serialize_action(receipt.second_action)},
                               ensure_ascii=False)
         self.connection.execute(
             "INSERT INTO battle_turns "
             "(battle_id, idempotency_key, expected_turn, first_move, second_move, result) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (str(battle_id), str(key), receipt.expected_turn, receipt.first_move, receipt.second_move, snapshot),
+            # Les colonnes historiques restent pour les anciennes bases ; -1 n'est jamais interprété comme une attaque.
+            (str(battle_id), str(key), receipt.expected_turn,
+             receipt.first_action.attack_slot if isinstance(receipt.first_action, AttackAction) else -1,
+             receipt.second_action.attack_slot if isinstance(receipt.second_action, AttackAction) else -1, snapshot),
         )
 
 

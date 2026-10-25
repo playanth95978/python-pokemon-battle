@@ -121,10 +121,10 @@ class BattleEngine:
     def play_turn(self, battle: Battle, first_move: int | BattleAction, second_move: int | BattleAction) -> tuple[
         DomainEvent, ...]:
         if type(first_move) is int:
-            first_move = AttackAction(slot=first_move)
+            first_move = AttackAction(attack_slot=first_move)
 
         if type(second_move) is int:
-            second_move = AttackAction(slot=second_move)
+            second_move = AttackAction(attack_slot=second_move)
 
         # Les appels actuels passent des entiers : les convertir en AttackAction pour garder leur compatibilité.
         if battle.winner is not None:
@@ -140,7 +140,7 @@ class BattleEngine:
                 events.extend(self._execute_potion(battle.turn, actor))
             elif isinstance(action, AttackAction):
                 events.extend(
-                    self._execute_attack(battle.turn, actor, target, action.slot)
+                    self._execute_attack(battle.turn, actor, target, action.attack_slot)
                 )
             if battle.winner is not None:
                 events.append(BattleEnded(battle.turn, actor.id))
@@ -151,16 +151,16 @@ class BattleEngine:
         """Valider tous les choix avant de modifier l'état ou de consommer du hasard."""
         for actor, _, action in actions:
             if isinstance(action, AttackAction):
-                self._validate_attack(actor, action.slot)
+                self._validate_attack(actor, action.attack_slot)
             elif isinstance(action, UsePotionAction):
                 self._validate_potion(actor)
             else:
                 raise ValueError("Invalid battle action")
 
-    def _validate_attack(self, actor: Fighter, slot: int) -> None:
-        if type(slot) is not int or not 0 <= slot < len(actor.pp):
+    def _validate_attack(self, actor: Fighter, attack_slot: int) -> None:
+        if type(attack_slot) is not int or not 0 <= attack_slot < len(actor.pp):
             raise ValueError("Invalid attack slot")
-        if actor.pp[slot] <= 0:
+        if actor.pp[attack_slot] <= 0:
             raise ValueError("Attack has no PP remaining")
 
     def _validate_potion(self, actor: Fighter) -> None:

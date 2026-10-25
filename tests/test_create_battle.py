@@ -29,8 +29,8 @@ def testLePostCreeUnCombatPersistant(database):
     assert data["first"]["hp"] == data["first"]["max_hp"] == 120
     assert data["second"]["hp"] == 114
     assert data["first"]["attacks"] == [
-        {"slot": 0, "name": "Charge", "pp": 35, "max_pp": 35},
-        {"slot": 1, "name": "Fouet Lianes", "pp": 25, "max_pp": 25},
+        {"attack_slot": 0, "name": "Charge", "pp": 35, "max_pp": 35},
+        {"attack_slot": 1, "name": "Fouet Lianes", "pp": 25, "max_pp": 25},
     ]
     record = SqliteBattleRepository(database).get(UUID(data["id"]))
     assert record is not None

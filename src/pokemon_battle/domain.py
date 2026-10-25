@@ -94,7 +94,7 @@ class Fighter:
 
 @dataclass(frozen=True, slots=True)
 class AttackAction:
-    slot: int
+    attack_slot: int
 
 
 @dataclass(frozen=True, slots=True)

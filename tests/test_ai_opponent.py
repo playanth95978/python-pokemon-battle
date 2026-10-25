@@ -63,7 +63,7 @@ def testLeContexteEstUnInstantaneSansChoixPriveNiFighterMutable(record):
     record.battle.second.hp = 1
     record.battle.second.pp[1] = 0
     assert ctx.view.fighter.hp == 73
-    assert [move.slot for move in ctx.legal_moves] == [0, 1]
+    assert [move.attack_slot for move in ctx.legal_moves] == [0, 1]
     assert ctx.view.opponent.hp == 99
     assert "Choix privé" not in json.dumps(asdict(ctx.view))
     with pytest.raises(FrozenInstanceError):
@@ -95,15 +95,15 @@ def testLesOutilsPartagentLeContexteSansMuterLeCombat(record):
     matchups = execute_tool(ctx, call("evaluate_matchups"))
     assert view["fighter"]["hp"] == 73
     assert view["opponent"]["hp"] == 99
-    assert [move["slot"] for move in moves["moves"]] == [0, 1]
+    assert [move["attack_slot"] for move in moves["moves"]] == [0, 1]
     assert matchups == {"matchups": [
-        {"slot": 0, "name": "Flamme", "type": "fire", "target_types": ["fire"], "multiplier": 0.5,
+        {"attack_slot": 0, "name": "Flamme", "type": "fire", "target_types": ["fire"], "multiplier": 0.5,
          "effectiveness": "resisted", "explanation": "La cible résiste à ce type : dégâts réduits."},
-        {"slot": 1, "name": "Eau", "type": "water", "target_types": ["fire"], "multiplier": 2.0,
+        {"attack_slot": 1, "name": "Eau", "type": "water", "target_types": ["fire"], "multiplier": 2.0,
          "effectiveness": "super_effective", "explanation": "Faiblesse de la cible à ce type : dégâts amplifiés."},
     ]}
-    assert execute_tool(ctx, call("select_attack", '{"slot":1,"comment":"À toi de jouer !"}')) == {"selected_slot": 1}
-    assert ctx.decision.slot == 1
+    assert execute_tool(ctx, call("select_attack", '{"attack_slot":1,"comment":"À toi de jouer !"}')) == {"selected_slot": 1}
+    assert ctx.decision.attack_slot == 1
     assert ctx.decision.source == "llm"
     assert ctx.observations["list_legal_moves"] == moves
     assert asdict(record) == before
@@ -112,11 +112,11 @@ def testLesOutilsPartagentLeContexteSansMuterLeCombat(record):
 @pytest.mark.parametrize("name, arguments, error", [
     ("delete_battle", "{}", "unknown_tool"),
     ("inspect_battle", '{"battle_id":"intrus"}', "invalid_arguments"),
-    ("select_attack", '{"slot":true}', "invalid_arguments"),
-    ("select_attack", '{"slot":"1"}', "invalid_arguments"),
-    ("select_attack", '{"slot":2}', "illegal_move"),
-    ("select_attack", '{"slot":3}', "illegal_move"),
-    ("select_attack", '{"slot":4}', "invalid_arguments"),
+    ("select_attack", '{"attack_slot":true}', "invalid_arguments"),
+    ("select_attack", '{"attack_slot":"1"}', "invalid_arguments"),
+    ("select_attack", '{"attack_slot":2}', "illegal_move"),
+    ("select_attack", '{"attack_slot":3}', "illegal_move"),
+    ("select_attack", '{"attack_slot":4}', "invalid_arguments"),
     ("select_attack", "[1]", "invalid_arguments"),
     ("select_attack", "{", "invalid_arguments"),
 ])
@@ -130,20 +130,20 @@ def testLesArgumentsEtLesOutilsSontValidesAvantSelection(record, name, arguments
 def testLeChoixFinalNePeutPasEtreEcraseParUnAutreOutil(record):
     """La première sélection valide termine la décision, même dans un lot d'appels."""
     ctx = context(record)
-    execute_tool(ctx, call("select_attack", '{"slot":1}'))
-    assert execute_tool(ctx, call("select_attack", '{"slot":0}')) == {"error": "decision_already_selected"}
-    assert ctx.decision.slot == 1
+    execute_tool(ctx, call("select_attack", '{"attack_slot":1}'))
+    assert execute_tool(ctx, call("select_attack", '{"attack_slot":0}')) == {"error": "decision_already_selected"}
+    assert ctx.decision.attack_slot == 1
 
 
 def testLaBoucleReinjecteLesResultatsAvecLesBonsIdentifiants(record):
     """Chaque résultat d'outil rejoint le dialogue avant que le modèle ne sélectionne son attaque."""
     client = ScriptedClient(
         Completion(None, {}, (call("inspect_battle", identifier="inspect"), call("list_legal_moves", identifier="moves"))),
-        Completion(None, {}, (call("select_attack", '{"slot":1}', "select"),)),
+        Completion(None, {}, (call("select_attack", '{"attack_slot":1}', "select"),)),
     )
     ctx = context(record)
     choice = asyncio.run(ToolCallingOpponent(client).choose(ctx))
-    assert (choice.slot, choice.source, choice.fallback_reason) == (1, "llm", None)
+    assert (choice.attack_slot, choice.source, choice.fallback_reason) == (1, "llm", None)
     messages, options = client.requests[1]
     assert options["tool_choice"] == "any"
     assert {tool["function"]["name"] for tool in options["tools"]} == {"inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage", "select_attack"}
@@ -153,9 +153,9 @@ def testLaBoucleReinjecteLesResultatsAvecLesBonsIdentifiants(record):
 
 
 def testLeModelePeutCorrigerUnAppelInvalide(record):
-    """Une erreur d'arguments est renvoyée au modèle plutôt que d'exécuter un mauvais slot."""
-    client = ScriptedClient(Completion(None, {}, (call("select_attack", '{"slot":2}'),)),
-                            Completion(None, {}, (call("select_attack", '{"slot":1}', "corrected"),)))
+    """Une erreur d'arguments est renvoyée au modèle plutôt que d'exécuter un mauvais attack_slot."""
+    client = ScriptedClient(Completion(None, {}, (call("select_attack", '{"attack_slot":2}'),)),
+                            Completion(None, {}, (call("select_attack", '{"attack_slot":1}', "corrected"),)))
     choice = asyncio.run(ToolCallingOpponent(client).choose(context(record)))
     assert choice.source == "llm"
     assert json.loads(client.requests[1][0][-1].content)["error"] == "illegal_move"
@@ -169,7 +169,7 @@ def testLesBudgetsArretentLaBoucleAvecUnRepliLegal(record, limit, expected_reque
     policy = ToolCallingOpponent(client, max_rounds=2, max_tool_calls=1 if limit == "calls" else 8)
     ctx = context(record)
     choice = asyncio.run(policy.choose(ctx))
-    assert (choice.slot, choice.source, choice.fallback_reason) == (1, "local", reason)
+    assert (choice.attack_slot, choice.source, choice.fallback_reason) == (1, "local", reason)
     assert len(client.requests) == expected_requests
     if limit == "calls":
         assert ctx.observations == {}
@@ -182,7 +182,7 @@ def testLesErreursFournisseurDeclenchentLeRepliLocal(record, error):
         async def complete(self, *args, **kwargs):
             raise error()
     choice = asyncio.run(ToolCallingOpponent(FailingClient()).choose(context(record)))
-    assert (choice.slot, choice.source, choice.fallback_reason) == (1, "local", "unavailable")
+    assert (choice.attack_slot, choice.source, choice.fallback_reason) == (1, "local", "unavailable")
 
 
 def testUnDelaiGlobalAnnuleLaRequeteEtChoisitLocalement(record):
@@ -196,7 +196,7 @@ def testUnDelaiGlobalAnnuleLaRequeteEtChoisitLocalement(record):
                 cancelled.append(True)
     choice = asyncio.run(ToolCallingOpponent(SlowClient(), timeout_seconds=0.01).choose(context(record)))
     assert choice.fallback_reason == "timeout"
-    assert choice.slot == 1
+    assert choice.attack_slot == 1
     assert cancelled == [True]
 
 
@@ -217,11 +217,11 @@ def testLesDecisionsConcurrentesNePartagentPasLeursContextes(record):
     class ConcurrentClient:
         async def complete(self, messages, **kwargs):
             await asyncio.sleep(0)
-            return Completion(None, {}, (call("select_attack", '{"slot":1}'),))
+            return Completion(None, {}, (call("select_attack", '{"attack_slot":1}'),))
     async def check():
         policy = ToolCallingOpponent(ConcurrentClient())
         return await asyncio.gather(policy.choose(ctx_a), policy.choose(ctx_b))
-    assert [choice.slot for choice in asyncio.run(check())] == [1, 1]
+    assert [choice.attack_slot for choice in asyncio.run(check())] == [1, 1]
     ctx_a.observations.clear()
     assert ctx_b.observations == {"select_attack": {"selected_slot": 1}}
 
@@ -230,15 +230,15 @@ def testLesSchemasRefusentLesChampsSupplementairesEtLeRepliEstStable(record):
     """Les contrats exposés correspondent à la validation réelle et la stratégie locale reste déterministe."""
     for tool in tool_schemas():
         assert tool["function"]["parameters"]["additionalProperties"] is False
-    assert asyncio.run(LocalOpponent().choose(context(record))).slot == 1
-    assert asyncio.run(LocalOpponent().choose(context(record))).slot == 1
+    assert asyncio.run(LocalOpponent().choose(context(record))).attack_slot == 1
+    assert asyncio.run(LocalOpponent().choose(context(record))).attack_slot == 1
 
 
 def testUneReponseLibreNeDevientJamaisUnChoixExecute(record):
-    """Une phrase du modèle ne doit pas être interprétée comme un numéro de slot."""
-    client = ScriptedClient(Completion("Je choisis le slot 0", {}))
+    """Une phrase du modèle ne doit pas être interprétée comme un numéro de attack_slot."""
+    client = ScriptedClient(Completion("Je choisis le attack_slot 0", {}))
     choice = asyncio.run(ToolCallingOpponent(client).choose(context(record)))
-    assert (choice.slot, choice.source, choice.fallback_reason) == (1, "local", "invalid_response")
+    assert (choice.attack_slot, choice.source, choice.fallback_reason) == (1, "local", "invalid_response")
 
 
 def testLaBoucleFonctionneAvecLAdaptateurMistralEtUnTransportSimule(record):
@@ -253,7 +253,7 @@ def testLaBoucleFonctionneAvecLAdaptateurMistralEtUnTransportSimule(record):
             result = payload["messages"][-1]
             assert result["tool_call_id"] == "inspect01"
             assert json.loads(result["content"])["fighter"]["hp"] == 73
-            name, arguments, identifier = "select_attack", '{"slot":1}', "select001"
+            name, arguments, identifier = "select_attack", '{"attack_slot":1}', "select001"
         return httpx.Response(200, json={"choices": [{"message": {"content": None, "tool_calls": [
             {"id": identifier, "type": "function", "function": {"name": name, "arguments": arguments}},
         ]}}]})
@@ -266,7 +266,7 @@ def testLaBoucleFonctionneAvecLAdaptateurMistralEtUnTransportSimule(record):
             await client.aclose()
     before = asdict(record)
     choice = asyncio.run(check())
-    assert (choice.slot, choice.source) == (1, "llm")
+    assert (choice.attack_slot, choice.source) == (1, "llm")
     assert len(payloads) == 2
     assert "Choix privé" not in json.dumps(payloads)
     assert asdict(record) == before

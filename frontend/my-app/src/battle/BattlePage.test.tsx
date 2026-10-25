@@ -40,7 +40,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 it('joue contre Mistral sans demander au joueur de choisir l’attaque adverse', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(json(initialBattle, 201))
         .mockResolvedValueOnce(json({...resolvedTurn,
-            decision: {slot: 0, source: 'llm', comment: 'À toi de jouer !', fallback_reason: null}}))
+            decision: {attack_slot: 0, source: 'llm', comment: 'À toi de jouer !', fallback_reason: null}}))
     vi.stubGlobal('fetch', fetchMock)
     render(<BattlePage/>)
     fireEvent.click(screen.getByRole('button', {name: 'Créer le combat'}))

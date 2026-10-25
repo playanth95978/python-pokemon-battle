@@ -3,7 +3,7 @@
 from dataclasses import asdict
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError
 
 from pokemon_battle.types import Type, effectiveness
 from .generation import ToolCall
@@ -20,7 +20,7 @@ def _matchup(move: MoveView, opponent_types: tuple[Type, ...]) -> dict[str, Any]
         "neutral": "Efficacité normale pour ce type.",
         "super_effective": "Faiblesse de la cible à ce type : dégâts amplifiés.",
     }
-    return {"slot": move.slot, "name": move.name, "type": move.type.value,
+    return {"attack_slot": move.attack_slot, "name": move.name, "type": move.type.value,
             "target_types": [kind.value for kind in opponent_types],
             "multiplier": float(multiplier), "effectiveness": label,
             "explanation": explanations[label]}
@@ -31,7 +31,7 @@ class EmptyRequest(BaseModel):
 
 
 class SelectAttackRequest(EmptyRequest):
-    slot: int = Field(ge=0, le=3, strict=True)
+    attack_slot: int = Field(ge=0, le=3, strict=True, validation_alias=AliasChoices("attack_slot", "slot"))
     comment: str = Field(default="", max_length=160, strict=True)
 
 
@@ -40,7 +40,7 @@ _DEFINITIONS = {
     "list_legal_moves": ("Lister ses attaques jouables avec leurs slots, PP, types, puissance et précision.", EmptyRequest),
     "evaluate_matchups": ("Consulter les multiplicateurs de types des attaques jouables ; ce ne sont pas des dégâts calculés.", EmptyRequest),
     "estimate_damage": ("Comparer les dégâts des attaques jouables : plage si l'attaque touche, moyenne avec précision, probabilité de KO. Calcul du moteur sur l'état actuel, sans jouer le tour.", EmptyRequest),
-    "select_attack": ("Terminer la décision en sélectionnant un slot jouable, sans exécuter le tour.", SelectAttackRequest),
+    "select_attack": ("Terminer la décision en sélectionnant un attack_slot jouable, sans exécuter le tour.", SelectAttackRequest),
 }
 
 
@@ -72,9 +72,9 @@ def execute_tool(context: ToolsContext, call: ToolCall) -> dict[str, Any]:
                   "assumption": "Attaque isolée sur les PV actuels ; suppose que l'acteur peut agir. Ne prédit ni le choix adverse ni un combat complet."}
     else:
         assert isinstance(request, SelectAttackRequest)
-        if not any(move.slot == request.slot for move in context.legal_moves):
-            return {"error": "illegal_move", "message": "Choisir un slot retourné par list_legal_moves."}
-        context.decision = AttackDecision(request.slot, "llm", request.comment)
-        result = {"selected_slot": request.slot}
+        if not any(move.attack_slot == request.attack_slot for move in context.legal_moves):
+            return {"error": "illegal_move", "message": "Choisir un attack_slot retourné par list_legal_moves."}
+        context.decision = AttackDecision(request.attack_slot, "llm", request.comment)
+        result = {"selected_slot": request.attack_slot}
     context.observations[call.name] = result
     return result

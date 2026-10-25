@@ -40,8 +40,8 @@ class SimulatedClient:
                 "inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage",
             ))))
         results = {message.name: json.loads(message.content) for message in messages if message.role == "tool"}
-        move = max(results["estimate_damage"]["estimates"], key=lambda item: (item["expected_damage"], -item["slot"]))
-        return Completion(None, {}, (ToolCall("sim-select", "select_attack", json.dumps({"slot": move["slot"]})),))
+        move = max(results["estimate_damage"]["estimates"], key=lambda item: (item["expected_damage"], -item["attack_slot"]))
+        return Completion(None, {}, (ToolCall("sim-select", "select_attack", json.dumps({"attack_slot": move["attack_slot"]})),))
 
 
 async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeout: float,
@@ -53,20 +53,20 @@ async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeo
     logger.info("Scénario=%s : %s. Slots attendus=%s", scenario_name, definition.description, definition.expected_slots)
     logger.info("Mode=%s modèle=%s délai_global=%ss", mode, model, timeout)
     decision = await ToolCallingOpponent(client, timeout_seconds=timeout).choose(context)
-    move = next((move for move in context.legal_moves if move.slot == decision.slot), None)
+    move = next((move for move in context.legal_moves if move.attack_slot == decision.attack_slot), None)
     checks = {
         "legal_move": move is not None,
         "avoids_immunity": move is not None and effectiveness(move.type, context.view.opponent.types) > 0,
-        "expected_slot": decision.slot in definition.expected_slots,
+        "expected_slot": decision.attack_slot in definition.expected_slots,
         "llm_selected": decision.source == "llm",
         "battle_unchanged_during_decision": asdict(record.battle) == before,
     }
     passed = all(checks.values())
-    logger.info("Décision : slot=%s attaque=%s source=%s repli=%s", decision.slot,
+    logger.info("Décision : attack_slot=%s attaque=%s source=%s repli=%s", decision.attack_slot,
                 move.name if move else "invalide", decision.source, decision.fallback_reason)
     logger.info("Critères : %s", checks)
     # Le choix du joueur n'entre qu'ici, après la décision de l'agent.
-    events = BattleEngine(Random(seed)).play_turn(record.battle, 0, decision.slot)
+    events = BattleEngine(Random(seed)).play_turn(record.battle, 0, decision.attack_slot)
     logger.info("Tour résolu : %s=%s PV, %s=%s PV", record.battle.second.species.name, record.battle.second.hp,
                 record.battle.first.species.name, record.battle.first.hp)
     metrics = asdict(context.metrics)
@@ -102,8 +102,8 @@ def summarize(runs: list[dict]) -> dict:
             "llm_decision_rate": len(llm) / count,
             "strategy_success_among_llm": sum(run["checks"]["expected_slot"] for run in llm) / len(llm) if llm else None,
             "mean_elapsed_ms": round(sum(run["metrics"]["elapsed_ms"] for run in items) / count, 3),
-            "selected_slots": {str(slot): sum(run["decision"]["slot"] == slot for run in items)
-                               for slot in sorted({run["decision"]["slot"] for run in items})},
+            "selected_slots": {str(attack_slot): sum(run["decision"]["attack_slot"] == attack_slot for run in items)
+                               for attack_slot in sorted({run["decision"]["attack_slot"] for run in items})},
         }
     tokens = {}
     for run in runs:

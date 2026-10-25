@@ -29,7 +29,7 @@ class FighterView:
 
 @dataclass(frozen=True, slots=True)
 class MoveView:
-    slot: int
+    attack_slot: int
     name: str
     type: Type
     category: Category
@@ -49,7 +49,7 @@ class BattleView:
 
 @dataclass(frozen=True, slots=True)
 class AttackDecision:
-    slot: int
+    attack_slot: int
     source: Literal["llm", "local"]
     comment: str = ""
     fallback_reason: str | None = None

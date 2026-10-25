@@ -102,12 +102,12 @@ def testLesReponsesTextuellesRestentCompatibles(content, expected):
 def testPlusieursAppelsEtDesArgumentsObjetSontConserves():
     """Les outils parallèles gardent chacun leur identifiant et leurs arguments JSON."""
     async def check():
-        result = response({"content": None, "tool_calls": [call("a", "inspect_battle"), call("b", "select_attack", {"slot": 1})]})
+        result = response({"content": None, "tool_calls": [call("a", "inspect_battle"), call("b", "select_attack", {"attack_slot": 1})]})
         client = MistralClient(settings(), transport=httpx.MockTransport(lambda request: httpx.Response(200, json=result)))
         try:
             completion = await MistralLLMAdapter(client).complete([])
             assert [(item.id, item.name, json.loads(item.arguments)) for item in completion.tool_calls] == [
-                ("a", "inspect_battle", {}), ("b", "select_attack", {"slot": 1}),
+                ("a", "inspect_battle", {}), ("b", "select_attack", {"attack_slot": 1}),
             ]
         finally:
             await client.aclose()

@@ -53,7 +53,7 @@ def testLeRecuConserveLesEvenementsDuTourAvecPotion(repository, record):
     events = BattleEngine(Random(42)).play_turn(
         record.battle,
         UsePotionAction(),
-        AttackAction(slot=0),
+        AttackAction(attack_slot=0),
     )
     result = TurnResult(record, events)
     key = uuid4()
@@ -61,7 +61,7 @@ def testLeRecuConserveLesEvenementsDuTourAvecPotion(repository, record):
     receipt = StoredTurn(
         expected_turn=0,
         first_action=UsePotionAction(),
-        second_action=AttackAction(slot=0),
+        second_action=AttackAction(attack_slot=0),
         result=result,
     )
 
@@ -74,6 +74,6 @@ def testLeRecuConserveLesEvenementsDuTourAvecPotion(repository, record):
 
     assert restored is not None
     assert restored.first_action == UsePotionAction()
-    assert restored.second_action == AttackAction(slot=0)
+    assert restored.second_action == AttackAction(attack_slot=0)
     assert restored.result.events == events
     assert restored.result.record.battle.first.potions == 1
