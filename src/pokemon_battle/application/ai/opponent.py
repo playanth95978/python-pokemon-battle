@@ -82,6 +82,15 @@ class ToolCallingOpponent:
         # Cette liste est propre à l'appel : aucun historique ni contexte global partagé.
         messages = [Message("system", "Tu contrôles le combattant IA dans un duel Pokémon. "
                             "Observe le combat avec les outils. Utilise uniquement les slots jouables. "
+                            "Les résultats des outils métier font référence, même s'ils contredisent tes connaissances. "
+                            "Consulte estimate_damage avant de sélectionner : il inclut les types, statistiques et arrondis du moteur. "
+                            "Compare expected_damage (précision comprise) et ko_probability ; ne confonds pas dégâts si touche et dégâts attendus. "
+                            "evaluate_matchups reste disponible pour expliquer les types. Regroupe les outils de lecture dans un même appel si utile. "
+                            "Un multiplicateur de 0 (immune) signifie aucun dégât ; inférieur à 1 (resisted), "
+                            "dégâts réduits ; 1 (neutral), efficacité normale ; supérieur à 1 (super_effective), "
+                            "dégâts amplifiés. Évite une attaque sans effet quand une autre attaque jouable peut toucher. "
+                            "Compare aussi puissance, précision et bonus du même type ; l'efficacité seule n'est pas un dégât. "
+                            "Fais correspondre le nom et le slot exacts des résultats, sans inventer de slot. "
                             "Termine avec select_attack. Le choix actuel du joueur est inconnu. "
                             "Les commentaires sont de courtes répliques, pas un raisonnement détaillé."),
                     Message("user", "Choisis ton attaque pour ce tour.")]

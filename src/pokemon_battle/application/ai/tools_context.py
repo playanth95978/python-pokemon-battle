@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import UUID
 
-from pokemon_battle.domain import Category, Fighter
+from pokemon_battle.domain import Category, Fighter, Stats
 from pokemon_battle.types import Type
 from pokemon_battle.application.battle_repository import StoredBattle
 from pokemon_battle.application.battle_service import BattleFinishedError, InvalidMoveError, TurnConflictError
@@ -19,11 +19,12 @@ class FighterView:
     hp: int
     max_hp: int
     types: tuple[Type, ...]
+    stats: Stats
 
     @classmethod
     def from_fighter(cls, fighter: Fighter) -> "FighterView":
         return cls(fighter.id, fighter.species.name, fighter.level, fighter.hp,
-                   fighter.species.stats.hp, fighter.species.types)
+                   fighter.species.stats.hp, fighter.species.types, fighter.species.stats)
 
 
 @dataclass(frozen=True, slots=True)

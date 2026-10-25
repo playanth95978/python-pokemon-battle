@@ -10,12 +10,15 @@ from pydantic import SecretStr
 from pokemon_battle import ai_smoke
 from pokemon_battle.application.ai.generation import Completion, ToolCall
 from pokemon_battle.application.ai.telemetry import DecisionMetrics
+from pokemon_battle.application.ai.scenarios import SCENARIOS
+from pokemon_battle.application.ai.tools import execute_tool
+from pokemon_battle.application.ai.tools_context import ToolsContext
 from pokemon_battle.core.config import Settings
 from pokemon_battle.core.exceptions import MistralUnavailable
 from pokemon_battle.mistral.client import MistralClient
 
 
-def testLaSimulationExecuteLesQuatreOutilsEtUnTourSansChargerLaConfiguration(tmp_path, monkeypatch, capsys):
+def testLaSimulationExecuteLesCinqOutilsEtUnTourSansChargerLaConfiguration(tmp_path, monkeypatch, capsys):
     """Le mode sans réseau ne doit jamais lire la configuration réelle et reste identifié comme simulation."""
     def forbidden():
         pytest.fail("Le mode simulation ne doit pas charger Settings")
@@ -24,13 +27,16 @@ def testLaSimulationExecuteLesQuatreOutilsEtUnTourSansChargerLaConfiguration(tmp
     assert ai_smoke.main(["--dry-run", "--output", str(path)]) == 0
     report = json.loads(path.read_text(encoding="utf-8"))
     assert report["mode"] == "simulation"
-    assert report["real_agent_verified"] is False
+    assert report["provider_responded"] is False
+    assert report["agent_checks_passed"] is False
     assert report["selected_attack"] == "Charge"
     assert report["metrics"]["model_requests"] == 2
-    assert report["metrics"]["tool_calls_executed"] == 4
+    assert report["metrics"]["tool_calls_executed"] == 5
     assert report["metrics"]["tokens"] == {}
     assert report["metrics"]["usage_complete"] is False
-    assert report["turn"] == {"number": 1, "pikachu_hp": 86, "sandshrew_hp": 122, "winner": None}
+    assert report["turn"] == {"number": 1, "winner": None, "fighters": [
+        {"id": "player", "species": "Sabelette", "hp": 122}, {"id": "agent", "species": "Pikachu", "hp": 86},
+    ]}
     assert all(report["checks"].values())
     assert json.loads(capsys.readouterr().out)["passed"] is True
 
@@ -56,7 +62,8 @@ def testLeRapportDistingueUneMauvaiseDecisionDuLlmDuneReussite():
     assert report["checks"]["legal_move"] is True
     assert report["checks"]["avoids_immunity"] is False
     assert report["passed"] is False
-    assert report["real_agent_verified"] is False
+    assert report["provider_responded"] is True
+    assert report["agent_checks_passed"] is False
     assert report["metrics"]["tokens"]["total_tokens"] == 22
     assert report["metrics"]["usage_complete"] is True
     assert report["metrics"]["model_time_ms"] >= 0
@@ -107,7 +114,8 @@ def testLeModeReelBrancheLAdaptateurEtFermeLeClientAvecUnTransportSimule(monkeyp
     assert ai_smoke.main(["--model", "modele-de-test", "--output", str(path)]) == 0
     report = json.loads(path.read_text(encoding="utf-8"))
     assert report["mode"] == "mistral"
-    assert report["real_agent_verified"] is True
+    assert report["provider_responded"] is True
+    assert report["agent_checks_passed"] is True
     assert report["metrics"]["tokens"] == {"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13}
     assert clients[0].http.is_closed
     captured = capsys.readouterr()
@@ -119,4 +127,82 @@ def testLeDelaiDoitEtreBorneEtPositif(value):
     """Les paramètres CLI ne doivent pas désactiver accidentellement le budget global."""
     with pytest.raises(SystemExit) as error:
         ai_smoke.main(["--dry-run", "--timeout", value])
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("name, slot, multiplier, label", [
+    ("pikachu_vs_ground", 0, 0.0, "immune"),
+    ("pikachu_vs_ground", 1, 1.0, "neutral"),
+    ("water_weakness", 0, 2.0, "super_effective"),
+    ("grass_resistance", 0, 0.5, "resisted"),
+    ("double_weakness", 1, 4.0, "super_effective"),
+])
+def testLEfficaciteAssocieUnLibelleEtLeNomAuMultiplicateurMetier(name, slot, multiplier, label):
+    """Les explications lisibles et les identifiants de slot doivent rester cohérents avec le calcul métier."""
+    record = SCENARIOS[name].create()
+    ctx = ToolsContext.from_record(record, "agent", 0)
+    result = execute_tool(ctx, ToolCall("matchup01", "evaluate_matchups", "{}"))
+    item = next(item for item in result["matchups"] if item["slot"] == slot)
+    assert item["multiplier"] == multiplier
+    assert item["effectiveness"] == label
+    assert item["name"] == record.battle.second.species.attacks[slot].name
+    assert item["target_types"] == [kind.value for kind in record.battle.first.species.types]
+    assert item["explanation"]
+
+
+def testUneAttaqueImmuniseeResteSelectionnablePourNePasMasquerLesErreursDuModele():
+    """La validation métier ne doit pas transformer un test stratégique en réussite forcée."""
+    ctx = ToolsContext.from_record(SCENARIOS["pikachu_vs_ground"].create(), "agent", 0)
+    assert execute_tool(ctx, ToolCall("select001", "select_attack", '{"slot":0}')) == {"selected_slot": 0}
+    assert ctx.decision.source == "llm"
+
+
+def testLaSuiteRepeteSixScenariosAvecDesSlotsDifferentsSansReseau(monkeypatch, tmp_path, capsys):
+    """Chaque répétition démarre un combat neuf ; les slots inversés et les PP épuisés changent le choix attendu."""
+    def forbidden():
+        pytest.fail("La simulation ne doit pas lire la configuration")
+    monkeypatch.setattr(ai_smoke, "Settings", forbidden)
+    path = tmp_path / "suite.json"
+    assert ai_smoke.main(["--dry-run", "--suite", "--repeat", "2", "--output", str(path)]) == 0
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["schema_version"] == 2
+    assert report["summary"]["runs"] == 12
+    assert report["summary"]["passed"] == 12
+    assert report["summary"]["fallback_rate"] == 0
+    assert report["summary"]["tokens"] == {}
+    assert report["summary"]["usage_complete"] is False
+    assert report["summary"]["per_scenario"]["reversed_slots"]["selected_slots"] == {"0": 2}
+    assert report["summary"]["per_scenario"]["exhausted_move"]["selected_slots"] == {"1": 2}
+    assert [run["repetition"] for run in report["runs"]] == [1, 2] * 6
+    assert all(not run["provider_responded"] and not run["agent_checks_passed"] for run in report["runs"])
+    assert all(run["checks"]["battle_unchanged_during_decision"] for run in report["runs"])
+    capsys.readouterr()
+
+
+def testLeBilanNAssimilePasLesReplisAuxBonnesDecisionsDuModele():
+    """Le taux stratégique du modèle doit exclure les secours locaux sans cacher les échecs de la suite."""
+    class WrongClient:
+        async def complete(self, *args, **kwargs):
+            return Completion(None, {}, (ToolCall("wrong0001", "select_attack", '{"slot":0}'),))
+    class FailingClient:
+        async def complete(self, *args, **kwargs):
+            raise MistralUnavailable()
+    async def check():
+        kwargs = {"mode": "mistral", "model": "fake", "timeout": 1}
+        return [await ai_smoke.run_scenario(ai_smoke.SimulatedClient(), **kwargs),
+                await ai_smoke.run_scenario(WrongClient(), **kwargs),
+                await ai_smoke.run_scenario(FailingClient(), **kwargs)]
+    summary = ai_smoke.summarize(asyncio.run(check()))
+    assert summary["runs"] == 3
+    assert summary["passed"] == 1
+    assert summary["pass_rate"] == 1 / 3
+    assert summary["fallback_rate"] == 1 / 3
+    assert summary["strategy_success_among_llm"] == 0.5
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def testLeNombreDeRepetitionsDoitEtrePositif(value):
+    """Une suite vide ne doit pas être considérée comme une réussite."""
+    with pytest.raises(SystemExit) as error:
+        ai_smoke.main(["--dry-run", "--repeat", value])
     assert error.value.code == 2

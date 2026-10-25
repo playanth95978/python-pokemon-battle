@@ -214,10 +214,13 @@ pas créer un paquet `domain/` homonyme sans migration de ses définitions méti
 `core/config.py` cherche le `.env` à la racine du projet. Les paramètres utiles
 sont `MISTRAL_API_KEY` et `MISTRAL_CHAT_MODEL` ; la clé reste uniquement côté backend.
 L'adaptateur ne contient aucun outil capable de modifier directement un combat.
-`application/ai` fournit maintenant le `ToolsContext`, les quatre outils, la boucle
+`application/ai` fournit maintenant le `ToolsContext`, les cinq outils, la boucle
 `ToolCallingOpponent` et la stratégie de secours `LocalOpponent`. Une décision est
 bornée par défaut à 4 requêtes modèle, 8 appels d'outils et 8 secondes au total.
 Les arguments sont validés avec Pydantic et la décision ne modifie aucun combat.
+L'outil `estimate_damage` partage la formule du moteur et fournit les dégâts possibles,
+la moyenne tenant compte de la précision et la probabilité de KO sur les PV actuels.
+Il ne consomme ni PP ni hasard ; ses résultats figurent dans les observations du rapport.
 La route d'adversaire IA et son interface React restent à brancher : le mode de jeu
 actuel conserve les deux choix manuels. Voir `docs/ai.md` pour le contrat et les limites.
 Le module de sécurité importé d'un autre projet,
@@ -246,3 +249,17 @@ Pikachu doit choisir Charge face à Sabelette (Sol) plutôt qu'Éclair. Le scrip
 exécute ensuite un tour en mémoire. `--dry-run` teste le même parcours sans modèle
 réel ni lecture de configuration. Les critères, métriques, codes de sortie et
 limites sont décrits dans `docs/ai.md`.
+
+Pour comparer plusieurs décisions, la suite propose six scénarios (immunité,
+slots inversés, faiblesse, résistance, PP épuisés, double faiblesse) :
+
+```powershell
+.venv/Scripts/python.exe -m pokemon_battle.ai_smoke --suite --repeat 3 --output artifacts/ai-suite-real.json
+```
+
+Les résultats d'outils donnent maintenant le nom, le slot et un libellé explicite
+d'efficacité. La consigne générale demande de respecter ces résultats ; un choix
+inefficace reste autorisé et fait échouer le critère stratégique. Le rapport v2
+distingue `provider_responded` de `agent_checks_passed`, conserve chaque tentative
+et agrège les taux de réussite et de repli sans masquer les mauvaises décisions.
+Ajouter `--dry-run` pour simuler la suite sans Mistral.

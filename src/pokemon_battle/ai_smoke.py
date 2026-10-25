@@ -15,29 +15,20 @@ from uuid import UUID
 
 from .application.ai.generation import Completion, ToolCall
 from .application.ai.opponent import CompletionClient, ToolCallingOpponent
+from .application.ai.scenarios import SCENARIOS
 from .application.ai.tools_context import ToolsContext
 from .application.battle_repository import StoredBattle
 from .core.config import Settings
-from .domain import Attack, Category, Fighter, Species, Stats
-from .engine import Battle, BattleEngine
+from .engine import BattleEngine
 from .mistral.client import MistralClient
 from .mistral.llm_adapter import MistralLLMAdapter
-from .types import Type, effectiveness
+from .types import effectiveness
 
 logger = logging.getLogger("pokemon_battle.ai_smoke")
 
 
-def scenario() -> StoredBattle:
-    """Éclair est légal mais inefficace sur Sabelette ; Charge est le choix attendu."""
-    pikachu = Species("Pikachu", (Type.ELECTRIC,), Stats(110, 65, 54, 73, 62, 91), (
-        Attack("Éclair", Type.ELECTRIC, 40, 100, 30, Category.SPECIAL),
-        Attack("Charge", Type.NORMAL, 40, 100, 35),
-    ))
-    sandshrew = Species("Sabelette", (Type.GROUND,), Stats(135, 74, 86, 43, 55, 47), (
-        Attack("Griffe", Type.NORMAL, 40, 100, 35),
-    ))
-    return StoredBattle(UUID("00000000-0000-0000-0000-000000000025"),
-                        Battle(Fighter("player", sandshrew), Fighter("agent", pikachu)))
+def scenario(name: str = "pikachu_vs_ground") -> StoredBattle:
+    return SCENARIOS[name].create()
 
 
 class SimulatedClient:
@@ -46,24 +37,27 @@ class SimulatedClient:
     async def complete(self, messages, **kwargs) -> Completion:
         if not any(message.role == "tool" for message in messages):
             return Completion(None, {}, tuple(ToolCall(f"sim-{index}", name, "{}") for index, name in enumerate((
-                "inspect_battle", "list_legal_moves", "evaluate_matchups",
+                "inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage",
             ))))
-        return Completion(None, {}, (ToolCall("sim-select", "select_attack", '{"slot":1}'),))
+        results = {message.name: json.loads(message.content) for message in messages if message.role == "tool"}
+        move = max(results["estimate_damage"]["estimates"], key=lambda item: (item["expected_damage"], -item["slot"]))
+        return Completion(None, {}, (ToolCall("sim-select", "select_attack", json.dumps({"slot": move["slot"]})),))
 
 
 async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeout: float,
-                       seed: int = 42) -> dict:
-    record = scenario()
+                       seed: int = 42, scenario_name: str = "pikachu_vs_ground") -> dict:
+    definition = SCENARIOS[scenario_name]
+    record = scenario(scenario_name)
     before = asdict(record.battle)
     context = ToolsContext.from_record(record, "agent", expected_turn=0)
-    logger.info("Scénario : Pikachu contre Sabelette (Sol). Attendu : Charge, slot 1.")
+    logger.info("Scénario=%s : %s. Slots attendus=%s", scenario_name, definition.description, definition.expected_slots)
     logger.info("Mode=%s modèle=%s délai_global=%ss", mode, model, timeout)
     decision = await ToolCallingOpponent(client, timeout_seconds=timeout).choose(context)
     move = next((move for move in context.legal_moves if move.slot == decision.slot), None)
     checks = {
         "legal_move": move is not None,
         "avoids_immunity": move is not None and effectiveness(move.type, context.view.opponent.types) > 0,
-        "expected_slot": decision.slot == 1,
+        "expected_slot": decision.slot in definition.expected_slots,
         "llm_selected": decision.source == "llm",
         "battle_unchanged_during_decision": asdict(record.battle) == before,
     }
@@ -73,7 +67,8 @@ async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeo
     logger.info("Critères : %s", checks)
     # Le choix du joueur n'entre qu'ici, après la décision de l'agent.
     events = BattleEngine(Random(seed)).play_turn(record.battle, 0, decision.slot)
-    logger.info("Tour résolu : Pikachu=%s PV, Sabelette=%s PV", record.battle.second.hp, record.battle.first.hp)
+    logger.info("Tour résolu : %s=%s PV, %s=%s PV", record.battle.second.species.name, record.battle.second.hp,
+                record.battle.first.species.name, record.battle.first.hp)
     metrics = asdict(context.metrics)
     metrics["model_time_ms"] = round(metrics["model_time_ms"], 3)
     metrics["usage_complete"] = context.metrics.complete_usage_reports == context.metrics.model_requests
@@ -81,16 +76,61 @@ async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeo
                 metrics["elapsed_ms"], metrics["model_requests"], metrics["tool_calls_executed"],
                 metrics["tool_errors"], metrics["tokens"] or "non communiqués")
     return {
-        "scenario": "pikachu_vs_ground", "mode": mode, "model": model,
+        "schema_version": 2, "scenario": scenario_name, "mode": mode, "model": model,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(), "seed": seed,
-        "passed": passed, "real_agent_verified": mode == "mistral" and passed,
+        "passed": passed, "provider_responded": mode == "mistral" and metrics["model_responses"] > 0,
+        "agent_checks_passed": mode == "mistral" and passed,
         "checks": checks, "decision": asdict(decision),
         "selected_attack": move.name if move else None, "metrics": metrics,
         "observations": context.observations,
-        "turn": {"number": record.battle.turn, "pikachu_hp": record.battle.second.hp,
-                 "sandshrew_hp": record.battle.first.hp, "winner": record.battle.winner},
+        "turn": {"number": record.battle.turn, "winner": record.battle.winner,
+                 "fighters": [{"id": fighter.id, "species": fighter.species.name, "hp": fighter.hp}
+                              for fighter in (record.battle.first, record.battle.second)]},
         "events": [{"type": type(event).__name__, **asdict(event)} for event in events],
     }
+
+
+def summarize(runs: list[dict]) -> dict:
+    def rates(items):
+        count = len(items)
+        llm = [run for run in items if run["decision"]["source"] == "llm"]
+        return {
+            "runs": count, "passed": sum(run["passed"] for run in items),
+            "pass_rate": sum(run["passed"] for run in items) / count,
+            "fallback_rate": sum(run["decision"]["source"] == "local" for run in items) / count,
+            "provider_response_rate": sum(run["provider_responded"] for run in items) / count,
+            "llm_decision_rate": len(llm) / count,
+            "strategy_success_among_llm": sum(run["checks"]["expected_slot"] for run in llm) / len(llm) if llm else None,
+            "mean_elapsed_ms": round(sum(run["metrics"]["elapsed_ms"] for run in items) / count, 3),
+            "selected_slots": {str(slot): sum(run["decision"]["slot"] == slot for run in items)
+                               for slot in sorted({run["decision"]["slot"] for run in items})},
+        }
+    tokens = {}
+    for run in runs:
+        for name, value in run["metrics"]["tokens"].items():
+            tokens[name] = tokens.get(name, 0) + value
+    return {**rates(runs),
+            "model_requests": sum(run["metrics"]["model_requests"] for run in runs),
+            "tool_calls_executed": sum(run["metrics"]["tool_calls_executed"] for run in runs),
+            "tool_errors": sum(run["metrics"]["tool_errors"] for run in runs),
+            "tokens": tokens, "usage_complete": all(run["metrics"]["usage_complete"] for run in runs),
+            "per_scenario": {name: rates([run for run in runs if run["scenario"] == name])
+                             for name in dict.fromkeys(run["scenario"] for run in runs)}}
+
+
+async def run_suite(client: CompletionClient, *, mode: str, model: str, timeout: float,
+                    scenarios: list[str], repeat: int, seed: int) -> dict:
+    runs = []
+    for name in scenarios:
+        for index in range(repeat):
+            logger.info("Évaluation scénario=%s répétition=%s/%s", name, index + 1, repeat)
+            report = await run_scenario(client, mode=mode, model=model, timeout=timeout, seed=seed, scenario_name=name)
+            report["repetition"] = index + 1
+            runs.append(report)
+    summary = summarize(runs)
+    logger.info("Bilan : %s/%s réussites, repli=%s", summary["passed"], summary["runs"], summary["fallback_rate"])
+    return {"schema_version": 2, "mode": mode, "model": model, "passed": all(run["passed"] for run in runs),
+            "summary": summary, "runs": runs}
 
 
 def _json_default(value):
@@ -108,6 +148,13 @@ def _timeout(value: str) -> float:
     return timeout
 
 
+def _repeat(value: str) -> int:
+    repeat = int(value)
+    if repeat < 1:
+        raise argparse.ArgumentTypeError("Le nombre de répétitions doit être positif")
+    return repeat
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Test local de l'agent Mistral : outils, décision et métriques")
     parser.add_argument("--dry-run", action="store_true", help="Simulation SANS appel Mistral, explicitement marquée dans le rapport")
@@ -115,15 +162,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=_timeout, default=30, help="Délai global de décision en secondes (30 par défaut pour ce test)")
     parser.add_argument("--seed", type=int, default=42, help="Graine du moteur uniquement, pas du LLM")
     parser.add_argument("--output", type=Path, help="Enregistrer le rapport JSON à cet emplacement")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--scenario", choices=list(SCENARIOS), default="pikachu_vs_ground", help="Scénario à exécuter")
+    selection.add_argument("--suite", action="store_true", help="Exécuter les six scénarios")
+    parser.add_argument("--repeat", type=_repeat, default=1, help="Répétitions indépendantes par scénario")
     args = parser.parse_args(argv)
     # Les bibliothèques HTTP ne journalisent pas leurs requêtes dans cette démonstration.
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s | %(message)s")
     logging.getLogger("pokemon_battle").setLevel(logging.INFO)
 
     async def execute():
+        async def evaluate(client, mode, model):
+            if args.suite or args.repeat > 1:
+                return await run_suite(client, mode=mode, model=model, timeout=args.timeout,
+                                       scenarios=list(SCENARIOS) if args.suite else [args.scenario], repeat=args.repeat, seed=args.seed)
+            return await run_scenario(client, mode=mode, model=model, timeout=args.timeout,
+                                      seed=args.seed, scenario_name=args.scenario)
         if args.dry_run:
-            return await run_scenario(SimulatedClient(), mode="simulation", model="simulation-sans-llm",
-                                      timeout=args.timeout, seed=args.seed)
+            return await evaluate(SimulatedClient(), "simulation", "simulation-sans-llm")
         configured = Settings()
         if not configured.mistral_api_key.get_secret_value() or configured.mistral_api_key.get_secret_value() == "remplacer_par_votre_cle":
             print("Configurer MISTRAL_API_KEY côté backend avant le test réel, ou utiliser --dry-run.", file=sys.stderr)
@@ -131,8 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         client = MistralClient(configured)
         try:
             adapter = MistralLLMAdapter(client, model=args.model)
-            return await run_scenario(adapter, mode="mistral", model=adapter.model,
-                                      timeout=args.timeout, seed=args.seed)
+            return await evaluate(adapter, "mistral", adapter.model)
         finally:
             await client.aclose()
 

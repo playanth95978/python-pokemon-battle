@@ -96,7 +96,12 @@ def testLesOutilsPartagentLeContexteSansMuterLeCombat(record):
     assert view["fighter"]["hp"] == 73
     assert view["opponent"]["hp"] == 99
     assert [move["slot"] for move in moves["moves"]] == [0, 1]
-    assert matchups == {"matchups": [{"slot": 0, "type": "fire", "multiplier": 0.5}, {"slot": 1, "type": "water", "multiplier": 2.0}]}
+    assert matchups == {"matchups": [
+        {"slot": 0, "name": "Flamme", "type": "fire", "target_types": ["fire"], "multiplier": 0.5,
+         "effectiveness": "resisted", "explanation": "La cible résiste à ce type : dégâts réduits."},
+        {"slot": 1, "name": "Eau", "type": "water", "target_types": ["fire"], "multiplier": 2.0,
+         "effectiveness": "super_effective", "explanation": "Faiblesse de la cible à ce type : dégâts amplifiés."},
+    ]}
     assert execute_tool(ctx, call("select_attack", '{"slot":1,"comment":"À toi de jouer !"}')) == {"selected_slot": 1}
     assert ctx.decision.slot == 1
     assert ctx.decision.source == "llm"
@@ -141,7 +146,7 @@ def testLaBoucleReinjecteLesResultatsAvecLesBonsIdentifiants(record):
     assert (choice.slot, choice.source, choice.fallback_reason) == (1, "llm", None)
     messages, options = client.requests[1]
     assert options["tool_choice"] == "any"
-    assert {tool["function"]["name"] for tool in options["tools"]} == {"inspect_battle", "list_legal_moves", "evaluate_matchups", "select_attack"}
+    assert {tool["function"]["name"] for tool in options["tools"]} == {"inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage", "select_attack"}
     assert [message.tool_call_id for message in messages if message.role == "tool"] == ["inspect", "moves"]
     assert json.loads(messages[-1].content)["moves"][1]["pp"] == 19
     assert len(client.requests[0][0]) == 2

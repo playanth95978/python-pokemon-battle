@@ -1,0 +1,4369 @@
+{
+  "schema_version": 2,
+  "mode": "mistral",
+  "model": "mistral-small-latest",
+  "passed": false,
+  "summary": {
+    "runs": 18,
+    "passed": 17,
+    "pass_rate": 0.9444444444444444,
+    "fallback_rate": 0.0,
+    "provider_response_rate": 1.0,
+    "llm_decision_rate": 1.0,
+    "strategy_success_among_llm": 0.9444444444444444,
+    "mean_elapsed_ms": 2319.581,
+    "selected_slots": {
+      "0": 7,
+      "1": 11
+    },
+    "model_requests": 55,
+    "tool_calls_executed": 72,
+    "tool_errors": 0,
+    "tokens": {
+      "prompt_tokens": 42585,
+      "completion_tokens": 982,
+      "total_tokens": 43567
+    },
+    "usage_complete": true,
+    "per_scenario": {
+      "pikachu_vs_ground": {
+        "runs": 3,
+        "passed": 3,
+        "pass_rate": 1.0,
+        "fallback_rate": 0.0,
+        "provider_response_rate": 1.0,
+        "llm_decision_rate": 1.0,
+        "strategy_success_among_llm": 1.0,
+        "mean_elapsed_ms": 2740.058,
+        "selected_slots": {
+          "1": 3
+        }
+      },
+      "reversed_slots": {
+        "runs": 3,
+        "passed": 3,
+        "pass_rate": 1.0,
+        "fallback_rate": 0.0,
+        "provider_response_rate": 1.0,
+        "llm_decision_rate": 1.0,
+        "strategy_success_among_llm": 1.0,
+        "mean_elapsed_ms": 2243.693,
+        "selected_slots": {
+          "0": 3
+        }
+      },
+      "water_weakness": {
+        "runs": 3,
+        "passed": 3,
+        "pass_rate": 1.0,
+        "fallback_rate": 0.0,
+        "provider_response_rate": 1.0,
+        "llm_decision_rate": 1.0,
+        "strategy_success_among_llm": 1.0,
+        "mean_elapsed_ms": 2305.664,
+        "selected_slots": {
+          "0": 3
+        }
+      },
+      "grass_resistance": {
+        "runs": 3,
+        "passed": 2,
+        "pass_rate": 0.6666666666666666,
+        "fallback_rate": 0.0,
+        "provider_response_rate": 1.0,
+        "llm_decision_rate": 1.0,
+        "strategy_success_among_llm": 0.6666666666666666,
+        "mean_elapsed_ms": 1949.08,
+        "selected_slots": {
+          "0": 1,
+          "1": 2
+        }
+      },
+      "exhausted_move": {
+        "runs": 3,
+        "passed": 3,
+        "pass_rate": 1.0,
+        "fallback_rate": 0.0,
+        "provider_response_rate": 1.0,
+        "llm_decision_rate": 1.0,
+        "strategy_success_among_llm": 1.0,
+        "mean_elapsed_ms": 2402.219,
+        "selected_slots": {
+          "1": 3
+        }
+      },
+      "double_weakness": {
+        "runs": 3,
+        "passed": 3,
+        "pass_rate": 1.0,
+        "fallback_rate": 0.0,
+        "provider_response_rate": 1.0,
+        "llm_decision_rate": 1.0,
+        "strategy_success_among_llm": 1.0,
+        "mean_elapsed_ms": 2276.774,
+        "selected_slots": {
+          "1": 3
+        }
+      }
+    }
+  },
+  "runs": [
+    {
+      "schema_version": 2,
+      "scenario": "pikachu_vs_ground",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:08.649491+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Charge est la seule attaque qui peut toucher Sabelette.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 4,
+        "model_responses": 4,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 3762.146,
+        "elapsed_ms": 3764.259,
+        "tokens": {
+          "prompt_tokens": 3061,
+          "completion_tokens": 54,
+          "total_tokens": 3115
+        },
+        "usage_reports": 4,
+        "complete_usage_reports": 4,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "V9rm014Yl",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "SgCieVY92",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "stUqMoYDP",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 4
+          },
+          {
+            "event": "model_response",
+            "request": 4,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "1yRbfay4g",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Sabelette",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "ground"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 0.0,
+              "effectiveness": "immune",
+              "explanation": "Aucun dégât : la cible est immunisée contre ce type."
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Sabelette",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 1
+    },
+    {
+      "schema_version": 2,
+      "scenario": "pikachu_vs_ground",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:10.894352+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Charge est la seule attaque viable contre un Sabelette (sol).",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2242.195,
+        "elapsed_ms": 2243.926,
+        "tokens": {
+          "prompt_tokens": 2350,
+          "completion_tokens": 55,
+          "total_tokens": 2405
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "lK90PSSPX",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "Rh4x9a7VX",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "ZmNFWe9LC",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "LPVDDfEpS",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Sabelette",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "ground"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 0.0,
+              "effectiveness": "immune",
+              "explanation": "Aucun dégât : la cible est immunisée contre ce type."
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Sabelette",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 2
+    },
+    {
+      "schema_version": 2,
+      "scenario": "pikachu_vs_ground",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:13.107114+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Sabelette est immunisée à l'Éclair, Charge est le seul choix viable.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2210.634,
+        "elapsed_ms": 2211.988,
+        "tokens": {
+          "prompt_tokens": 2350,
+          "completion_tokens": 59,
+          "total_tokens": 2409
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "VnuUTLevH",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "zszZIEAzk",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "HYbagnQSP",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "wIImBcPHC",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Sabelette",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "ground"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 0.0,
+              "effectiveness": "immune",
+              "explanation": "Aucun dégât : la cible est immunisée contre ce type."
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Sabelette",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 3
+    },
+    {
+      "schema_version": 2,
+      "scenario": "reversed_slots",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:15.055347+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 0,
+        "source": "llm",
+        "comment": "Charge est neutre contre un Sabelette (Ground), Éclair est inefficace.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 1945.914,
+        "elapsed_ms": 1947.498,
+        "tokens": {
+          "prompt_tokens": 2350,
+          "completion_tokens": 60,
+          "total_tokens": 2410
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "3FOLs1ZbV",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "giNZLAWwl",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "N0hfCI3ea",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "lwmDgSaqp",
+            "status": "ok",
+            "selected_slot": 0
+          },
+          {
+            "event": "decision",
+            "slot": 0,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Sabelette",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "ground"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            },
+            {
+              "slot": 1,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            },
+            {
+              "slot": 1,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 0.0,
+              "effectiveness": "immune",
+              "explanation": "Aucun dégât : la cible est immunisée contre ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 0
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Sabelette",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 1
+    },
+    {
+      "schema_version": 2,
+      "scenario": "reversed_slots",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:17.576611+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 0,
+        "source": "llm",
+        "comment": "Charge est neutre contre un Sabelette (Ground), Éclair est inefficace.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2518.596,
+        "elapsed_ms": 2520.083,
+        "tokens": {
+          "prompt_tokens": 2350,
+          "completion_tokens": 60,
+          "total_tokens": 2410
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "XftX2eOOG",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "gIka3F2nZ",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "T6Cw4dD8V",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "Z3NJVYmvE",
+            "status": "ok",
+            "selected_slot": 0
+          },
+          {
+            "event": "decision",
+            "slot": 0,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Sabelette",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "ground"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            },
+            {
+              "slot": 1,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            },
+            {
+              "slot": 1,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 0.0,
+              "effectiveness": "immune",
+              "explanation": "Aucun dégât : la cible est immunisée contre ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 0
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Sabelette",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 2
+    },
+    {
+      "schema_version": 2,
+      "scenario": "reversed_slots",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:19.840973+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 0,
+        "source": "llm",
+        "comment": "Charge est neutre contre un Sabelette (Ground), Éclair est inefficace.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2261.929,
+        "elapsed_ms": 2263.499,
+        "tokens": {
+          "prompt_tokens": 2350,
+          "completion_tokens": 60,
+          "total_tokens": 2410
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "nPDD7CBMT",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "Xcsi0JVbW",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "PywjkOK8t",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "854zFTM3k",
+            "status": "ok",
+            "selected_slot": 0
+          },
+          {
+            "event": "decision",
+            "slot": 0,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Sabelette",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "ground"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            },
+            {
+              "slot": 1,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            },
+            {
+              "slot": 1,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "ground"
+              ],
+              "multiplier": 0.0,
+              "effectiveness": "immune",
+              "explanation": "Aucun dégât : la cible est immunisée contre ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 0
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Sabelette",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 3
+    },
+    {
+      "schema_version": 2,
+      "scenario": "water_weakness",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:22.449338+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 0,
+        "source": "llm",
+        "comment": "Éclair est super efficace contre Carapuce !",
+        "fallback_reason": null
+      },
+      "selected_attack": "Éclair",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2606.315,
+        "elapsed_ms": 2607.759,
+        "tokens": {
+          "prompt_tokens": 2351,
+          "completion_tokens": 51,
+          "total_tokens": 2402
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "pRoEyLgAq",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "Dtud4yI3c",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "I4MsNKYiF",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "2FLhlnoVZ",
+            "status": "ok",
+            "selected_slot": 0
+          },
+          {
+            "event": "decision",
+            "slot": 0,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Carapuce",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "water"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "water"
+              ],
+              "multiplier": 2.0,
+              "effectiveness": "super_effective",
+              "explanation": "Faiblesse de la cible à ce type : dégâts amplifiés."
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "water"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 0
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Carapuce",
+            "hp": 69
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Éclair",
+          "pp_remaining": 29,
+          "attack_type": "electric",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 66,
+          "hp_remaining": 69,
+          "effectiveness": 2.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 1
+    },
+    {
+      "schema_version": 2,
+      "scenario": "water_weakness",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:24.762206+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 0,
+        "source": "llm",
+        "comment": "Éclair est super efficace contre Carapuce !",
+        "fallback_reason": null
+      },
+      "selected_attack": "Éclair",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2310.889,
+        "elapsed_ms": 2312.2,
+        "tokens": {
+          "prompt_tokens": 2351,
+          "completion_tokens": 51,
+          "total_tokens": 2402
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "2OQWjehzy",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "YjdlrpapM",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "VmFA0XUoq",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "J91eOwgUO",
+            "status": "ok",
+            "selected_slot": 0
+          },
+          {
+            "event": "decision",
+            "slot": 0,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Carapuce",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "water"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "water"
+              ],
+              "multiplier": 2.0,
+              "effectiveness": "super_effective",
+              "explanation": "Faiblesse de la cible à ce type : dégâts amplifiés."
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "water"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 0
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Carapuce",
+            "hp": 69
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Éclair",
+          "pp_remaining": 29,
+          "attack_type": "electric",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 66,
+          "hp_remaining": 69,
+          "effectiveness": 2.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 2
+    },
+    {
+      "schema_version": 2,
+      "scenario": "water_weakness",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:26.760148+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 0,
+        "source": "llm",
+        "comment": "Éclair est super efficace contre Carapuce !",
+        "fallback_reason": null
+      },
+      "selected_attack": "Éclair",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 1995.769,
+        "elapsed_ms": 1997.033,
+        "tokens": {
+          "prompt_tokens": 2351,
+          "completion_tokens": 51,
+          "total_tokens": 2402
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "XihwFTZyD",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "jq3PAYBNB",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "uevZ35WOs",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "QbLNflR2X",
+            "status": "ok",
+            "selected_slot": 0
+          },
+          {
+            "event": "decision",
+            "slot": 0,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Carapuce",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "water"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "water"
+              ],
+              "multiplier": 2.0,
+              "effectiveness": "super_effective",
+              "explanation": "Faiblesse de la cible à ce type : dégâts amplifiés."
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "water"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 0
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Carapuce",
+            "hp": 69
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Éclair",
+          "pp_remaining": 29,
+          "attack_type": "electric",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 66,
+          "hp_remaining": 69,
+          "effectiveness": 2.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 3
+    },
+    {
+      "schema_version": 2,
+      "scenario": "grass_resistance",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:28.700329+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Charge est plus sûr face à Bulbizarre.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 1937.683,
+        "elapsed_ms": 1939.535,
+        "tokens": {
+          "prompt_tokens": 2368,
+          "completion_tokens": 52,
+          "total_tokens": 2420
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "GXR4Ljd02",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "vUTMITHjW",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "zfTZCHFfT",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "nlyvdtqMi",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Bulbizarre",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "grass",
+              "poison"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "grass",
+                "poison"
+              ],
+              "multiplier": 0.5,
+              "effectiveness": "resisted",
+              "explanation": "La cible résiste à ce type : dégâts réduits."
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "grass",
+                "poison"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Bulbizarre",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 1
+    },
+    {
+      "schema_version": 2,
+      "scenario": "grass_resistance",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:30.677794+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Charge est plus sûr face à un Bulbizarre.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 1975.663,
+        "elapsed_ms": 1976.722,
+        "tokens": {
+          "prompt_tokens": 2368,
+          "completion_tokens": 53,
+          "total_tokens": 2421
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "Vzm1gIiPV",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "3nr9sW4Gq",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "9EMXy1bOQ",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "bruLcpZ1a",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Bulbizarre",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "grass",
+              "poison"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "grass",
+                "poison"
+              ],
+              "multiplier": 0.5,
+              "effectiveness": "resisted",
+              "explanation": "La cible résiste à ce type : dégâts réduits."
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "grass",
+                "poison"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Bulbizarre",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 2
+    },
+    {
+      "schema_version": 2,
+      "scenario": "grass_resistance",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:32.609790+00:00",
+      "seed": 42,
+      "passed": false,
+      "provider_responded": true,
+      "agent_checks_passed": false,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": false,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 0,
+        "source": "llm",
+        "comment": "L'Éclair est plus puissant malgré la résistance.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Éclair",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 1929.494,
+        "elapsed_ms": 1930.982,
+        "tokens": {
+          "prompt_tokens": 2368,
+          "completion_tokens": 51,
+          "total_tokens": 2419
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "9pWDmTq7Z",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "me2QGeQH3",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "xlQPk2iOR",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "lwb6kOg08",
+            "status": "ok",
+            "selected_slot": 0
+          },
+          {
+            "event": "decision",
+            "slot": 0,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Bulbizarre",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "grass",
+              "poison"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 30,
+              "max_pp": 30
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Éclair",
+              "type": "electric",
+              "target_types": [
+                "grass",
+                "poison"
+              ],
+              "multiplier": 0.5,
+              "effectiveness": "resisted",
+              "explanation": "La cible résiste à ce type : dégâts réduits."
+            },
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "grass",
+                "poison"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 0
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Bulbizarre",
+            "hp": 126
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Éclair",
+          "pp_remaining": 29,
+          "attack_type": "electric",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 9,
+          "hp_remaining": 126,
+          "effectiveness": 0.5
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 3
+    },
+    {
+      "schema_version": 2,
+      "scenario": "exhausted_move",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:34.555341+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Charge est neutre contre Carapuce.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 1943.2,
+        "elapsed_ms": 1944.607,
+        "tokens": {
+          "prompt_tokens": 2177,
+          "completion_tokens": 50,
+          "total_tokens": 2227
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "Ac4gyZbQ9",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "5ysBlU70g",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "IiEz0of6h",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "qHLCOcfhJ",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Carapuce",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "water"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "water"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Carapuce",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 1
+    },
+    {
+      "schema_version": 2,
+      "scenario": "exhausted_move",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:37.310709+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Charge est neutre contre Carapuce, mais c'est la seule option.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2753.177,
+        "elapsed_ms": 2754.52,
+        "tokens": {
+          "prompt_tokens": 2177,
+          "completion_tokens": 57,
+          "total_tokens": 2234
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "6i32ZIPcM",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "eVCWoO2BE",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "tcnFOlCW8",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "ZNkEPrfvo",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Carapuce",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "water"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "water"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Carapuce",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 2
+    },
+    {
+      "schema_version": 2,
+      "scenario": "exhausted_move",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:39.819236+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Charge est neutre contre Carapuce.",
+        "fallback_reason": null
+      },
+      "selected_attack": "Charge",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2505.855,
+        "elapsed_ms": 2507.531,
+        "tokens": {
+          "prompt_tokens": 2177,
+          "completion_tokens": 50,
+          "total_tokens": 2227
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "bOefv0tTi",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "KqgdEg3NA",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "VfcGH9aYx",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "mUmD6SrJZ",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Pikachu",
+            "level": 50,
+            "hp": 110,
+            "max_hp": 110,
+            "types": [
+              "electric"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Carapuce",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "water"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 1,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "water"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": null,
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Carapuce",
+            "hp": 122
+          },
+          {
+            "id": "agent",
+            "species": "Pikachu",
+            "hp": 86
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Charge",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 13,
+          "hp_remaining": 122,
+          "effectiveness": 1.0
+        },
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "attack": "Griffe",
+          "pp_remaining": 34,
+          "attack_type": "normal",
+          "attack_slot": 0
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "player",
+          "target": "agent",
+          "damage": 24,
+          "hp_remaining": 86,
+          "effectiveness": 1.0
+        }
+      ],
+      "repetition": 3
+    },
+    {
+      "schema_version": 2,
+      "scenario": "double_weakness",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:41.975113+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Flammèche est super efficace contre Paras (Grass/Bug) !",
+        "fallback_reason": null
+      },
+      "selected_attack": "Flammèche",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2153.332,
+        "elapsed_ms": 2154.875,
+        "tokens": {
+          "prompt_tokens": 2362,
+          "completion_tokens": 56,
+          "total_tokens": 2418
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "jz6VyWs14",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "hikPY7nTU",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "AVw7KNdRl",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "FSW4uKvUA",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Salamèche",
+            "level": 50,
+            "hp": 114,
+            "max_hp": 114,
+            "types": [
+              "fire"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Paras",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "grass",
+              "bug"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            },
+            {
+              "slot": 1,
+              "name": "Flammèche",
+              "type": "fire",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 25,
+              "max_pp": 25
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "grass",
+                "bug"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            },
+            {
+              "slot": 1,
+              "name": "Flammèche",
+              "type": "fire",
+              "target_types": [
+                "grass",
+                "bug"
+              ],
+              "multiplier": 4.0,
+              "effectiveness": "super_effective",
+              "explanation": "Faiblesse de la cible à ce type : dégâts amplifiés."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": "agent",
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Paras",
+            "hp": 0
+          },
+          {
+            "id": "agent",
+            "species": "Salamèche",
+            "hp": 114
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Flammèche",
+          "pp_remaining": 24,
+          "attack_type": "fire",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 135,
+          "hp_remaining": 0,
+          "effectiveness": 4.0
+        },
+        {
+          "type": "KnockedOut",
+          "turn": 1,
+          "fighter": "player"
+        },
+        {
+          "type": "BattleEnded",
+          "turn": 1,
+          "winner": "agent"
+        }
+      ],
+      "repetition": 1
+    },
+    {
+      "schema_version": 2,
+      "scenario": "double_weakness",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:44.582574+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Flammèche est super efficace contre Paras (Grass/Bug) !",
+        "fallback_reason": null
+      },
+      "selected_attack": "Flammèche",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2604.48,
+        "elapsed_ms": 2606.537,
+        "tokens": {
+          "prompt_tokens": 2362,
+          "completion_tokens": 56,
+          "total_tokens": 2418
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "AaAvhKyB7",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "hiQQH613k",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "VtcmplnUa",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "eQYpV6IFh",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Salamèche",
+            "level": 50,
+            "hp": 114,
+            "max_hp": 114,
+            "types": [
+              "fire"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Paras",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "grass",
+              "bug"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            },
+            {
+              "slot": 1,
+              "name": "Flammèche",
+              "type": "fire",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 25,
+              "max_pp": 25
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "grass",
+                "bug"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            },
+            {
+              "slot": 1,
+              "name": "Flammèche",
+              "type": "fire",
+              "target_types": [
+                "grass",
+                "bug"
+              ],
+              "multiplier": 4.0,
+              "effectiveness": "super_effective",
+              "explanation": "Faiblesse de la cible à ce type : dégâts amplifiés."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": "agent",
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Paras",
+            "hp": 0
+          },
+          {
+            "id": "agent",
+            "species": "Salamèche",
+            "hp": 114
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Flammèche",
+          "pp_remaining": 24,
+          "attack_type": "fire",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 135,
+          "hp_remaining": 0,
+          "effectiveness": 4.0
+        },
+        {
+          "type": "KnockedOut",
+          "turn": 1,
+          "fighter": "player"
+        },
+        {
+          "type": "BattleEnded",
+          "turn": 1,
+          "winner": "agent"
+        }
+      ],
+      "repetition": 2
+    },
+    {
+      "schema_version": 2,
+      "scenario": "double_weakness",
+      "mode": "mistral",
+      "model": "mistral-small-latest",
+      "timestamp_utc": "2026-10-24T23:58:46.652663+00:00",
+      "seed": 42,
+      "passed": true,
+      "provider_responded": true,
+      "agent_checks_passed": true,
+      "checks": {
+        "legal_move": true,
+        "avoids_immunity": true,
+        "expected_slot": true,
+        "llm_selected": true,
+        "battle_unchanged_during_decision": true
+      },
+      "decision": {
+        "slot": 1,
+        "source": "llm",
+        "comment": "Flammèche est super efficace contre Paras (Grass/Bug) !",
+        "fallback_reason": null
+      },
+      "selected_attack": "Flammèche",
+      "metrics": {
+        "model_requests": 3,
+        "model_responses": 3,
+        "tool_calls_requested": 4,
+        "tool_calls_executed": 4,
+        "tool_errors": 0,
+        "model_time_ms": 2067.182,
+        "elapsed_ms": 2068.911,
+        "tokens": {
+          "prompt_tokens": 2362,
+          "completion_tokens": 56,
+          "total_tokens": 2418
+        },
+        "usage_reports": 3,
+        "complete_usage_reports": 3,
+        "trace": [
+          {
+            "event": "model_request",
+            "request": 1
+          },
+          {
+            "event": "model_response",
+            "request": 1,
+            "tool_calls": 2
+          },
+          {
+            "event": "tool_result",
+            "tool": "inspect_battle",
+            "call_id": "QkrmRn7Gv",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "tool_result",
+            "tool": "list_legal_moves",
+            "call_id": "6ghhRDC0I",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 2
+          },
+          {
+            "event": "model_response",
+            "request": 2,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "evaluate_matchups",
+            "call_id": "z6HeLZ5EI",
+            "status": "ok",
+            "selected_slot": null
+          },
+          {
+            "event": "model_request",
+            "request": 3
+          },
+          {
+            "event": "model_response",
+            "request": 3,
+            "tool_calls": 1
+          },
+          {
+            "event": "tool_result",
+            "tool": "select_attack",
+            "call_id": "TwNzQKhIV",
+            "status": "ok",
+            "selected_slot": 1
+          },
+          {
+            "event": "decision",
+            "slot": 1,
+            "source": "llm"
+          }
+        ],
+        "usage_complete": true
+      },
+      "observations": {
+        "inspect_battle": {
+          "battle_id": "00000000-0000-0000-0000-000000000025",
+          "turn": 0,
+          "fighter": {
+            "id": "agent",
+            "species": "Salamèche",
+            "level": 50,
+            "hp": 114,
+            "max_hp": 114,
+            "types": [
+              "fire"
+            ]
+          },
+          "opponent": {
+            "id": "player",
+            "species": "Paras",
+            "level": 50,
+            "hp": 135,
+            "max_hp": 135,
+            "types": [
+              "grass",
+              "bug"
+            ]
+          }
+        },
+        "list_legal_moves": {
+          "moves": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "category": "physical",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 35,
+              "max_pp": 35
+            },
+            {
+              "slot": 1,
+              "name": "Flammèche",
+              "type": "fire",
+              "category": "special",
+              "power": 40,
+              "accuracy": 100,
+              "pp": 25,
+              "max_pp": 25
+            }
+          ]
+        },
+        "evaluate_matchups": {
+          "matchups": [
+            {
+              "slot": 0,
+              "name": "Charge",
+              "type": "normal",
+              "target_types": [
+                "grass",
+                "bug"
+              ],
+              "multiplier": 1.0,
+              "effectiveness": "neutral",
+              "explanation": "Efficacité normale pour ce type."
+            },
+            {
+              "slot": 1,
+              "name": "Flammèche",
+              "type": "fire",
+              "target_types": [
+                "grass",
+                "bug"
+              ],
+              "multiplier": 4.0,
+              "effectiveness": "super_effective",
+              "explanation": "Faiblesse de la cible à ce type : dégâts amplifiés."
+            }
+          ]
+        },
+        "select_attack": {
+          "selected_slot": 1
+        }
+      },
+      "turn": {
+        "number": 1,
+        "winner": "agent",
+        "fighters": [
+          {
+            "id": "player",
+            "species": "Paras",
+            "hp": 0
+          },
+          {
+            "id": "agent",
+            "species": "Salamèche",
+            "hp": 114
+          }
+        ]
+      },
+      "events": [
+        {
+          "type": "AttackUsed",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "attack": "Flammèche",
+          "pp_remaining": 24,
+          "attack_type": "fire",
+          "attack_slot": 1
+        },
+        {
+          "type": "DamageDealt",
+          "turn": 1,
+          "actor": "agent",
+          "target": "player",
+          "damage": 135,
+          "hp_remaining": 0,
+          "effectiveness": 4.0
+        },
+        {
+          "type": "KnockedOut",
+          "turn": 1,
+          "fighter": "player"
+        },
+        {
+          "type": "BattleEnded",
+          "turn": 1,
+          "winner": "agent"
+        }
+      ],
+      "repetition": 3
+    }
+  ]
+}

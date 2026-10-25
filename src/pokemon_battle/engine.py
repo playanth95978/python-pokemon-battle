@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Protocol
 
-from .domain import Attack, Category, Fighter
+from .domain import Attack, Fighter
+from .damage import damage_for_roll
 from .types import Type, effectiveness
 
 
@@ -135,10 +136,5 @@ class BattleEngine:
     def _damage(self, actor: Fighter, target: Fighter, attack: Attack, multiplier: Fraction) -> int:
         if multiplier == 0:
             return 0
-        offense = actor.species.stats
-        defense = target.species.stats
-        atk = offense.attack if attack.category == Category.PHYSICAL else offense.special_attack
-        dfn = defense.defense if attack.category == Category.PHYSICAL else defense.special_defense
-        base = ((2 * actor.level // 5 + 2) * attack.power * atk // dfn) // 50 + 2
-        stab = Fraction(3, 2) if attack.type in actor.species.types else Fraction(1)
-        return max(1, int(base * stab * multiplier * Fraction(self.rng.randint(85, 100), 100)))
+        return damage_for_roll(actor.level, actor.species.stats, target.species.stats, attack,
+                               actor.species.types, multiplier, self.rng.randint(85, 100))

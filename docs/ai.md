@@ -9,7 +9,7 @@ et ne persiste aucune modification. Il n'y a pas de MCP, de RAG ou d'embeddings.
 `ToolsContext.from_record(record, fighter_id, expected_turn)` refuse les combats
 terminés, les tours périmés, les combattants étrangers et l'absence d'attaque jouable.
 Il copie dans des dataclasses immuables les informations visibles : tour, identité,
-PV, niveau, types et attaques du combattant IA. L'adversaire n'expose pas son
+PV, niveau, types, statistiques des deux combattants et attaques du combattant IA. L'adversaire n'expose pas son
 catalogue d'attaques ; le choix actuel du joueur n'est jamais accepté par ce contrat.
 Le contexte ne conserve aucun `Fighter` mutable ou repository.
 
@@ -23,6 +23,7 @@ chaque appel, même lorsqu'une instance de stratégie sert plusieurs combats.
 | `inspect_battle` | Tour et vues visibles des deux combattants |
 | `list_legal_moves` | Slots jouables, PP, puissance, précision, catégorie et type |
 | `evaluate_matchups` | Efficacité issue de la table métier, sans prédiction de dégâts |
+| `estimate_damage` | Dégâts minimum/maximum si touche, moyenne avec précision et probabilité de KO pour chaque slot jouable |
 | `select_attack` | Slot validé et commentaire facultatif de 160 caractères maximum |
 
 Les schémas JSON proviennent des modèles Pydantic utilisés pour la validation.
@@ -31,6 +32,31 @@ de 0 à 3, présent et doté de PP. Un outil inconnu ou un appel invalide retour
 erreur structurée au modèle, qui peut se corriger dans le budget restant.
 Le premier `select_attack` valide termine la décision ; les autres appels du même
 lot ne peuvent ni remplacer ce choix ni modifier le combat.
+
+Les résultats de `evaluate_matchups` associent le slot et le nom de l'attaque à
+son type, aux types de la cible, au multiplicateur, à un libellé (`immune`,
+`resisted`, `neutral`, `super_effective`) et à une explication. La consigne générale
+du modèle lui demande de consulter `estimate_damage` et de faire référence aux résultats métier,
+sans leur substituer une connaissance supposée des jeux. Un multiplicateur nul
+est expliqué comme une immunité. Ce guidage ne bloque pas une attaque inefficace
+mais légale : une mauvaise décision doit rester visible dans l'évaluation.
+
+`estimate_damage` accepte `{}` et retourne `estimates` ainsi qu'une hypothèse explicite.
+Il utilise la même fonction pure `damage_for_roll` que le moteur : niveau, attaque/défense
+physiques ou spéciales, puissance, bonus de même type, efficacité et arrondis.
+Les 16 tirages uniformes de 85 à 100 sont énumérés sans RNG et les dégâts sont bornés
+aux PV actuels de la cible. Les attaques sans PP sont exclues ; une immunité donne zéro.
+
+- `min_damage_on_hit`, `max_damage_on_hit`, `mean_damage_on_hit` : dégâts si l'attaque touche ;
+- `hit_probability` : précision divisée par 100 ;
+- `expected_damage` : moyenne des dégâts, échecs de précision compris ;
+- `ko_probability` : proportion des tirages provoquant le KO, multipliée par la précision.
+
+Ce calcul suppose que l'acteur peut agir sur la cible dans son état actuel : il ne
+prévoit ni le choix adverse, ni un KO de l'acteur avant son action, ni les tours suivants.
+Les estimations sont mémorisées dans les observations et figurent dans les rapports JSON.
+Les statistiques copiées sont immuables ; aucun PV, PP, tour ou état aléatoire n'est modifié.
+La stratégie locale de secours reste l'heuristique décrite ci-dessous.
 
 ## Boucle et repli
 
@@ -143,8 +169,63 @@ Pour vérifier le script sans aucun accès réseau ou fichier de configuration :
 .venv/Scripts/python.exe -m pokemon_battle.ai_smoke --dry-run --output artifacts/ai-smoke-simulation.json
 ```
 
-Ce mode utilise un faux modèle, affiche `mode="simulation"` et
-`real_agent_verified=false`. Il vérifie le scénario et la plomberie des outils,
-pas la qualité du LLM. Dans le mode réel, `real_agent_verified=true` exige un choix
-de l'agent satisfaisant tous les critères, sans repli. Un seul scénario ne constitue
-pas une évaluation générale de la stratégie.
+Ce mode utilise un faux modèle qui interprète les résultats des outils avec une
+heuristique locale. Il affiche `mode="simulation"`, `provider_responded=false` et
+`agent_checks_passed=false`, même si le parcours simulé passe ses critères.
+Il vérifie la plomberie et les scénarios, pas la qualité du LLM.
+
+Le rapport utilise maintenant `schema_version=2`. L'ancien champ ambigu
+`real_agent_verified` est remplacé par deux informations distinctes :
+
+- `provider_responded` : au moins une réponse Mistral reçue, même si sa décision est mauvaise ;
+- `agent_checks_passed` : les critères stratégiques ont passé avec une décision de l'agent réel, sans repli.
+
+`passed` reste le résultat du scénario, y compris en simulation. `turn.fighters`
+identifie les combattants par nom et identifiant, pour les scénarios hors Pikachu/Sabelette.
+
+## Suite et répétitions
+
+Les six scénarios emploient des statistiques et kits simplifiés, construits pour
+tester des propriétés ciblées :
+
+| Identifiant | Propriété vérifiée | Slot attendu |
+| --- | --- | --- |
+| `pikachu_vs_ground` | Éviter Éclair face à l'immunité Sol | 1 |
+| `reversed_slots` | Même situation avec les slots inversés | 0 |
+| `water_weakness` | Exploiter la faiblesse électrique de l'Eau | 0 |
+| `grass_resistance` | Préférer Charge à Éclair résisté dans cette configuration | 1 |
+| `exhausted_move` | Écarter Éclair sans PP même s'il serait super efficace | 1 |
+| `double_weakness` | Exploiter la double faiblesse de Paras au Feu | 1 |
+
+Les réponses attendues servent seulement aux contrôles et logs locaux. Elles ne
+sont pas transmises au modèle et ne sont pas utilisées pour remplacer ses choix.
+La consigne est identique pour tous les scénarios. La table n'est pas une recherche
+de stratégie optimale dans l'ensemble des règles Pokémon.
+
+```powershell
+# 6 scénarios, 3 répétitions chacun : 18 décisions réelles, séquentielles.
+.venv/Scripts/python.exe -m pokemon_battle.ai_smoke --suite --repeat 3 --timeout 30 --output artifacts/ai-suite-real.json
+
+# Rejouer seulement l'immunité avec les slots inversés.
+.venv/Scripts/python.exe -m pokemon_battle.ai_smoke --scenario reversed_slots --repeat 3 --output artifacts/ai-reversed.json
+
+# Même suite sans accès réseau.
+.venv/Scripts/python.exe -m pokemon_battle.ai_smoke --dry-run --suite --repeat 2 --output artifacts/ai-suite-simulation.json
+```
+
+Le mode simple et le scénario par défaut restent disponibles avec les commandes
+précédentes. `--suite` et `--scenario` sont exclusifs. Chaque répétition crée un
+combat et un contexte neufs ; les délais/budgets s'appliquent à chaque décision.
+Une erreur ou un repli est enregistré et n'interrompt pas les scénarios suivants.
+
+Le rapport de suite conserve chaque tentative dans `runs` et fournit `summary` :
+réussites globales, taux de réponse fournisseur, taux de décisions LLM, taux de
+repli, réussite stratégique parmi les seules décisions LLM, durées moyennes,
+distribution des slots choisis, métriques et tokens cumulés, détail par scénario.
+Un bon choix de secours ne gonfle pas le taux de réussite du modèle. Une suite
+sans décision LLM affiche `strategy_success_among_llm=null`. Les métriques en
+simulation ne mesurent pas la qualité du fournisseur.
+
+Ces petits effectifs servent à comparer des comportements observés, sans garantir
+qu'un prompt corrigé ne fera plus d'erreur. Aucun appel Mistral réel n'est effectué
+par les tests automatisés.
