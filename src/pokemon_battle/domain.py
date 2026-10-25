@@ -6,6 +6,14 @@ from enum import StrEnum
 from .types import Type
 
 
+POTION_HEAL_HP = 20
+
+
+def potion_healing(hp: int, max_hp: int) -> int:
+    """PV réellement rendus par une potion, sans dépasser le maximum."""
+    return min(POTION_HEAL_HP, max_hp - hp)
+
+
 class Category(StrEnum):
     PHYSICAL = "physical"
     SPECIAL = "special"

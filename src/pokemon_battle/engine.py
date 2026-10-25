@@ -6,7 +6,7 @@ from typing import Protocol
 
 from .damage import damage_for_roll
 from .types import Type, effectiveness
-from .domain import Attack, AttackAction, BattleAction, Fighter, UsePotionAction
+from .domain import Attack, AttackAction, BattleAction, Fighter, UsePotionAction, potion_healing
 
 
 class RandomSource(Protocol):
@@ -209,11 +209,9 @@ class BattleEngine:
 
     def _execute_potion(self, turn: int, actor: Fighter) -> tuple[PotionUsed, ...]:
         """Soigner le combattant et décrire le résultat sans consommer de PP ni de hasard."""
-        # 1. Calculer les PV manquants à partir du maximum de l'espèce et des PV actuels.
+        # 1-2. Règle partagée avec l'estimation : 20 PV au plus, sans dépasser le maximum.
         self._validate_potion(actor)
-        missing_hp: int = actor.species.stats.hp - actor.hp
-        # 2. Limiter le soin à 20 PV ou aux PV manquants pour ne pas dépasser le maximum.
-        healed: int = min(20, missing_hp)
+        healed: int = potion_healing(actor.hp, actor.species.stats.hp)
         # 3. Ajouter le soin réel aux PV du combattant.
         actor.hp += healed
         # 4. Décrémenter le stock d'une potion.

@@ -27,6 +27,7 @@ def snapshot():
     }, id="soin-limite-aux-pv-manquants"),
     pytest.param(110, 2, {"available": False, "reason": "Les PV sont déjà pleins"}, id="pv-pleins"),
     pytest.param(50, 0, {"available": False, "reason": "Le stock de potions est vide"}, id="stock-vide"),
+    pytest.param(110, 0, {"available": False, "reason": "Les PV sont déjà pleins"}, id="pv-pleins-avant-stock-vide"),
     pytest.param(0, 2, {"available": False, "reason": "Le combattant est KO"}, id="combattant-ko"),
 ])
 def testLEstimationDuSoinRespecteLesReglesSansModifierLEtat(snapshot, hp, potions, expected):

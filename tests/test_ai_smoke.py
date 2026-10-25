@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 
 import httpx
 import pytest
@@ -120,6 +121,32 @@ def testLeModeReelBrancheLAdaptateurEtFermeLeClientAvecUnTransportSimule(monkeyp
     assert clients[0].http.is_closed
     captured = capsys.readouterr()
     assert key not in captured.out + captured.err + path.read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(os.environ.get("MISTRAL_INTEGRATION") != "1",
+                    reason="Appel Mistral réel : définir MISTRAL_INTEGRATION=1 et MISTRAL_API_KEY")
+def testLeVraiModeleConsulteEstimateHealingEtLeRapportJsonEnGardeLeResultat(monkeypatch, tmp_path, capsys):
+    """Intégration réelle : Mistral appelle estimate_healing sur un Pikachu blessé, sans potion consommée."""
+    def injured(name):
+        record = SCENARIOS[name].create()
+        record.battle.second.hp = 50
+        return record
+    monkeypatch.setattr(ai_smoke, "scenario", injured)
+    path = tmp_path / "healing-real.json"
+
+    # Le choix d'attaque du modèle n'est pas déterministe : seul le code 2 (configuration absente) est exclu.
+    assert ai_smoke.main(["--output", str(path)]) in (0, 1)
+
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["mode"] == "mistral"
+    assert report["provider_responded"] is True
+    assert report["decision"]["source"] == "llm"
+    assert report["observations"]["estimate_healing"]["estimate_healing"] == {
+        "available": True, "healed": 20, "hp_after_healing": 70, "potions_remaining_after_use": 1,
+    }
+    assert report["metrics"]["tool_errors"] == 0
+    assert report["checks"]["battle_unchanged_during_decision"] is True
+    capsys.readouterr()
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
