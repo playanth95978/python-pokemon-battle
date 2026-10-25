@@ -19,6 +19,7 @@ from .application.ai.scenarios import SCENARIOS
 from .application.ai.tools_context import ToolsContext
 from .application.battle_repository import StoredBattle
 from .core.config import Settings
+from .domain import potion_healing
 from .engine import BattleEngine, PotionUsed
 from .mistral.client import MistralClient
 from .mistral.llm_adapter import MistralLLMAdapter
@@ -38,13 +39,22 @@ class SimulatedClient:
         if not any(message.role == "tool" for message in messages):
             return Completion(None, {}, tuple(ToolCall(f"sim-{index}", name, "{}") for index, name in enumerate((
                 "inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage", "estimate_healing",
+                "estimate_incoming_damage",
             ))))
         results = {message.name: json.loads(message.content) for message in messages if message.role == "tool"}
         if not results["estimate_damage"]["estimates"]:
             if results["estimate_healing"]["estimate_healing"]["available"]:
                 return Completion(None, {}, (ToolCall("sim-potion", "select_potion", "{}"),))
             raise ValueError("Aucune action jouable dans la simulation")
-        move = max(results["estimate_damage"]["estimates"], key=lambda item: (item["expected_damage"], -item["attack_slot"]))
+        estimates = results["estimate_damage"]["estimates"]
+        incoming = results["estimate_incoming_damage"]
+        # Stratégie de référence : KO garanti avant la riposte d'abord, puis potion si elle écarte un KO probable.
+        finishing = [item for item in estimates if item["name"] in incoming["attack_ko_before_riposte"]]
+        risk_now, risk_after = incoming["max_ko_probability_now"], incoming["max_ko_probability_after_potion"]
+        if (not finishing and risk_now is not None and risk_now >= 0.5
+                and risk_after is not None and risk_after < risk_now):
+            return Completion(None, {}, (ToolCall("sim-potion", "select_potion", "{}"),))
+        move = max(finishing or estimates, key=lambda item: (item["expected_damage"], -item["attack_slot"]))
         return Completion(None, {}, (ToolCall("sim-select", "select_attack", json.dumps({"attack_slot": move["attack_slot"]})),))
 
 
@@ -73,11 +83,17 @@ async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeo
     events = BattleEngine(Random(seed)).play_turn(record.battle, 0, decision.action())
     if definition.expected_action == "potion":
         healing = next((event for event in events if isinstance(event, PotionUsed) and event.actor == "agent"), None)
-        checks["healing_applied"] = healing is not None and healing.healed == 20 and healing.hp_remaining == 30
-        checks["potion_consumed_once"] = (healing is not None and healing.potions_remaining == 0
+        hp_before = before["second"]["hp"]
+        healed = potion_healing(hp_before, record.battle.second.species.stats.hp)
+        checks["healing_applied"] = healing is not None and healing.healed == healed and healing.hp_remaining == hp_before + healed
+        checks["potion_consumed_once"] = (healing is not None and healing.potions_remaining == before["second"]["potions"] - 1
                                           and record.battle.second.potions == before["second"]["potions"] - 1)
         checks["healed_before_attack"] = bool(events) and events[0] is healing
         checks["survives_turn"] = record.battle.second.hp > 0
+    if definition.expected_outcome == "opponent_ko":
+        checks["expected_outcome"] = record.battle.winner == record.battle.second.id
+    elif definition.expected_outcome == "agent_survives":
+        checks["expected_outcome"] = record.battle.second.hp > 0
     passed = all(checks.values())
     logger.info("Critères : %s", checks)
     logger.info("Tour résolu : %s=%s PV, %s=%s PV", record.battle.second.species.name, record.battle.second.hp,

@@ -46,6 +46,8 @@ class BattleView:
     fighter: FighterView
     opponent: FighterView
     moves: tuple[MoveView, ...]
+    # Attaques adverses déjà utilisées (PP entamés) : publiques, contrairement au reste du catalogue.
+    opponent_revealed_moves: tuple[MoveView, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,8 +104,11 @@ class ToolsContext:
         moves = tuple(MoveView(index, attack.name, attack.type, attack.category, attack.power,
                                attack.accuracy, actor.pp[index], attack.max_pp)
                       for index, attack in enumerate(actor.species.attacks))
+        revealed = tuple(MoveView(index, attack.name, attack.type, attack.category, attack.power,
+                                  attack.accuracy, opponent.pp[index], attack.max_pp)
+                         for index, attack in enumerate(opponent.species.attacks) if opponent.pp[index] < attack.max_pp)
         context = cls(record.id, BattleView(battle.turn, FighterView.from_fighter(actor),
-                                            FighterView.from_fighter(opponent), moves))
+                                            FighterView.from_fighter(opponent), moves, revealed))
         if not context.has_playable_action:
             raise InvalidMoveError("Le combattant IA n'a plus d'action disponible")
         return context

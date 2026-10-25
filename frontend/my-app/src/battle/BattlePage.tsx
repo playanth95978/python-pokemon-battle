@@ -64,6 +64,7 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
                         disabled={blocked || battle.turn > 0} onChange={(event) => setAiOpponent(event.target.checked)}/>
                         Adversaire IA Mistral</label>
                     <p className="muted text-sm mb-4">{aiOpponent ? 'Choisis une attaque ou une potion. L’IA choisit sans connaître ton action.' : 'Une attaque ou une potion par combattant, puis le serveur résout le tour.'}</p>
+                    <p className="muted text-sm mb-4">Les potions passent avant les attaques. Entre deux attaques, le Pokémon le plus rapide agit en premier ; à vitesse égale, le hasard décide.</p>
                     <div className="grid gap-5">
                         <AttackPanel fighter={displayed.first} label="Attaque 1" selected={firstMove} disabled={blocked}
                                      onSelect={(attackSlot) => {setFirstMove(attackSlot); setFirstPotion(false)}}
@@ -73,7 +74,7 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
                                      potionSelected={secondPotion} onPotion={() => {setSecondPotion(true); setSecondMove(null)}}/>}
                     </div>
                     <div className="bottom"><span
-                        className="muted text-sm">{isPlaying ? 'Lecture des attaques' : 'À toi de jouer !'}</span>
+                        className="muted text-sm">{isPlaying ? 'Lecture des actions du tour' : 'Choisis ton action'}</span>
                         <button className="button-primary" disabled={blocked || !firstValid || (!aiOpponent && !secondValid)}
                                 onClick={() => {
                                     if (blocked || !firstValid || (!aiOpponent && !secondValid)) return

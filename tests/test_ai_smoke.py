@@ -32,7 +32,7 @@ def testLaSimulationExecuteLesOutilsEtUnTourSansChargerLaConfiguration(tmp_path,
     assert report["agent_checks_passed"] is False
     assert report["selected_attack"] == "Charge"
     assert report["metrics"]["model_requests"] == 2
-    assert report["metrics"]["tool_calls_executed"] == 6
+    assert report["metrics"]["tool_calls_executed"] == 7
     assert report["metrics"]["tokens"] == {}
     assert report["metrics"]["usage_complete"] is False
     assert report["turn"] == {"number": 1, "winner": None, "fighters": [
@@ -168,6 +168,56 @@ def testUnePotionChoisieEstJoueeParLeSmokeEtCompteeDansLeBilan(monkeypatch):
     assert ai_smoke.summarize([report])["selected_slots"] == {"potion": 1}
 
 
+def _fast_opponent(monkeypatch, name):
+    """Variante du scénario où l'adversaire agit avant l'agent."""
+    from dataclasses import replace as replace_dataclass
+    from pokemon_battle.domain import Species
+    def faster(scenario_name):
+        record = SCENARIOS[scenario_name].create()
+        player = record.battle.first
+        stats = replace_dataclass(player.species.stats, speed=200)
+        player.species = Species(player.species.name, player.species.types, stats, player.species.attacks)
+        return record
+    monkeypatch.setattr(ai_smoke, "scenario", faster)
+
+
+def testLaSimulationTientCompteDeLOrdreAvantDeViserUnKo(monkeypatch):
+    """Adversaire plus rapide : Éclair ne passerait pas avant Griffe, la simulation se soigne."""
+    _fast_opponent(monkeypatch, "finish_over_heal")
+    report = asyncio.run(ai_smoke.run_scenario(ai_smoke.SimulatedClient(), mode="simulation", model="sim",
+                                               timeout=1, scenario_name="finish_over_heal"))
+    assert report["decision"]["action_type"] == "potion"
+    assert report["observations"]["estimate_incoming_damage"]["turn_order"] == "opponent_attacks_first"
+
+
+def testUneAttaqueQuiMeurtAvantDAgirEchoueSurLIssueAttendue(monkeypatch):
+    """Attaquer quand l'adversaire frappe d'abord tue l'agent : le rapport ne peut pas être réussi."""
+    _fast_opponent(monkeypatch, "finish_over_heal")
+    class AttackClient:
+        async def complete(self, *args, **kwargs):
+            return Completion(None, {}, (ToolCall("attack001", "select_attack", '{"attack_slot":0}'),))
+    report = asyncio.run(ai_smoke.run_scenario(AttackClient(), mode="mistral", model="fake", timeout=1,
+                                               scenario_name="finish_over_heal"))
+    assert report["turn"]["winner"] == "player"
+    assert report["checks"]["expected_outcome"] is False
+    assert report["passed"] is False
+
+
+def testLeStockEstCompareAuStockInitialMoinsUn(monkeypatch):
+    """Avec deux potions, une utilisation correcte laisse un stock de un et reste réussie."""
+    def two_potions(name):
+        record = SCENARIOS[name].create()
+        record.battle.second.potions = 2
+        return record
+    monkeypatch.setattr(ai_smoke, "scenario", two_potions)
+    report = asyncio.run(ai_smoke.run_scenario(ai_smoke.SimulatedClient(), mode="simulation", model="sim",
+                                               timeout=1, scenario_name="heal_to_survive"))
+    potion_event = next(event for event in report["events"] if event["type"] == "PotionUsed")
+    assert potion_event["potions_remaining"] == 1
+    assert report["checks"]["potion_consumed_once"] is True
+    assert report["passed"] is True
+
+
 @pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
 def testLeDelaiDoitEtreBorneEtPositif(value):
     """Les paramètres CLI ne doivent pas désactiver accidentellement le budget global."""
@@ -212,14 +262,14 @@ def testLaSuiteRepeteSeptScenariosAvecDesActionsDifferentesSansReseau(monkeypatc
     assert ai_smoke.main(["--dry-run", "--suite", "--repeat", "2", "--output", str(path)]) == 0
     report = json.loads(path.read_text(encoding="utf-8"))
     assert report["schema_version"] == 2
-    assert report["summary"]["runs"] == 14
-    assert report["summary"]["passed"] == 14
+    assert report["summary"]["runs"] == 20
+    assert report["summary"]["passed"] == 20
     assert report["summary"]["fallback_rate"] == 0
     assert report["summary"]["tokens"] == {}
     assert report["summary"]["usage_complete"] is False
     assert report["summary"]["per_scenario"]["reversed_slots"]["selected_slots"] == {"0": 2}
     assert report["summary"]["per_scenario"]["exhausted_move"]["selected_slots"] == {"1": 2}
-    assert [run["repetition"] for run in report["runs"]] == [1, 2] * 7
+    assert [run["repetition"] for run in report["runs"]] == [1, 2] * 10
     assert report["summary"]["per_scenario"]["potion_only"]["selected_slots"] == {"potion": 2}
     assert all(not run["provider_responded"] and not run["agent_checks_passed"] for run in report["runs"])
     assert all(run["checks"]["battle_unchanged_during_decision"] for run in report["runs"])

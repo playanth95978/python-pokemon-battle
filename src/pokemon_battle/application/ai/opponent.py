@@ -99,6 +99,7 @@ class ToolCallingOpponent:
                                       "Les résultats des outils métier font référence, même s'ils contredisent tes connaissances. "
                                       "Consulte estimate_damage avant de sélectionner : il inclut les types, statistiques et arrondis du moteur. "
                                       "Consulte estimate_healing lorsque tes PV sont inférieurs au maximum et que tu disposes de potions. "
+                                      "Consulte estimate_incoming_damage pour mesurer le risque de KO réel, maintenant et après une potion. "
                                       "Compare l'intérêt de te soigner avec celui d'attaquer, en tenant compte des PV actuels, "
                                       "des dégâts attendus, de la probabilité de KO adverse et du nombre de potions restantes. "
                                       "Privilégie une attaque si elle permet probablement de terminer le combat immédiatement. "

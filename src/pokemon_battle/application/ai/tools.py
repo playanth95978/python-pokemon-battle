@@ -11,6 +11,7 @@ from pokemon_battle.types import Type, effectiveness
 from .generation import ToolCall
 from .damage_estimation import estimate_move
 from .healing_estimation import estimate_healing
+from .incoming_damage_estimation import estimate_incoming_damage
 from .tools_context import AttackDecision, MoveView, ToolsContext
 
 
@@ -51,6 +52,10 @@ _DEFINITIONS = {
         EmptyRequest),
     "estimate_damage": (
         "Comparer les dégâts des attaques jouables : plage si l'attaque touche, moyenne avec précision, probabilité de KO. Calcul du moteur sur l'état actuel, sans jouer le tour.",
+        EmptyRequest),
+    "estimate_incoming_damage": (
+        "Estimer le risque réel : dégâts et probabilité de KO des attaques adverses déjà utilisées, "
+        "sur les PV actuels et après une potion, et l'ordre d'action si les deux attaquent.",
         EmptyRequest),
     "select_attack": ("Terminer la décision en sélectionnant un attack_slot jouable, sans exécuter le tour.",
                       SelectAttackRequest),
@@ -117,6 +122,8 @@ def execute_tool(context: ToolsContext, call: ToolCall) -> dict[str, Any]:
         }
         if healing["available"]:
             result["next_step"] = "Appeler select_potion pour appliquer ce soin à la place d'une attaque."
+    elif call.name == "estimate_incoming_damage":
+        result = estimate_incoming_damage(context)
     elif call.name == "select_potion":
         assert isinstance(request, SelectPotionRequest)
         # Même contrôle que l'estimation, elle-même alignée sur le moteur.

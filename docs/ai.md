@@ -32,6 +32,7 @@ décision ; la conversation distante peut continuer entre plusieurs tours du mê
 | `evaluate_matchups` | Efficacité issue de la table métier, sans prédiction de dégâts |
 | `estimate_damage` | Dégâts minimum/maximum si touche, moyenne avec précision et probabilité de KO pour chaque emplacement d’attaque jouable |
 | `estimate_healing` | PV rendus par une potion, PV après soin et stock restant, ou raison de l'indisponibilité (KO, PV pleins, stock vide) |
+| `estimate_incoming_damage` | Risque réel : dégâts et probabilité de KO des attaques adverses déjà utilisées (PP entamés), sur les PV actuels et après une potion, et ordre d'action si les deux attaquent |
 | `select_attack` | Slot validé et commentaire facultatif de 160 caractères maximum |
 | `select_potion` | Potion à la place d'une attaque, commentaire facultatif ; refusée (`potion_unavailable`) si les PV sont pleins ou le stock vide |
 
@@ -347,3 +348,14 @@ simulation ne mesurent pas la qualité du fournisseur.
 Ces petits effectifs servent à comparer des comportements observés, sans garantir
 qu'un prompt corrigé ne fera plus d'erreur. Aucun appel Mistral réel n'est effectué
 par les tests automatisés.
+
+## Scénarios de choix attaque/potion
+
+`finish_over_heal`, `heal_to_survive` et `no_heal_needed` offrent attaque et potion à la fois,
+avec une Griffe adverse déjà révélée. Leurs PV sont calibrés sur la formule du moteur pour que la
+bonne réponse ne dépende d'aucun tirage : KO certain en attaquant le premier, mort certaine sans
+soin, ou aucun risque. Une attaque adverse jamais utilisée reste inconnue de l'agent.
+Chaque scénario vérifie aussi son issue après résolution (`expected_outcome` :
+adversaire KO ou agent en vie), pour qu'un bon type d'action suivi d'une mort ne passe pas.
+`estimate_incoming_damage` ne déclare un KO avant riposte que s'il est garanti et que l'agent
+agit en premier ; sinon il donne la meilleure probabilité (`best_ko_before_riposte`).
