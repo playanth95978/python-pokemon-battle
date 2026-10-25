@@ -54,19 +54,21 @@ async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeo
     logger.info("Mode=%s modèle=%s délai_global=%ss", mode, model, timeout)
     decision = await ToolCallingOpponent(client, timeout_seconds=timeout).choose(context)
     move = next((move for move in context.legal_moves if move.attack_slot == decision.attack_slot), None)
+    potion = decision.action_type == "potion"
     checks = {
-        "legal_move": move is not None,
-        "avoids_immunity": move is not None and effectiveness(move.type, context.view.opponent.types) > 0,
+        # Une potion validée par select_potion est légale ; les scénarios attendent toutefois une attaque.
+        "legal_move": potion or move is not None,
+        "avoids_immunity": potion or (move is not None and effectiveness(move.type, context.view.opponent.types) > 0),
         "expected_slot": decision.attack_slot in definition.expected_slots,
         "llm_selected": decision.source == "llm",
         "battle_unchanged_during_decision": asdict(record.battle) == before,
     }
     passed = all(checks.values())
-    logger.info("Décision : attack_slot=%s attaque=%s source=%s repli=%s", decision.attack_slot,
-                move.name if move else "invalide", decision.source, decision.fallback_reason)
+    logger.info("Décision : action=%s attack_slot=%s attaque=%s source=%s repli=%s", decision.action_type,
+                decision.attack_slot, move.name if move else "aucune", decision.source, decision.fallback_reason)
     logger.info("Critères : %s", checks)
     # Le choix du joueur n'entre qu'ici, après la décision de l'agent.
-    events = BattleEngine(Random(seed)).play_turn(record.battle, 0, decision.attack_slot)
+    events = BattleEngine(Random(seed)).play_turn(record.battle, 0, decision.action())
     logger.info("Tour résolu : %s=%s PV, %s=%s PV", record.battle.second.species.name, record.battle.second.hp,
                 record.battle.first.species.name, record.battle.first.hp)
     metrics = asdict(context.metrics)
@@ -90,6 +92,13 @@ async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeo
     }
 
 
+def _selected_slots(runs: list[dict]) -> dict[str, int]:
+    # Une potion n'a pas de slot : elle est comptée sous sa propre clé.
+    labels = ["potion" if run["decision"].get("action_type") == "potion" else str(run["decision"]["attack_slot"])
+              for run in runs]
+    return {label: labels.count(label) for label in sorted(set(labels))}
+
+
 def summarize(runs: list[dict]) -> dict:
     def rates(items):
         count = len(items)
@@ -102,8 +111,7 @@ def summarize(runs: list[dict]) -> dict:
             "llm_decision_rate": len(llm) / count,
             "strategy_success_among_llm": sum(run["checks"]["expected_slot"] for run in llm) / len(llm) if llm else None,
             "mean_elapsed_ms": round(sum(run["metrics"]["elapsed_ms"] for run in items) / count, 3),
-            "selected_slots": {str(attack_slot): sum(run["decision"]["attack_slot"] == attack_slot for run in items)
-                               for attack_slot in sorted({run["decision"]["attack_slot"] for run in items})},
+            "selected_slots": _selected_slots(items),
         }
     tokens = {}
     for run in runs:

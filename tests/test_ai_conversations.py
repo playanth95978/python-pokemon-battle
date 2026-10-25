@@ -16,6 +16,7 @@ from pokemon_battle.application.ai.ai_battle_service import AiBattleService
 from pokemon_battle.application.battle_service import BattleService, TurnConflictError, InvalidMoveError
 from pokemon_battle.application.ai.conversation import ConversationState
 from pokemon_battle.application.ai.generation import Message, ToolCall
+from pokemon_battle.application.ai.tools import tools_version
 from pokemon_battle.core.config import Settings
 from pokemon_battle.core.exceptions import MistralUnavailable
 from pokemon_battle.domain import Attack, Species, Stats
@@ -112,6 +113,86 @@ def testDeuxToursReprennentLaConversationMemeApresRecreationDuService(battles):
     assert memory["current_turn"] == 1
     assert memory["recent_resolved_turns"][0]["turn"] == 1
     assert "player_move" not in json.dumps(memory)
+
+
+def testUneConversationCreeeAvecDAutresOutilsEstRecreee(battles):
+    """Mistral fige les outils à la création : un contrat inconnu ou ancien force une nouvelle conversation."""
+    record = battles.create_battle("test", "test")
+    with battles.repository.transaction() as session:
+        # État persistant d'avant select_potion : pas de tools_version enregistrée.
+        session.save_ai_state(record.id, {"conversation": {"conversation_id": "conv-ancienne", "turns": 1,
+                                                           "model": "modele-factice"}})
+    server = Server()
+    async def run():
+        client = client_for(server)
+        try:
+            return await AiBattleService(battles, lambda state, memory: MistralConversationAdapter(client, state, memory)
+                                         ).play_turn(record.id, 0, expected_turn=0, idempotency_key=uuid4())
+        finally:
+            await client.aclose()
+    result = asyncio.run(run())
+    path, payload = server.requests[0]
+    assert path == "/v1/conversations"
+    assert "select_potion" in [tool["function"]["name"] for tool in payload["tools"]]
+    assert any(item["event"] == "conversation_reset" and item["tools_changed"] for item in result.metrics["trace"])
+    with battles.repository.transaction() as session:
+        assert session.get_ai_state(record.id)["conversation"]["tools_version"] == tools_version()
+
+
+def testUneConversationAvecLeContratCourantEstReprise(battles):
+    """Sans changement d'outils, le curseur Mistral existant est conservé."""
+    record = battles.create_battle("test", "test")
+    with battles.repository.transaction() as session:
+        session.save_ai_state(record.id, {"conversation": {"conversation_id": "conv-courante", "turns": 1,
+                                                           "model": "modele-factice", "tools_version": tools_version()}})
+    server = Server()
+    async def run():
+        client = client_for(server)
+        try:
+            await AiBattleService(battles, lambda state, memory: MistralConversationAdapter(client, state, memory)
+                                  ).play_turn(record.id, 0, expected_turn=0, idempotency_key=uuid4())
+        finally:
+            await client.aclose()
+    asyncio.run(run())
+    assert server.requests[0][0] == "/v1/conversations/conv-courante"
+
+
+class PotionServer:
+    """Le modèle choisit directement une potion à chaque nouvelle conversation."""
+    def __call__(self, request):
+        return httpx.Response(200, json={"conversation_id": "conv-potion", "outputs": [
+            {"type": "function.call", "tool_call_id": "potion-1", "name": "select_potion",
+             "arguments": {"comment": "Une potion !"}}]})
+
+
+def testUnePotionChoisieParLeModeleEstJoueeParLeMoteurEtExposee(battles):
+    """La décision potion traverse le service : le moteur soigne, décrémente le stock et le reçu la garde."""
+    record = battles.create_battle("test", "test")
+    key = uuid4()
+    async def run():
+        attack_client, potion_client = client_for(Server()), client_for(PotionServer())
+        try:
+            await AiBattleService(battles, lambda state, memory: MistralConversationAdapter(attack_client, state, memory)
+                                  ).play_turn(record.id, 0, expected_turn=0, idempotency_key=uuid4())
+            # Repartir d'une conversation neuve pour que le serveur simulé choisisse la potion.
+            with battles.repository.transaction() as session:
+                state = session.get_ai_state(record.id)
+                state["conversation"] = asdict(ConversationState())
+                session.save_ai_state(record.id, state)
+            service = AiBattleService(battles, lambda state, memory: MistralConversationAdapter(potion_client, state, memory))
+            return (await service.play_turn(record.id, 0, expected_turn=1, idempotency_key=key),
+                    await service.play_turn(record.id, 0, expected_turn=1, idempotency_key=key))
+        finally:
+            await attack_client.aclose()
+            await potion_client.aclose()
+    result, replay = asyncio.run(run())
+    assert result.decision["action_type"] == "potion"
+    assert result.decision["attack_slot"] is None
+    assert result.decision["comment"] == "Une potion !"
+    potion_events = [event for event in result.turn.events if type(event).__name__ == "PotionUsed"]
+    assert [event.actor for event in potion_events] == [record.battle.second.id]
+    assert result.turn.record.battle.second.potions == 1
+    assert asdict(replay) == asdict(result)
 
 
 @pytest.mark.parametrize("rotation,threshold", [(1, 12000), (3, 100)])

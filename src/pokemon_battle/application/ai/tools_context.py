@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import UUID
 
-from pokemon_battle.domain import Category, Fighter, Stats
+from pokemon_battle.domain import AttackAction, BattleAction, Category, Fighter, Stats, UsePotionAction, potion_unavailable_reason
 from pokemon_battle.types import Type
 from pokemon_battle.application.battle_repository import StoredBattle
 from pokemon_battle.application.battle_service import BattleFinishedError, InvalidMoveError, TurnConflictError
@@ -50,10 +50,19 @@ class BattleView:
 
 @dataclass(frozen=True, slots=True)
 class AttackDecision:
-    attack_slot: int
+    # attack_slot vaut None pour une potion ; action_type figure en dernier pour
+    # rester compatible avec les reçus déjà enregistrés et les constructions positionnelles.
+    attack_slot: int | None
     source: Literal["llm", "local"]
     comment: str = ""
     fallback_reason: str | None = None
+    action_type: Literal["attack", "potion"] = "attack"
+
+    def action(self) -> BattleAction:
+        if self.action_type == "potion":
+            return UsePotionAction()
+        assert self.attack_slot is not None
+        return AttackAction(self.attack_slot)
 
 
 @dataclass(slots=True)
@@ -67,6 +76,16 @@ class ToolsContext:
     @property
     def legal_moves(self) -> tuple[MoveView, ...]:
         return tuple(move for move in self.view.moves if move.pp > 0)
+
+    @property
+    def can_use_potion(self) -> bool:
+        fighter = self.view.fighter
+        return potion_unavailable_reason(fighter.hp, fighter.max_hp, fighter.potions) is None
+
+    @property
+    def has_playable_action(self) -> bool:
+        # Sans PP, une potion reste une action jouable pour le moteur.
+        return bool(self.legal_moves) or self.can_use_potion
 
     @classmethod
     def from_record(cls, record: StoredBattle, fighter_id: str, expected_turn: int) -> "ToolsContext":
@@ -85,6 +104,6 @@ class ToolsContext:
                       for index, attack in enumerate(actor.species.attacks))
         context = cls(record.id, BattleView(battle.turn, FighterView.from_fighter(actor),
                                             FighterView.from_fighter(opponent), moves))
-        if not context.legal_moves:
-            raise InvalidMoveError("Le combattant IA n'a plus d'attaque disponible")
+        if not context.has_playable_action:
+            raise InvalidMoveError("Le combattant IA n'a plus d'action disponible")
         return context

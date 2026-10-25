@@ -16,6 +16,7 @@ from pokemon_battle.application.battle_service import (
 )
 from .conversation import ConversationState, ConversationAdapter
 from .opponent import ToolCallingOpponent
+from .tools import tools_version
 from .tools_context import AttackDecision, ToolsContext
 
 
@@ -66,7 +67,7 @@ class AiBattleService:
     async def _choose_attack(self, context: ToolsContext, state: dict[str, Any]) -> None:
         conversation = self._prepare_conversation(context, state)
         adapter = self.adapter_factory(conversation, self._tactical_memory(context, state))
-        self._reset_if_model_changed(conversation, adapter.model)
+        self._reset_if_contract_changed(context, conversation, adapter.model)
         decision = await ToolCallingOpponent(adapter, timeout_seconds=self.timeout,
                                              on_tool_result=adapter.record_result).choose(context)
         self._remember_conversation(state, conversation, decision)
@@ -82,15 +83,21 @@ class AiBattleService:
 
     def _tactical_memory(self, context: ToolsContext, state: dict[str, Any]) -> dict[str, Any]:
         # Aucun choix humain en cours ne figure dans cette mémoire.
-        return {"task": "Choisis ton attaque. Consulte les outils pour l'état actuel faisant référence.",
+        return {"task": "Choisis ton action (attaque ou potion). Consulte les outils pour l'état actuel faisant référence.",
                 "battle_id": str(context.battle_id), "fighter_id": context.view.fighter.id,
                 "current_turn": context.view.turn, "recent_resolved_turns": state.get("history", [])[-3:]}
 
-    def _reset_if_model_changed(self, conversation: ConversationState, model: str) -> None:
-        if conversation.model and conversation.model != model:
+    def _reset_if_contract_changed(self, context: ToolsContext, conversation: ConversationState, model: str) -> None:
+        # Mistral fige les outils à la création de la conversation : un nouveau contrat impose une nouvelle conversation.
+        current_tools = tools_version()
+        model_changed = bool(conversation.model) and conversation.model != model
+        tools_changed = conversation.conversation_id is not None and conversation.tools_version != current_tools
+        if model_changed or tools_changed:
             conversation.conversation_id = None
             conversation.pending_results.clear()
             conversation.turns = 0
+            context.metrics.event("conversation_reset", model_changed=model_changed, tools_changed=tools_changed)
+        conversation.tools_version = current_tools
 
     def _remember_conversation(self, state: dict[str, Any], conversation: ConversationState,
                                decision: AttackDecision) -> None:
@@ -149,7 +156,7 @@ class AiBattleService:
                 state: dict[str, Any], context: ToolsContext) -> AiTurnResult:
         with self.battles.repository.transaction() as session:
             self._validate_reservation(session, battle_id, owner)
-            result = self.battles.resolve_turn(session, battle_id, move, context.decision.attack_slot,
+            result = self.battles.resolve_turn(session, battle_id, move, context.decision.action(),
                                               expected_turn=turn, idempotency_key=key)
             self._save_resolved_session(session, result, state)
             response = AiTurnResult(result, asdict(context.decision), self._decision_metrics(context))

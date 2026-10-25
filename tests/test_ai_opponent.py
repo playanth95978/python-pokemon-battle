@@ -15,9 +15,9 @@ from pokemon_battle.application.ai.tools import execute_tool, tool_schemas
 from pokemon_battle.application.ai.tools_context import ToolsContext
 from pokemon_battle.application.battle_repository import StoredBattle
 from pokemon_battle.application.battle_service import BattleFinishedError, InvalidMoveError, TurnConflictError
-from pokemon_battle.core.exceptions import MissingCredentials, MistralUnavailable
+from pokemon_battle.core.exceptions import MissingCredentials, MistralTimeout, MistralUnavailable
 from pokemon_battle.core.config import Settings
-from pokemon_battle.domain import Attack, Category, Fighter, Species, Stats
+from pokemon_battle.domain import Attack, Category, Fighter, Species, Stats, UsePotionAction
 from pokemon_battle.engine import Battle
 from pokemon_battle.types import Type
 from pokemon_battle.mistral.client import MistralClient
@@ -102,9 +102,32 @@ def testUneDecisionInvalideEstRefuseeAvantLeModele(record, change, error):
     elif change == "fighter":
         fighter = "intrus"
     else:
+        # Sans PP ni potion, plus aucune action n'est jouable.
         record.battle.second.pp[:] = [0, 0, 0]
+        record.battle.second.potions = 0
     with pytest.raises(error):
         ToolsContext.from_record(record, fighter, 2)
+
+
+def testSansPpLIaPeutEncoreChoisirUnePotion(record):
+    """Une potion utilisable suffit à démarrer la décision ; le modèle la sélectionne et le moteur l'accepte."""
+    record.battle.second.pp[:] = [0, 0, 0]
+    ctx = context(record)
+    assert ctx.legal_moves == ()
+    client = ScriptedClient(Completion(None, {}, (call("select_potion"),)))
+    choice = asyncio.run(ToolCallingOpponent(client).choose(ctx))
+    assert (choice.action_type, choice.source) == ("potion", "llm")
+
+
+@pytest.mark.parametrize("failure, reason", [(MistralUnavailable(), "unavailable"), (MistralTimeout(), "timeout")])
+def testSansPpLeSecoursLocalChoisitLaPotion(record, failure, reason):
+    """Le secours conserve l'action potion au lieu de chercher une attaque inexistante."""
+    record.battle.second.pp[:] = [0, 0, 0]
+    class FailingClient:
+        async def complete(self, *args, **kwargs):
+            raise failure
+    choice = asyncio.run(ToolCallingOpponent(FailingClient()).choose(context(record)))
+    assert (choice.action_type, choice.attack_slot, choice.source, choice.fallback_reason) == ("potion", None, "local", reason)
 
 
 def testLesOutilsPartagentLeContexteSansMuterLeCombat(record):
@@ -156,6 +179,32 @@ def testLeChoixFinalNePeutPasEtreEcraseParUnAutreOutil(record):
     assert ctx.decision.attack_slot == 1
 
 
+def testLeModeleChoisitUnePotionQuandSesPvSontEntames(record):
+    """select_potion termine la décision par une action potion, sans toucher au combat avant résolution."""
+    ctx = context(record)
+    assert execute_tool(ctx, call("select_potion", '{"comment":"Je me soigne."}')) == {"selected_action": "potion", "healed": 20}
+    assert (ctx.decision.action_type, ctx.decision.attack_slot, ctx.decision.source) == ("potion", None, "llm")
+    assert ctx.decision.action() == UsePotionAction()
+    assert (record.battle.second.hp, record.battle.second.potions) == (73, 2)
+    assert execute_tool(ctx, call("select_attack", '{"attack_slot":1}')) == {"error": "decision_already_selected"}
+
+
+@pytest.mark.parametrize("hp, potions, reason", [
+    (101, 2, "Les PV sont déjà pleins"),
+    (50, 0, "Le stock de potions est vide"),
+])
+def testUnePotionImpossibleEstRefuseeEtLaisseLeModeleCorriger(record, hp, potions, reason):
+    """Le refus est renvoyé au modèle comme une erreur d'outil, sans décision enregistrée."""
+    record.battle.second.hp, record.battle.second.potions = hp, potions
+    client = ScriptedClient(Completion(None, {}, (call("select_potion"),)),
+                            Completion(None, {}, (call("select_attack", '{"attack_slot":1}', "corrected"),)))
+    ctx = context(record)
+    choice = asyncio.run(ToolCallingOpponent(client).choose(ctx))
+    assert (choice.action_type, choice.attack_slot, choice.source) == ("attack", 1, "llm")
+    assert json.loads(client.requests[1][0][-1].content) == {"error": "potion_unavailable", "message": reason}
+    assert ctx.metrics.tool_errors == 1
+
+
 def testLaBoucleReinjecteLesResultatsAvecLesBonsIdentifiants(record):
     """Chaque résultat d'outil rejoint le dialogue avant que le modèle ne sélectionne son attaque."""
     client = ScriptedClient(
@@ -167,7 +216,7 @@ def testLaBoucleReinjecteLesResultatsAvecLesBonsIdentifiants(record):
     assert (choice.attack_slot, choice.source, choice.fallback_reason) == (1, "llm", None)
     messages, options = client.requests[1]
     assert options["tool_choice"] == "any"
-    assert {tool["function"]["name"] for tool in options["tools"]} == {"inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage", "estimate_healing", "select_attack"}
+    assert {tool["function"]["name"] for tool in options["tools"]} == {"inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage", "estimate_healing", "select_attack", "select_potion"}
     assert [message.tool_call_id for message in messages if message.role == "tool"] == ["inspect", "moves"]
     assert json.loads(messages[-1].content)["moves"][1]["pp"] == 19
     assert len(client.requests[0][0]) == 2

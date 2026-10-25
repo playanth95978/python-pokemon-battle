@@ -13,6 +13,8 @@ class ConversationState:
     turns: int = 0
     prompt_tokens: int = 0
     model: str = ""
+    # Vide pour les conversations antérieures à ce champ : leur contrat d'outils est inconnu.
+    tools_version: str = ""
 
 
 class ConversationAdapter(Protocol):

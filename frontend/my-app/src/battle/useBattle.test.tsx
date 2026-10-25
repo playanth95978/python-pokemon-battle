@@ -49,7 +49,7 @@ describe('useBattle', () => {
         expect(battleApi.playAiTurn).toHaveBeenCalledWith(initialBattle.id,
             {player_move: 0, expected_turn: initialBattle.turn, idempotency_key: expect.any(String)}, expect.any(AbortSignal))
         expect(result.current.battle).toEqual(initialBattle)
-        await act(async () => pending.resolve({...resolvedTurn, decision: {attack_slot: 1, source: 'local', comment: '', fallback_reason: 'timeout'}}))
+        await act(async () => pending.resolve({...resolvedTurn, decision: {action_type: 'attack', attack_slot: 1, source: 'local', comment: '', fallback_reason: 'timeout'}}))
         expect(result.current.battle).toEqual(resolvedTurn.battle)
         expect(result.current.notice).toContain('Stratégie locale de secours')
     })

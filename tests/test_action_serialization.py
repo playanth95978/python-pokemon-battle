@@ -58,7 +58,7 @@ def testLesAnciensArgumentsDUnOutilRestentValidesMaisLeSchemaEstExplicite():
 def testUneAncienneDecisionEstExposeeAvecLeNouveauNom():
     """Rejouer un ancien reçu IA doit produire la même structure que les nouvelles décisions HTTP."""
     response = AiDecisionResponse.model_validate({"slot": 1, "source": "llm", "comment": "", "fallback_reason": None})
-    assert response.model_dump() == {"attack_slot": 1, "source": "llm", "comment": "", "fallback_reason": None}
+    assert response.model_dump() == {"action_type": "attack", "attack_slot": 1, "source": "llm", "comment": "", "fallback_reason": None}
 
 
 def testUnAncienRecuAvecSeulementDesEntiersResteIdempotent(tmp_path):

@@ -98,7 +98,7 @@ export function useBattle() {
         setCanRetry(false)
         setNeedsSync(false)
         setNotice(retry ? 'Résultat récupéré sans rejouer un tour déjà enregistré. État courant relu.'
-            : result.decision ? `${result.decision.source === 'llm' ? 'Mistral' : 'Stratégie locale de secours'} : ${result.decision.comment || 'Attaque sélectionnée.'}` : null)
+            : result.decision ? `${result.decision.source === 'llm' ? 'Mistral' : 'Stratégie locale de secours'} : ${result.decision.comment || (result.decision.action_type === 'potion' ? 'Potion utilisée.' : 'Attaque sélectionnée.')}` : null)
     }
 
     async function retryLastTurn() {

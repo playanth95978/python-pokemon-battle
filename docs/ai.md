@@ -31,13 +31,15 @@ décision ; la conversation distante peut continuer entre plusieurs tours du mê
 | `list_legal_moves` | Slots jouables, PP, puissance, précision, catégorie et type |
 | `evaluate_matchups` | Efficacité issue de la table métier, sans prédiction de dégâts |
 | `estimate_damage` | Dégâts minimum/maximum si touche, moyenne avec précision et probabilité de KO pour chaque emplacement d’attaque jouable |
+| `estimate_healing` | PV rendus par une potion, PV après soin et stock restant, ou raison de l'indisponibilité (KO, PV pleins, stock vide) |
 | `select_attack` | Slot validé et commentaire facultatif de 160 caractères maximum |
+| `select_potion` | Potion à la place d'une attaque, commentaire facultatif ; refusée (`potion_unavailable`) si les PV sont pleins ou le stock vide |
 
 Les schémas JSON proviennent des modèles Pydantic utilisés pour la validation.
 Les paramètres supplémentaires sont interdits ; l’emplacement d’attaque doit être un entier strict
 de 0 à 3, présent et doté de PP. Un outil inconnu ou un appel invalide retourne une
 erreur structurée au modèle, qui peut se corriger dans le budget restant.
-Le premier `select_attack` valide termine la décision ; les autres appels du même
+Le premier `select_attack` ou `select_potion` valide termine la décision ; les autres appels du même
 lot ne peuvent ni remplacer ce choix ni modifier le combat.
 
 Les résultats de `evaluate_matchups` associent l’emplacement d’attaque et le nom de l'attaque à
@@ -47,6 +49,13 @@ du modèle lui demande de consulter `estimate_damage` et de faire référence au
 sans leur substituer une connaissance supposée des jeux. Un multiplicateur nul
 est expliqué comme une immunité. Ce guidage ne bloque pas une attaque inefficace
 mais légale : une mauvaise décision doit rester visible dans l'évaluation.
+
+`estimate_healing` et `select_potion` partagent avec le moteur la règle pure
+`potion_healing` (20 PV au plus, sans dépasser le maximum) et son ordre de contrôle.
+La décision porte alors `action_type: "potion"` et `attack_slot: null` ; le moteur
+résout la potion. Les reçus antérieurs, sans `action_type`, restent exposés comme attaques.
+Une décision démarre dès qu'une action est jouable : sans PP, une potion utilisable
+suffit. Le secours local choisit une attaque, ou la potion s'il ne reste aucun PP.
 
 `estimate_damage` accepte `{}` et retourne `estimates` ainsi qu'une hypothèse explicite.
 Il utilise la même fonction pure `damage_for_roll` que le moteur : niveau, attaque/défense
@@ -70,7 +79,7 @@ La stratégie locale de secours reste l'heuristique décrite ci-dessous.
 `ToolCallingOpponent` reçoit un `CompletionClient`, satisfait par
 `MistralLLMAdapter` ou par un faux client dans les tests. Il transmet les outils au
 modèle, ajoute chaque message assistant puis les résultats avec leur `tool_call_id`.
-Le modèle doit terminer par `select_attack` ; une réponse textuelle n'est pas
+Le modèle doit terminer par `select_attack` ou `select_potion` ; une réponse textuelle n'est pas
 interprétée comme une action. La sélection termine la boucle sans appel supplémentaire.
 
 Limites configurables au constructeur :
@@ -156,6 +165,9 @@ conversation ; les anciennes estimations et messages ne sont pas recopiés.
 Ces seuils sont configurables au constructeur. Le seuil de tokens déclenche une
 rotation au tour suivant : ce n'est pas une limite stricte de tokens par requête.
 Les anciennes conversations restent stockées chez Mistral ; la rotation ne les efface pas.
+Mistral fige les outils à la création d'une conversation. `ConversationState` enregistre
+donc `tools_version`, empreinte des schémas d'outils : une conversation créée avec un autre
+contrat, ou antérieure à ce champ, est recréée au tour suivant (événement `conversation_reset`).
 Un changement de modèle ou une décision interrompue invalide aussi le curseur.
 
 L'historique réutilisé peut consommer des tokens ; `usage` est enregistré sans

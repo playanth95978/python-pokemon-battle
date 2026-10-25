@@ -42,7 +42,7 @@ export type BattleEvent =
 export interface TurnResponse {
     battle: Battle;
     events: BattleEvent[]
-    decision?: { attack_slot: number; source: 'llm' | 'local'; comment: string; fallback_reason: string | null }
+    decision?: { action_type: 'attack' | 'potion'; attack_slot: number | null; source: 'llm' | 'local'; comment: string; fallback_reason: string | null }
 }
 
 export interface BattleChoices {

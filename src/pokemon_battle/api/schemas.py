@@ -191,7 +191,9 @@ class PlayTurnResponse(BaseModel):
 
 
 class AiDecisionResponse(BaseModel):
-    attack_slot: int = Field(validation_alias=AliasChoices("attack_slot", "slot"))
+    # Les reçus antérieurs aux potions n'ont pas d'action_type : ce sont des attaques.
+    action_type: Literal["attack", "potion"] = "attack"
+    attack_slot: int | None = Field(validation_alias=AliasChoices("attack_slot", "slot"))
     source: Literal["llm", "local"]
     comment: str
     fallback_reason: str | None

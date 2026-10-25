@@ -14,6 +14,17 @@ def potion_healing(hp: int, max_hp: int) -> int:
     return min(POTION_HEAL_HP, max_hp - hp)
 
 
+def potion_unavailable_reason(hp: int, max_hp: int, potions: int) -> str | None:
+    """Raison d'un refus de potion, ou None si elle est utilisable ; même ordre que le moteur."""
+    if hp <= 0:
+        return "Le combattant est KO"
+    if hp >= max_hp:
+        return "Les PV sont déjà pleins"
+    if potions <= 0:
+        return "Le stock de potions est vide"
+    return None
+
+
 class Category(StrEnum):
     PHYSICAL = "physical"
     SPECIAL = "special"

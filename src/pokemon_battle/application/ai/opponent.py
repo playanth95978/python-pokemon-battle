@@ -1,6 +1,7 @@
 """Décision adverse bornée, indépendante de FastAPI, SQLite et du SDK Mistral."""
 
 import asyncio
+from dataclasses import replace
 import json
 import logging
 from time import perf_counter
@@ -31,7 +32,10 @@ class LocalOpponent:
         if context.decision is not None:
             return context.decision
         if not context.legal_moves:
-            raise InvalidMoveError("Le combattant IA n'a plus d'attaque disponible")
+            if context.can_use_potion:
+                context.decision = AttackDecision(None, "local", action_type="potion")
+                return context.decision
+            raise InvalidMoveError("Le combattant IA n'a plus d'action disponible")
         # Heuristique stable : puissance, précision, efficacité et bonus du même type.
         # Aucun tirage ni calcul réel de dégâts n'est effectué par cette stratégie.
         move = max(context.legal_moves, key=lambda move: (
@@ -59,8 +63,8 @@ class ToolCallingOpponent:
     async def choose(self, context: ToolsContext) -> AttackDecision:
         if context.decision is not None:
             return context.decision
-        if not context.legal_moves:
-            raise InvalidMoveError("Le combattant IA n'a plus d'attaque disponible")
+        if not context.has_playable_action:
+            raise InvalidMoveError("Le combattant IA n'a plus d'action disponible")
         started = perf_counter()
         try:
             try:
@@ -77,8 +81,8 @@ class ToolCallingOpponent:
     async def _fallback(self, context: ToolsContext, reason: str) -> AttackDecision:
         logger.warning("Décision IA locale combat=%s tour=%s cause=%s", context.battle_id, context.view.turn, reason)
         choice = await LocalOpponent().choose(context)
-        context.decision = AttackDecision(choice.attack_slot, "local", fallback_reason=reason)
-        context.metrics.event("fallback", reason=reason, attack_slot=choice.attack_slot)
+        context.decision = replace(choice, fallback_reason=reason)
+        context.metrics.event("fallback", reason=reason, action_type=choice.action_type, attack_slot=choice.attack_slot)
         return context.decision
 
     async def _run(self, context: ToolsContext) -> AttackDecision:
@@ -105,7 +109,7 @@ class ToolCallingOpponent:
                                       "Termine avec select_attack ou select_potion selon la meilleure décision tactique. "
                                       "Le choix actuel du joueur est inconnu. "
                                       "Les commentaires sont de courtes répliques, pas un raisonnement détaillé."),
-                    Message("user", "Choisis ton attaque pour ce tour.")]
+                    Message("user", "Choisis ton action pour ce tour : une attaque ou une potion.")]
         count = 0
         for _ in range(self.max_rounds):
             # Une copie évite qu'un client conserve une liste modifiée après sa requête.
@@ -138,6 +142,7 @@ class ToolCallingOpponent:
                 messages.append(Message("tool", json.dumps(result, ensure_ascii=False),
                                         tool_call_id=call.id, name=call.name))
             if context.decision is not None:
-                metrics.event("decision", attack_slot=context.decision.attack_slot, source=context.decision.source)
+                metrics.event("decision", action_type=context.decision.action_type,
+                              attack_slot=context.decision.attack_slot, source=context.decision.source)
                 return context.decision
         return await self._fallback(context, "round_budget")

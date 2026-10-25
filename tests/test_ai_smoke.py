@@ -149,6 +149,25 @@ def testLeVraiModeleConsulteEstimateHealingEtLeRapportJsonEnGardeLeResultat(monk
     capsys.readouterr()
 
 
+def testUnePotionChoisieEstJoueeParLeSmokeEtCompteeDansLeBilan(monkeypatch):
+    """Le smoke résout la potion via le moteur et le bilan ne confond pas potion et slot d'attaque."""
+    def injured(name):
+        record = SCENARIOS[name].create()
+        record.battle.second.hp = 50
+        return record
+    monkeypatch.setattr(ai_smoke, "scenario", injured)
+    class PotionClient:
+        async def complete(self, *args, **kwargs):
+            return Completion(None, {}, (ToolCall("potion001", "select_potion", "{}"),))
+    report = asyncio.run(ai_smoke.run_scenario(PotionClient(), mode="mistral", model="fake", timeout=1))
+    assert report["decision"]["action_type"] == "potion"
+    assert report["selected_attack"] is None
+    assert report["checks"]["legal_move"] is True
+    assert report["checks"]["expected_slot"] is False
+    assert [event for event in report["events"] if event["type"] == "PotionUsed"][0]["healed"] == 20
+    assert ai_smoke.summarize([report])["selected_slots"] == {"potion": 1}
+
+
 @pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
 def testLeDelaiDoitEtreBorneEtPositif(value):
     """Les paramètres CLI ne doivent pas désactiver accidentellement le budget global."""
