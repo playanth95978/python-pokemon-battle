@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> None:
         record = service.create_battle("bulbizarre", "salameche")
         battle = record.battle
         print(f"{battle.first.species.name} contre {battle.second.species.name} (graine {args.seed})")
-        while battle.winner is None:
+        while not battle.is_over:
             # Préférer l'attaque élémentaire, puis Charge si ses PP sont épuisés.
             moves = [next((attack_slot for attack_slot in (1, 0) if fighter.pp[attack_slot] > 0), None)
                      for fighter in (battle.first, battle.second)]
@@ -41,6 +41,9 @@ def main(argv: list[str] | None = None) -> None:
             battle = result.record.battle
             print(f"Tour {battle.turn} : {battle.first.species.name} {battle.first.hp} PV | "
                   f"{battle.second.species.name} {battle.second.hp} PV")
+        if battle.winner is None:
+            print("Match nul : les deux combattants sont KO.")
+            return
         winner = battle.first if battle.winner == battle.first.id else battle.second
         print(f"Vainqueur : {winner.species.name}")
 

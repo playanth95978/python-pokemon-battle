@@ -1,16 +1,33 @@
 """Moteur synchrone sans dépendance à une infrastructure."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import StrEnum
 from fractions import Fraction
 from typing import Protocol
 
 from .damage import damage_for_roll
 from .types import Type, effectiveness
-from .domain import Attack, AttackAction, BattleAction, Fighter, UsePotionAction, potion_healing
+from .domain import (
+    MAX_STAT_STAGE, ApplyStatus, Attack, AttackAction, AttackEffect, BattleAction, BattleStat,
+    Category, Fighter, ModifyStat, Protect, StatusCondition, Target, UsePotionAction,
+    potion_healing,
+)
+
+
+FULL_PARALYSIS_CHANCE = 25
+BURN_DAMAGE_DIVISOR = 16
+STATUS_IMMUNITIES = {StatusCondition.PARALYSIS: Type.ELECTRIC, StatusCondition.BURN: Type.FIRE}
 
 
 class RandomSource(Protocol):
     def randint(self, a: int, b: int) -> int: ...
+
+
+class FailureReason(StrEnum):
+    ALREADY_HAS_STATUS = "already_has_status"
+    IMMUNE = "immune"
+    STAT_LIMIT = "stat_limit"
+    CONSECUTIVE_PROTECTION = "consecutive_protection"
 
 
 # =========================
@@ -72,7 +89,47 @@ class KnockedOut(BattleEvent):
 
 @dataclass(frozen=True, slots=True)
 class BattleEnded(BattleEvent):
-    winner: str
+    # None : double KO, le combat se termine sur un match nul.
+    winner: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class FullyParalyzed(ActorEvent):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class AttackBlocked(TargetedAction):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class StatusApplied(TargetedAction):
+    condition: StatusCondition
+
+
+@dataclass(frozen=True, slots=True)
+class StatChanged(TargetedAction):
+    stat: BattleStat
+    change: int
+    stage: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProtectionActivated(ActorEvent):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class EffectFailed(TargetedAction):
+    reason: FailureReason
+
+
+@dataclass(frozen=True, slots=True)
+class BurnDamage(BattleEvent):
+    fighter: str
+    damage: int
+    hp_remaining: int
 
 
 # =========================
@@ -86,6 +143,13 @@ type DomainEvent = (
         | DamageDealt
         | KnockedOut
         | BattleEnded
+        | FullyParalyzed
+        | AttackBlocked
+        | StatusApplied
+        | StatChanged
+        | ProtectionActivated
+        | EffectFailed
+        | BurnDamage
 )
 
 
@@ -106,7 +170,14 @@ class Battle:
             raise ValueError("Both fighters must be conscious")
 
     @property
+    def is_over(self) -> bool:
+        return self.first.knocked_out or self.second.knocked_out
+
+    @property
     def winner(self) -> str | None:
+        """Vainqueur, ou None si le combat continue ou s'est terminé sur un double KO."""
+        if self.first.knocked_out and self.second.knocked_out:
+            return None
         if self.first.knocked_out:
             return self.second.id
         if self.second.knocked_out:
@@ -127,7 +198,7 @@ class BattleEngine:
             second_move = AttackAction(attack_slot=second_move)
 
         # Les appels actuels passent des entiers : les convertir en AttackAction pour garder leur compatibilité.
-        if battle.winner is not None:
+        if battle.is_over:
             raise ValueError("Battle has already ended")
         actions = [(battle.first, battle.second, first_move), (battle.second, battle.first, second_move)]
         # Valider les deux choix avant toute mutation ou consommation d'aléatoire.
@@ -142,9 +213,14 @@ class BattleEngine:
                 events.extend(
                     self._execute_attack(battle.turn, actor, target, action.attack_slot)
                 )
-            if battle.winner is not None:
-                events.append(BattleEnded(battle.turn, actor.id))
+            if battle.is_over:
                 break
+        fighters = [actor for actor, _, _ in actions]
+        if not battle.is_over:
+            events.extend(self._apply_burns(battle.turn, fighters))
+        self._end_protections(fighters)
+        if battle.is_over:
+            events.append(BattleEnded(battle.turn, battle.winner))
         return tuple(events)
 
     def _validate_actions(self, actions: list[tuple[Fighter, Fighter, BattleAction]]) -> None:
@@ -181,31 +257,101 @@ class BattleEngine:
             return actions
         if second_is_potion:
             return list(reversed(actions))
-        first_speed = actions[0][0].species.stats.speed
-        second_speed = actions[1][0].species.stats.speed
-        if second_speed > first_speed or (second_speed == first_speed and self.rng.randint(0, 1) == 1):
+        first_initiative = self._initiative(actions[0][0], actions[0][2])
+        second_initiative = self._initiative(actions[1][0], actions[1][2])
+        if second_initiative > first_initiative or (
+                second_initiative == first_initiative and self.rng.randint(0, 1) == 1):
             return list(reversed(actions))
 
         return actions
+
+    def _initiative(self, actor: Fighter, action: AttackAction) -> tuple[int, int]:
+        """La priorité de l'attaque passe avant la vitesse effective (crans et paralysie)."""
+        return actor.species.attacks[action.attack_slot].priority, actor.effective_speed
 
     def _execute_attack(
             self, turn: int, actor: Fighter, target: Fighter, move: int,
     ) -> tuple[DomainEvent, ...]:
         attack = actor.species.attacks[move]
+        # Le tirage de paralysie n'existe que pour un paralysé : les séquences existantes restent inchangées.
+        if actor.status == StatusCondition.PARALYSIS and self.rng.randint(1, 100) <= FULL_PARALYSIS_CHANCE:
+            return (FullyParalyzed(turn, actor.id),)
         actor.pp[move] -= 1
+        receiver = actor if attack.target == Target.SELF else target
         events: list[DomainEvent] = [
-            AttackUsed(turn, actor.id, target.id, attack.name, actor.pp[move], attack.type, move),
+            AttackUsed(turn, actor.id, receiver.id, attack.name, actor.pp[move], attack.type, move),
         ]
-        if self.rng.randint(1, 100) > attack.accuracy:
-            events.append(AttackMissed(turn, actor.id, target.id))
+        if receiver is not actor and receiver.protected:
+            events.append(AttackBlocked(turn, actor.id, receiver.id))
             return tuple(events)
+        if attack.accuracy is not None and self.rng.randint(1, 100) > attack.accuracy:
+            events.append(AttackMissed(turn, actor.id, receiver.id))
+            return tuple(events)
+        if attack.deals_damage:
+            events.extend(self._deal_damage(turn, actor, receiver, attack))
+        else:
+            events.extend(self._apply_effect(turn, actor, receiver, effect) for effect in attack.effects)
+        return tuple(events)
+
+    def _deal_damage(self, turn: int, actor: Fighter, target: Fighter, attack: Attack) -> list[DomainEvent]:
         multiplier = effectiveness(attack.type, target.species.types)
         damage = min(target.hp, self._damage(actor, target, attack, multiplier))
         target.hp -= damage
-        events.append(DamageDealt(turn, actor.id, target.id, damage, target.hp, multiplier))
+        events: list[DomainEvent] = [DamageDealt(turn, actor.id, target.id, damage, target.hp, multiplier)]
         if target.knocked_out:
             events.append(KnockedOut(turn, target.id))
-        return tuple(events)
+        return events
+
+    def _apply_effect(self, turn: int, actor: Fighter, receiver: Fighter, effect: AttackEffect) -> DomainEvent:
+        if isinstance(effect, ApplyStatus):
+            return self._apply_status(turn, actor, receiver, effect.condition)
+        if isinstance(effect, ModifyStat):
+            return self._modify_stat(turn, actor, receiver, effect)
+        if isinstance(effect, Protect):
+            return self._protect(turn, actor)
+        raise ValueError("Unknown attack effect")
+
+    def _apply_status(
+            self, turn: int, actor: Fighter, receiver: Fighter, condition: StatusCondition,
+    ) -> DomainEvent:
+        if receiver.status is not None:
+            return EffectFailed(turn, actor.id, receiver.id, FailureReason.ALREADY_HAS_STATUS)
+        if STATUS_IMMUNITIES[condition] in receiver.species.types:
+            return EffectFailed(turn, actor.id, receiver.id, FailureReason.IMMUNE)
+        receiver.status = condition
+        return StatusApplied(turn, actor.id, receiver.id, condition)
+
+    def _modify_stat(self, turn: int, actor: Fighter, receiver: Fighter, effect: ModifyStat) -> DomainEvent:
+        current = receiver.stat_stages.of(effect.stat)
+        stage = max(-MAX_STAT_STAGE, min(MAX_STAT_STAGE, current + effect.stages))
+        if stage == current:
+            return EffectFailed(turn, actor.id, receiver.id, FailureReason.STAT_LIMIT)
+        receiver.stat_stages = replace(receiver.stat_stages, **{effect.stat.value: stage})
+        return StatChanged(turn, actor.id, receiver.id, effect.stat, stage - current, stage)
+
+    def _protect(self, turn: int, actor: Fighter) -> DomainEvent:
+        if actor.protected_last_turn:
+            return EffectFailed(turn, actor.id, actor.id, FailureReason.CONSECUTIVE_PROTECTION)
+        actor.protected = True
+        return ProtectionActivated(turn, actor.id)
+
+    def _apply_burns(self, turn: int, fighters: list[Fighter]) -> list[DomainEvent]:
+        """Brûlure de fin de tour dans l'ordre d'action ; les deux combattants peuvent tomber KO."""
+        events: list[DomainEvent] = []
+        for fighter in fighters:
+            if fighter.status != StatusCondition.BURN:
+                continue
+            damage = min(fighter.hp, max(1, fighter.species.stats.hp // BURN_DAMAGE_DIVISOR))
+            fighter.hp -= damage
+            events.append(BurnDamage(turn, fighter.id, damage, fighter.hp))
+            if fighter.knocked_out:
+                events.append(KnockedOut(turn, fighter.id))
+        return events
+
+    def _end_protections(self, fighters: list[Fighter]) -> None:
+        for fighter in fighters:
+            fighter.protected_last_turn = fighter.protected
+            fighter.protected = False
 
     def _execute_potion(self, turn: int, actor: Fighter) -> tuple[PotionUsed, ...]:
         """Soigner le combattant et décrire le résultat sans consommer de PP ni de hasard."""
@@ -226,5 +372,11 @@ class BattleEngine:
     def _damage(self, actor: Fighter, target: Fighter, attack: Attack, multiplier: Fraction) -> int:
         if multiplier == 0:
             return 0
-        return damage_for_roll(actor.level, actor.species.stats, target.species.stats, attack,
-                               actor.species.types, multiplier, self.rng.randint(85, 100))
+        physical = attack.category == Category.PHYSICAL
+        return damage_for_roll(
+            actor.level, actor.species.stats, target.species.stats, attack,
+            actor.species.types, multiplier, self.rng.randint(85, 100),
+            attack_stage=actor.stat_stages.of(BattleStat.ATTACK if physical else BattleStat.SPECIAL_ATTACK),
+            defense_stage=target.stat_stages.of(BattleStat.DEFENSE if physical else BattleStat.SPECIAL_DEFENSE),
+            burned=actor.status == StatusCondition.BURN,
+        )

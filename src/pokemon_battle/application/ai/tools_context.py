@@ -94,7 +94,7 @@ class ToolsContext:
         battle = record.battle
         if type(expected_turn) is not int or expected_turn != battle.turn:
             raise TurnConflictError("Le combat a évolué avant la décision de l'IA")
-        if battle.winner is not None:
+        if battle.is_over:
             raise BattleFinishedError("Le combat est déjà terminé")
         fighters = {battle.first.id: (battle.first, battle.second), battle.second.id: (battle.second, battle.first)}
         if fighter_id not in fighters:

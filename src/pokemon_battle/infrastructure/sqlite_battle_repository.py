@@ -10,8 +10,11 @@ from pathlib import Path
 from uuid import UUID
 
 from pokemon_battle.application.battle_repository import StoredBattle, StoredTurn, TurnResult
-from pokemon_battle.domain import Attack, Category, Fighter, Species, Stats
-from pokemon_battle.engine import Battle, AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded, PotionUsed
+from pokemon_battle.domain import Attack, BattleStat, Category, Fighter, Species, Stats, StatusCondition
+from pokemon_battle.engine import (
+    Battle, AttackBlocked, AttackUsed, AttackMissed, BurnDamage, DamageDealt, EffectFailed, FailureReason,
+    FullyParalyzed, KnockedOut, BattleEnded, PotionUsed, ProtectionActivated, StatChanged, StatusApplied,
+)
 from pokemon_battle.types import Type
 from pokemon_battle.domain import AttackAction, BattleAction, UsePotionAction
 logger = logging.getLogger(__name__)
@@ -19,7 +22,9 @@ logger = logging.getLogger(__name__)
 # Liste explicite des événements autorisés à être reconstruits depuis les reçus.
 EVENT_CLASSES = {
     event.__name__: event
-    for event in (AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded, PotionUsed)
+    for event in (AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded, PotionUsed,
+                  FullyParalyzed, AttackBlocked, StatusApplied, StatChanged, ProtectionActivated,
+                  EffectFailed, BurnDamage)
 }
 
 def _serialize_action(action: BattleAction) -> dict:
@@ -121,6 +126,12 @@ class _SqliteSession:
                 item["effectiveness"] = Fraction(item["effectiveness"])
             if event_type == "AttackUsed" and item.get("attack_type") is not None:
                 item["attack_type"] = Type(item["attack_type"])
+            if event_type == "StatusApplied":
+                item["condition"] = StatusCondition(item["condition"])
+            if event_type == "StatChanged":
+                item["stat"] = BattleStat(item["stat"])
+            if event_type == "EffectFailed":
+                item["reason"] = FailureReason(item["reason"])
             events.append(event_class(**item))
         result = TurnResult(_record(battle_id, data["battle"]), tuple(events))
         first_action = _deserialize_action(data["first_action"]) if "first_action" in data else AttackAction(row[1])

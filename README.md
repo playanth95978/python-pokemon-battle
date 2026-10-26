@@ -83,6 +83,33 @@ python -m pytest
 
 ## Structure de l'API
 
+### Lancer le backend avec Uvicorn
+
+Depuis la racine du projet (`pokemon-battle`), installer les dépendances de l'API,
+dont Uvicorn, puis lancer le serveur de développement :
+
+```powershell
+uv sync --extra api
+.venv/Scripts/python.exe -m uvicorn pokemon_battle.api.app:app --app-dir src --host 127.0.0.1 --port 8000 --reload
+```
+
+Ces commandes fonctionnent dans PowerShell et Git Bash, sans activer le virtualenv.
+L'API est accessible à [http://127.0.0.1:8000](http://127.0.0.1:8000) et sa
+documentation interactive à [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+L'option `--reload` recharge le serveur lorsque le code change ; `Ctrl+C` l'arrête.
+
+Sans `uv`, avec l'environnement virtuel déjà activé :
+
+```powershell
+python -m pip install -e ".[api]"
+python -m uvicorn pokemon_battle.api.app:app --app-dir src --host 127.0.0.1 --port 8000 --reload
+```
+
+Si Python affiche `No module named uvicorn`, relancer l'installation des dépendances
+de l'API avec le même environnement Python que celui utilisé pour démarrer le serveur.
+
+### Routes et organisation
+
 La couche HTTP facultative se trouve dans `src/pokemon_battle/api/`.
 Installer ses dépendances avec `python -m pip install -e ".[api]"`.
 Le point d'entrée est `pokemon_battle.api.app:app`.

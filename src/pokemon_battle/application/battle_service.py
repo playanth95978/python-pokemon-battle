@@ -108,7 +108,7 @@ class BattleService:
         if record is None:
             logger.warning("Tour refusé : combat absent id=%s", battle_id)
             raise BattleNotFoundError("Le combat n'existe pas")
-        if record.battle.winner is not None:
+        if record.battle.is_over:
             logger.warning("Tour refusé : combat terminé id=%s", battle_id)
             raise BattleFinishedError("Le combat est déjà terminé")
         if record.battle.turn != expected_turn:
@@ -127,6 +127,6 @@ class BattleService:
                     battle_id, record.battle.turn, record.battle.first.hp, record.battle.second.hp)
         for event in events:
             logger.debug("Événement id=%s %s", battle_id, event)
-        if record.battle.winner is not None:
+        if record.battle.is_over:
             logger.info("Combat terminé id=%s vainqueur=%s", battle_id, record.battle.winner)
         return result
