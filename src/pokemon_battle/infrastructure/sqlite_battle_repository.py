@@ -10,13 +10,15 @@ from pathlib import Path
 from uuid import UUID
 
 from pokemon_battle.application.battle_repository import StoredBattle, StoredTurn, TurnResult
-from pokemon_battle.domain import Attack, BattleStat, Category, Fighter, Species, Stats, StatusCondition
+from pokemon_battle.domain import Attack, BattleStat, Category, Fighter, Species, Stats, StatusCondition, StatStages, \
+    AttackEffect, ApplyStatus, ModifyStat, Protect
 from pokemon_battle.engine import (
     Battle, AttackBlocked, AttackUsed, AttackMissed, BurnDamage, DamageDealt, EffectFailed, FailureReason,
     FullyParalyzed, KnockedOut, BattleEnded, PotionUsed, ProtectionActivated, StatChanged, StatusApplied,
 )
 from pokemon_battle.types import Type
 from pokemon_battle.domain import AttackAction, BattleAction, UsePotionAction
+
 logger = logging.getLogger(__name__)
 
 # Liste explicite des événements autorisés à être reconstruits depuis les reçus.
@@ -27,12 +29,52 @@ EVENT_CLASSES = {
                   EffectFailed, BurnDamage)
 }
 
+
 def _serialize_action(action: BattleAction) -> dict:
     if isinstance(action, AttackAction):
         return {"action_type": "attack", "attack_slot": action.attack_slot}
     if isinstance(action, UsePotionAction):
         return {"action_type": "potion"}
     raise ValueError("Action de combat inconnue")
+
+
+def _serialize_effect(effect: AttackEffect) -> dict:
+    """Effet marqué par "effect_type" : asdict seul perdrait sa classe (Protect() deviendrait {})."""
+    if isinstance(effect, ApplyStatus):
+        return {"effect_type": "apply_status", "condition": effect.condition.value}
+    if isinstance(effect, ModifyStat):
+        return {"effect_type": "modify_stat", "stat": effect.stat.value, "stages": effect.stages}
+    if isinstance(effect, Protect):
+        return {"effect_type": "protect"}
+    raise ValueError("Effet d'attaque inconnu")
+
+
+def _deserialize_effect(data: dict) -> AttackEffect:
+    effect_type = data.get("effect_type")
+    if effect_type == "apply_status":
+        return ApplyStatus(StatusCondition(data["condition"]))
+    if effect_type == "modify_stat":
+        return ModifyStat(BattleStat(data["stat"]), data["stages"])
+    if effect_type == "protect":
+        return Protect()
+    raise ValueError("Effet d'attaque inconnu")
+
+
+def _battle_snapshot(battle: Battle) -> dict:
+    """Instantané JSON du combat ; les effets gardent leur type pour pouvoir être relus."""
+    # 1. Partir de asdict(battle).
+    data = asdict(battle)
+    # 2. Pour chaque combattant, retrouver l'objet Fighter d'origine.
+    for key in ("first", "second"):
+        fighter = getattr(battle, key)
+        # 3. Remplacer les effets abîmés par asdict par leur version typée.
+        for i, attack in enumerate(fighter.species.attacks):
+            data[key]["species"]["attacks"][i]["effects"] = [
+                _serialize_effect(effect) for effect in attack.effects
+            ]
+    # 4. Renvoyer le dictionnaire.
+    return data
+
 
 def _deserialize_action(data: dict) -> BattleAction:
     action_type = data.get("action_type", data.get("kind"))
@@ -45,10 +87,14 @@ def _deserialize_action(data: dict) -> BattleAction:
         return UsePotionAction()
     raise ValueError("Action de combat inconnue")
 
+
 def _fighter(data: dict) -> Fighter:
     definition = data["species"]
+    # Les instantanés antérieurs aux attaques de statut n'ont pas de clé "effects".
     attacks = tuple(Attack(**{**attack, "type": Type(attack["type"]),
-                              "category": Category(attack["category"])})
+                              "category": Category(attack["category"]),
+                              "effects": tuple(_deserialize_effect(effect)
+                                               for effect in attack.get("effects", []))})
                     for attack in definition["attacks"])
     species = Species(definition["name"], tuple(Type(t) for t in definition["types"]),
                       Stats(**definition["stats"]), attacks)
@@ -56,6 +102,17 @@ def _fighter(data: dict) -> Fighter:
     fighter.hp = data["hp"]
     fighter.pp = data["pp"]
     fighter.potions = data.get("potions", 2)
+    saved_status = data.get("status")
+
+    fighter.status = (
+        StatusCondition(saved_status)
+        if saved_status is not None
+        else None
+    )
+
+    fighter.stat_stages = StatStages(**data.get("stat_stages", {}))
+    fighter.protected = data.get("protected", False)
+    fighter.protected_last_turn = data.get("protected_last_turn", False)
     return fighter
 
 
@@ -98,7 +155,7 @@ class _SqliteSession:
         self.connection.execute(
             "INSERT INTO battles (id, snapshot) VALUES (?, ?) "
             "ON CONFLICT(id) DO UPDATE SET snapshot = excluded.snapshot",
-            (str(record.id), json.dumps(asdict(record.battle), ensure_ascii=False)),
+            (str(record.id), json.dumps(_battle_snapshot(record.battle), ensure_ascii=False)),
         )
 
     def get(self, battle_id: UUID) -> StoredBattle | None:
@@ -145,7 +202,7 @@ class _SqliteSession:
             if isinstance(event, DamageDealt):
                 item["effectiveness"] = str(event.effectiveness)
             events.append(item)
-        snapshot = json.dumps({"battle": asdict(receipt.result.record.battle), "events": events,
+        snapshot = json.dumps({"battle": _battle_snapshot(receipt.result.record.battle), "events": events,
                                "first_action": _serialize_action(receipt.first_action),
                                "second_action": _serialize_action(receipt.second_action)},
                               ensure_ascii=False)
