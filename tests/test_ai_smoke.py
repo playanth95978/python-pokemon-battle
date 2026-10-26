@@ -31,8 +31,9 @@ def testLaSimulationExecuteLesOutilsEtUnTourSansChargerLaConfiguration(tmp_path,
     assert report["provider_responded"] is False
     assert report["agent_checks_passed"] is False
     assert report["selected_attack"] == "Charge"
-    assert report["metrics"]["model_requests"] == 2
-    assert report["metrics"]["tool_calls_executed"] == 7
+    assert report["metrics"]["model_requests"] == 1
+    assert report["metrics"]["tool_calls_executed"] == 1
+    assert report["metrics"]["precomputed_tools"] == 6
     assert report["metrics"]["tokens"] == {}
     assert report["metrics"]["usage_complete"] is False
     assert report["turn"] == {"number": 1, "winner": None, "fighters": [
@@ -103,6 +104,8 @@ def testLeModeReelBrancheLAdaptateurEtFermeLeClientAvecUnTransportSimule(monkeyp
     def handle(request):
         payload = json.loads(request.content)
         assert payload["model"] == "modele-de-test"
+        assert payload["max_tokens"] == 150
+        assert {tool["function"]["name"] for tool in payload["tools"]} == {"select_attack", "select_potion"}
         return httpx.Response(200, json={"usage": {"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13}, "choices": [{"message": {"content": None, "tool_calls": [
             {"id": "select001", "type": "function", "function": {"name": "select_attack", "arguments": '{"attack_slot":1}'}},
         ]}}]})
@@ -135,7 +138,7 @@ def testLeVraiModeleConsulteEstimateHealingEtLeRapportJsonEnGardeLeResultat(monk
     path = tmp_path / "healing-real.json"
 
     # Le choix d'attaque du modèle n'est pas déterministe : seul le code 2 (configuration absente) est exclu.
-    assert ai_smoke.main(["--output", str(path)]) in (0, 1)
+    assert ai_smoke.main(["--exploratory-tools", "--output", str(path)]) in (0, 1)
 
     report = json.loads(path.read_text(encoding="utf-8"))
     assert report["mode"] == "mistral"
@@ -339,3 +342,20 @@ def testLeNombreDeRepetitionsDoitEtrePositif(value):
     with pytest.raises(SystemExit) as error:
         ai_smoke.main(["--dry-run", "--repeat", value])
     assert error.value.code == 2
+
+
+@pytest.mark.parametrize("exploratory,requests,tools,precomputed", [(False, 10, 10, 60), (True, 20, 70, 0)])
+def testLesDixScenariosRestentJouablesDansLesDeuxModes(tmp_path, capsys, exploratory, requests, tools, precomputed):
+    """La comparaison CLI conserve les dix choix attendus et distingue les lectures locales des appels du modèle."""
+    path = tmp_path / "suite.json"
+    args = ["--dry-run", "--suite", "--output", str(path)]
+    if exploratory:
+        args.append("--exploratory-tools")
+    assert ai_smoke.main(args) == 0
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["summary"]["passed"] == 10
+    assert report["summary"]["model_requests"] == requests
+    assert report["summary"]["tool_calls_executed"] == tools
+    assert report["summary"]["precomputed_tools"] == precomputed
+    assert {run["decision_mode"] for run in report["runs"]} == {"exploratory" if exploratory else "precomputed"}
+    capsys.readouterr()

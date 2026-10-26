@@ -7,6 +7,45 @@ la résolution et la persistance du tour. Il n'y a pas de MCP, de RAG ou d'embed
 
 ## Contexte et outils
 
+Le service HTTP et le smoke utilisent désormais le mode **précalculé** : les six
+outils de lecture sont exécutés localement sur le nouvel instantané, avant tout appel
+réseau. Leurs observations sont envoyées dans le premier message. Mistral ne reçoit
+que `select_attack` et `select_potion` et choisit en une requête, plus une correction éventuelle.
+Les deux sélections restent déclarées même si l'une est indisponible ce tour : le
+contrat Conversations reste stable et le backend valide toujours leur légalité.
+Une sélection refusée (slot illégal, potion indisponible, outil de lecture) est renvoyée
+au modèle, qui dispose d'un unique round de correction ; un second refus, une réponse sans
+appel ou une panne déclenche le secours identifié. Avec Conversations, les observations sont
+insérées comme objet JSON dans `current_request`, sans chaîne JSON échappée.
+
+Les adaptateurs limitent la génération à `max_tokens=150`. Les arguments d'une
+réponse tronquée restent soumis à la validation habituelle.
+Le modèle ne reçoit ni le choix humain courant ni les attaques adverses non révélées.
+Les calculs locaux ne consomment ni PP, ni potion, ni hasard du moteur.
+
+`metrics.precomputed_tools` compte les lectures locales ; `tool_calls_requested`
+et `tool_calls_executed` comptent seulement les appels demandés par le modèle.
+Le rapport indique `decision_mode="precomputed"` ou `"exploratory"`.
+Les observations fraîches accompagnent chaque continuation de conversation, avec
+la mémoire bornée et le résultat de la dernière sélection. L'empreinte des outils
+force la recréation des conversations utilisant l'ancien contrat exploratoire.
+
+Pour comparer avec l'ancienne boucle, le smoke accepte `--exploratory-tools` :
+
+```powershell
+# Mode optimisé, 30 décisions réelles (configuration Mistral requise).
+.venv/Scripts/python.exe -m pokemon_battle.ai_smoke --suite --repeat 3 --timeout 30 --output artifacts/ai-optimized.json
+# Mode exploratoire, même modèle et plafond de sortie de 150 tokens également.
+.venv/Scripts/python.exe -m pokemon_battle.ai_smoke --exploratory-tools --suite --repeat 3 --timeout 30 --output artifacts/ai-exploratory.json
+```
+
+Ajouter `--dry-run` pour tester les deux parcours sans réseau. Comparer réussite,
+replis, `model_requests`, `mean_elapsed_ms` et tokens réellement rapportés. La
+simulation vérifie le câblage ; elle ne prouve ni la qualité du nouveau prompt
+ni un gain réel de coût ou de latence. Aucun calcul anticipé pendant le choix du joueur
+n'est lancé. Les descriptions de plusieurs rounds ci-dessous concernent le
+mode exploratoire, conservé par `ToolCallingOpponent(precompute_reads=False)`.
+
 Les réponses des outils et les décisions utilisent `attack_slot` pour désigner
 l'emplacement d'attaque. `select_attack` attend `{"attack_slot": 0}` ; l'ancien
 argument `slot` reste accepté pour les conversations déjà créées. Une décision

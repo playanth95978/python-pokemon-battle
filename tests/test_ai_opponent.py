@@ -57,6 +57,60 @@ class ScriptedClient:
         return next(self.replies)
 
 
+def testLesLecturesPrecalculeesPermettentUneSeuleRequeteSansMutation(record):
+    """Les observations fraîches précèdent le modèle ; seul le résultat de sélection est renvoyé au fournisseur."""
+    ctx = context(record)
+    before = asdict(record)
+    client = ScriptedClient(Completion(None, {}, (call("select_attack", '{"attack_slot":1}'),)))
+    results = []
+    decision = asyncio.run(ToolCallingOpponent(client, precompute_reads=True,
+                                              on_tool_result=lambda call, result: results.append(call.name)).choose(ctx))
+    assert decision.source == "llm" and decision.attack_slot == 1
+    assert len(client.requests) == 1
+    messages, options = client.requests[0]
+    assert {tool["function"]["name"] for tool in options["tools"]} == {"select_attack", "select_potion"}
+    observations = json.loads(messages[1].content)["observations"]
+    assert observations["inspect_battle"]["fighter"]["hp"] == 73
+    assert len(observations["estimate_damage"]["estimates"]) == 2
+    assert "Choix privé" not in messages[1].content
+    assert ctx.metrics.precomputed_tools == 6
+    assert ctx.metrics.tool_calls_requested == ctx.metrics.tool_calls_executed == 1
+    assert results == ["select_attack"]
+    assert asdict(record) == before
+
+
+@pytest.mark.parametrize("tool,arguments,error", [
+    ("inspect_battle", "{}", "tool_not_allowed"),
+    ("select_attack", '{"attack_slot":2}', "illegal_move"),
+])
+def testLeModePrecalculeAccordeUnSeulRoundDeCorrection(record, tool, arguments, error):
+    """Une sélection refusée est renvoyée au modèle, qui peut se corriger dans une seconde et dernière requête."""
+    ctx = context(record)
+    client = ScriptedClient(Completion(None, {}, (call(tool, arguments),)),
+                            Completion(None, {}, (call("select_attack", '{"attack_slot":1}', "corrected"),)))
+    decision = asyncio.run(ToolCallingOpponent(client, precompute_reads=True).choose(ctx))
+    assert (decision.source, decision.attack_slot, decision.fallback_reason) == ("llm", 1, None)
+    assert len(client.requests) == 2
+    retry_messages = client.requests[1][0]
+    assert json.loads(retry_messages[-1].content)["error"] == error
+    assert ctx.metrics.tool_errors == 1
+
+
+def testLeModePrecalculeReplieApresDeuxSelectionsInvalides(record):
+    """Le round de correction est unique : un second refus déclenche le secours, sans troisième requête."""
+    record.battle.second.hp = record.battle.second.species.stats.hp
+    ctx = context(record)
+    client = ScriptedClient(Completion(None, {}, (call("select_potion"),)),
+                            Completion(None, {}, (call("select_attack", '{"attack_slot":2}', "again"),)),
+                            Completion(None, {}, (call("select_attack", '{"attack_slot":1}', "never"),)))
+    decision = asyncio.run(ToolCallingOpponent(client, precompute_reads=True).choose(ctx))
+    assert (decision.source, decision.fallback_reason) == ("local", "round_budget")
+    assert len(client.requests) == 2
+    assert ctx.metrics.tool_errors == 2
+    assert [event.get("status") for event in ctx.metrics.trace if event["event"] == "tool_result"] == [
+        "potion_unavailable", "illegal_move"]
+
+
 def testLeContexteEstUnInstantaneSansChoixPriveNiFighterMutable(record):
     """Les changements ultérieurs du combat ne doivent ni modifier la vue ni dévoiler les attaques adverses."""
     ctx = context(record)

@@ -26,6 +26,16 @@ class ConversationResponse(BaseModel):
     usage: dict[str, Any] = Field(default_factory=dict)
 
 
+def _embedded(content: str | None) -> Any:
+    """Insérer une demande JSON comme objet : une chaîne JSON imbriquée multiplie les échappements."""
+    if content is None:
+        return None
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        return content
+
+
 # Chat Completions accepte "any" ; Conversations le refuse (422) et attend "required" pour imposer un outil.
 _CONVERSATIONS_TOOL_CHOICE = {"any": "required"}
 
@@ -44,10 +54,13 @@ class MistralConversationAdapter:
     async def complete(self, messages: list[Message], *, tools=None, tool_choice="auto") -> Completion:
         inputs = list(self.state.pending_results)
         if self.first_request:
-            inputs.append({"role": "user", "content": json.dumps(self.memory, ensure_ascii=False)})
+            # Les observations fraîches accompagnent aussi chaque continuation, sans recopier l'historique.
+            current_request = next((message.content for message in reversed(messages) if message.role == "user"), None)
+            inputs.append({"role": "user", "content": json.dumps(
+                {**self.memory, "current_request": _embedded(current_request)}, ensure_ascii=False)})
         payload: dict[str, Any] = {
             "inputs": inputs, "store": True, "stream": False,
-            "completion_args": {"temperature": 0, "top_p": 1, "max_tokens": 700,
+            "completion_args": {"temperature": 0, "top_p": 1, "max_tokens": 150,
                                 "tool_choice": _CONVERSATIONS_TOOL_CHOICE.get(tool_choice, tool_choice)},
         }
         if self.state.conversation_id is None:

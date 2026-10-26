@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
 import type { ActionChoices, Battle, BattleAction, BattleEvent, MoveChoices } from './types'
+import { AiThinkingStatus } from './AiThinkingStatus'
 import { AttackPanel } from './AttackPanel'
 import { BattleArena } from './BattleArena'
 import { BattleLog } from './BattleLog'
@@ -31,6 +32,8 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
     const [secondPotion, setSecondPotion] = useState(false)
     const [animations, setAnimations] = useState(true)
     const [aiOpponent, setAiOpponent] = useState(false)
+    // Libellé de l'action envoyée, affiché tant que l'IA décide.
+    const [submittedAction, setSubmittedAction] = useState<string | null>(null)
     const firstArtwork = usePokemonArtwork(battle.first.species)
     const secondArtwork = usePokemonArtwork(battle.second.species)
     const {active, isPlaying, reducedMotion, revealedCount, impact} = useAttackPlayback(events, animations)
@@ -73,12 +76,16 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
                                      onSelect={(attackSlot) => {setSecondMove(attackSlot); setSecondPotion(false)}}
                                      potionSelected={secondPotion} onPotion={() => {setSecondPotion(true); setSecondMove(null)}}/>}
                     </div>
+                    {busy && aiOpponent && submittedAction &&
+                        <AiThinkingStatus species={battle.first.species} action={submittedAction} opponent={battle.second.species}/>}
                     <div className="bottom"><span
                         className="muted text-sm">{isPlaying ? 'Lecture des actions du tour' : 'Choisis ton action'}</span>
                         <button className="button-primary" disabled={blocked || !firstValid || (!aiOpponent && !secondValid)}
                                 onClick={() => {
                                     if (blocked || !firstValid || (!aiOpponent && !secondValid)) return
                                     if (aiOpponent) {
+                                        setSubmittedAction(firstPotion ? 'Potion'
+                                            : battle.first.attacks.find((attack) => attack.attack_slot === firstMove)?.name ?? null)
                                         if (firstPotion) void playAiTurn({action_type: 'potion'})
                                         else if (firstMove !== null) void playAiTurn(firstMove)
                                         return

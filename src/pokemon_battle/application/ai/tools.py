@@ -75,18 +75,29 @@ def tool_schemas() -> list[dict[str, Any]]:
             for name, (description, request) in _DEFINITIONS.items()]
 
 
-def selection_tool_schemas(context: ToolsContext) -> list[dict[str, Any]]:
-    """Seuls les outils de sélection réellement possibles : le dernier round doit conclure."""
-    allowed = {"select_attack"} if context.legal_moves else set()
-    if context.can_use_potion:
+def selection_tool_schemas(context: ToolsContext | None = None) -> list[dict[str, Any]]:
+    """Sans contexte, contrat stable pour Conversations ; sinon, sélections jouables du dernier round."""
+    allowed = {"select_attack"} if context is None or context.legal_moves else set()
+    if context is None or context.can_use_potion:
         allowed.add("select_potion")
     return [schema for schema in tool_schemas() if schema["function"]["name"] in allowed]
 
 
-def tools_version() -> str:
+def tools_version(*, precompute_reads: bool = False) -> str:
     """Empreinte du contrat d'outils : une conversation créée avec un autre contrat doit être recréée."""
-    contract = json.dumps(tool_schemas(), ensure_ascii=False, sort_keys=True)
+    schemas = selection_tool_schemas() if precompute_reads else tool_schemas()
+    contract = json.dumps(schemas, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(contract.encode("utf-8")).hexdigest()[:16]
+
+
+def precompute_observations(context: ToolsContext) -> None:
+    """Calculer les lectures sur l'instantané sans inventer d'appels du modèle."""
+    for name in _DEFINITIONS:
+        if name.startswith("select_"):
+            continue
+        execute_tool(context, ToolCall(f"local-{name}", name, "{}"))
+        context.metrics.precomputed_tools += 1
+        context.metrics.event("observation_precomputed", tool=name)
 
 
 def execute_tool(context: ToolsContext, call: ToolCall) -> dict[str, Any]:

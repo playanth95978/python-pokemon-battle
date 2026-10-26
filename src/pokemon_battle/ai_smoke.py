@@ -36,12 +36,14 @@ class SimulatedClient:
     """Simulation explicite pour vérifier le scénario sans réseau ni configuration."""
 
     async def complete(self, messages, **kwargs) -> Completion:
-        if not any(message.role == "tool" for message in messages):
+        prepared = next((json.loads(message.content)["observations"] for message in messages
+                         if message.role == "user" and message.content and '"observations"' in message.content), None)
+        if prepared is None and not any(message.role == "tool" for message in messages):
             return Completion(None, {}, tuple(ToolCall(f"sim-{index}", name, "{}") for index, name in enumerate((
                 "inspect_battle", "list_legal_moves", "evaluate_matchups", "estimate_damage", "estimate_healing",
                 "estimate_incoming_damage",
             ))))
-        results = {message.name: json.loads(message.content) for message in messages if message.role == "tool"}
+        results = prepared or {message.name: json.loads(message.content) for message in messages if message.role == "tool"}
         if not results["estimate_damage"]["estimates"]:
             if results["estimate_healing"]["estimate_healing"]["available"]:
                 return Completion(None, {}, (ToolCall("sim-potion", "select_potion", "{}"),))
@@ -59,14 +61,14 @@ class SimulatedClient:
 
 
 async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeout: float,
-                       seed: int = 42, scenario_name: str = "pikachu_vs_ground") -> dict:
+                       seed: int = 42, scenario_name: str = "pikachu_vs_ground", precompute_reads: bool = True) -> dict:
     definition = SCENARIOS[scenario_name]
     record = scenario(scenario_name)
     before = asdict(record.battle)
     context = ToolsContext.from_record(record, "agent", expected_turn=0)
     logger.info("Scénario=%s : %s. Slots attendus=%s", scenario_name, definition.description, definition.expected_slots)
     logger.info("Mode=%s modèle=%s délai_global=%ss", mode, model, timeout)
-    decision = await ToolCallingOpponent(client, timeout_seconds=timeout).choose(context)
+    decision = await ToolCallingOpponent(client, timeout_seconds=timeout, precompute_reads=precompute_reads).choose(context)
     move = next((move for move in context.legal_moves if move.attack_slot == decision.attack_slot), None)
     potion = decision.action_type == "potion"
     checks = {
@@ -106,6 +108,7 @@ async def run_scenario(client: CompletionClient, *, mode: str, model: str, timeo
                 metrics["tool_errors"], metrics["tokens"] or "non communiqués")
     return {
         "schema_version": 2, "scenario": scenario_name, "mode": mode, "model": model,
+        "decision_mode": "precomputed" if precompute_reads else "exploratory",
         "timestamp_utc": datetime.now(timezone.utc).isoformat(), "seed": seed,
         "passed": passed, "provider_responded": mode == "mistral" and metrics["model_responses"] > 0,
         "agent_checks_passed": mode == "mistral" and passed,
@@ -147,6 +150,7 @@ def summarize(runs: list[dict]) -> dict:
     return {**rates(runs),
             "model_requests": sum(run["metrics"]["model_requests"] for run in runs),
             "tool_calls_executed": sum(run["metrics"]["tool_calls_executed"] for run in runs),
+            "precomputed_tools": sum(run["metrics"]["precomputed_tools"] for run in runs),
             "tool_errors": sum(run["metrics"]["tool_errors"] for run in runs),
             "tokens": tokens, "usage_complete": all(run["metrics"]["usage_complete"] for run in runs),
             "per_scenario": {name: rates([run for run in runs if run["scenario"] == name])
@@ -154,12 +158,13 @@ def summarize(runs: list[dict]) -> dict:
 
 
 async def run_suite(client: CompletionClient, *, mode: str, model: str, timeout: float,
-                    scenarios: list[str], repeat: int, seed: int) -> dict:
+                    scenarios: list[str], repeat: int, seed: int, precompute_reads: bool = True) -> dict:
     runs = []
     for name in scenarios:
         for index in range(repeat):
             logger.info("Évaluation scénario=%s répétition=%s/%s", name, index + 1, repeat)
-            report = await run_scenario(client, mode=mode, model=model, timeout=timeout, seed=seed, scenario_name=name)
+            report = await run_scenario(client, mode=mode, model=model, timeout=timeout, seed=seed,
+                                        scenario_name=name, precompute_reads=precompute_reads)
             report["repetition"] = index + 1
             runs.append(report)
     summary = summarize(runs)
@@ -193,6 +198,7 @@ def _repeat(value: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Test local de l'agent Mistral : outils, décision et métriques")
     parser.add_argument("--dry-run", action="store_true", help="Simulation SANS appel Mistral, explicitement marquée dans le rapport")
+    parser.add_argument("--exploratory-tools", action="store_true", help="Ancienne boucle de lecture des outils par le modèle, pour comparaison")
     parser.add_argument("--model", help="Modèle Mistral ; sinon MISTRAL_CHAT_MODEL")
     parser.add_argument("--timeout", type=_timeout, default=30, help="Délai global de décision en secondes (30 par défaut pour ce test)")
     parser.add_argument("--seed", type=int, default=42, help="Graine du moteur uniquement, pas du LLM")
@@ -210,9 +216,10 @@ def main(argv: list[str] | None = None) -> int:
         async def evaluate(client, mode, model):
             if args.suite or args.repeat > 1:
                 return await run_suite(client, mode=mode, model=model, timeout=args.timeout,
-                                       scenarios=list(SCENARIOS) if args.suite else [args.scenario], repeat=args.repeat, seed=args.seed)
+                                       scenarios=list(SCENARIOS) if args.suite else [args.scenario], repeat=args.repeat,
+                                       seed=args.seed, precompute_reads=not args.exploratory_tools)
             return await run_scenario(client, mode=mode, model=model, timeout=args.timeout,
-                                      seed=args.seed, scenario_name=args.scenario)
+                                      seed=args.seed, scenario_name=args.scenario, precompute_reads=not args.exploratory_tools)
         if args.dry_run:
             return await evaluate(SimulatedClient(), "simulation", "simulation-sans-llm")
         configured = Settings()

@@ -69,6 +69,7 @@ class AiBattleService:
         adapter = self.adapter_factory(conversation, self._tactical_memory(context, state))
         self._reset_if_contract_changed(context, conversation, adapter.model)
         decision = await ToolCallingOpponent(adapter, timeout_seconds=self.timeout,
+                                             precompute_reads=True,
                                              on_tool_result=adapter.record_result).choose(context)
         self._remember_conversation(state, conversation, decision)
 
@@ -83,13 +84,13 @@ class AiBattleService:
 
     def _tactical_memory(self, context: ToolsContext, state: dict[str, Any]) -> dict[str, Any]:
         # Aucun choix humain en cours ne figure dans cette mémoire.
-        return {"task": "Choisis ton action (attaque ou potion). Consulte les outils pour l'état actuel faisant référence.",
+        return {"task": "Choisis ton action (attaque ou potion) à partir des observations actuelles faisant référence.",
                 "battle_id": str(context.battle_id), "fighter_id": context.view.fighter.id,
                 "current_turn": context.view.turn, "recent_resolved_turns": state.get("history", [])[-3:]}
 
     def _reset_if_contract_changed(self, context: ToolsContext, conversation: ConversationState, model: str) -> None:
         # Mistral fige les outils à la création de la conversation : un nouveau contrat impose une nouvelle conversation.
-        current_tools = tools_version()
+        current_tools = tools_version(precompute_reads=True)
         model_changed = bool(conversation.model) and conversation.model != model
         tools_changed = conversation.conversation_id is not None and conversation.tools_version != current_tools
         if model_changed or tools_changed:

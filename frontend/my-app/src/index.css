@@ -816,3 +816,11 @@
   .arena-3d .fighter-name { flex-wrap: wrap; }
   .arena-3d .fighter-name h2 { font-size: 14px; }
 }
+
+.ai-thinking { margin: 12px 0; border: 1px solid #456089; border-radius: 12px; padding: 12px 14px; background: #17223c; font-size: 14px; }
+.ai-thinking-line { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.ai-thinking-dots { display: inline-flex; gap: 4px; }
+.ai-thinking-dots span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .3; animation: ai-thinking-pulse 1.2s infinite ease-in-out; }
+.ai-thinking-dots span:nth-child(2) { animation-delay: .2s; }
+.ai-thinking-dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes ai-thinking-pulse { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }

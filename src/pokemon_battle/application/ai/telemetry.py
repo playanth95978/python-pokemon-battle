@@ -13,6 +13,7 @@ class DecisionMetrics:
     model_responses: int = 0
     tool_calls_requested: int = 0
     tool_calls_executed: int = 0
+    precomputed_tools: int = 0
     tool_errors: int = 0
     model_time_ms: float = 0
     elapsed_ms: float = 0

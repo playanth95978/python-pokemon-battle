@@ -34,7 +34,7 @@ def _tool_call(data: Any) -> ToolCall:
 
 
 class MistralLLMAdapter:
-    def __init__(self, client: MistralClient, model: str | None = None, max_tokens: int = 700):
+    def __init__(self, client: MistralClient, model: str | None = None, max_tokens: int = 150):
         self.client = client
         self.model = model or client.settings.mistral_chat_model
         self.max_tokens = max_tokens

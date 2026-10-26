@@ -1,5 +1,12 @@
 # Pokémon battle domain
 
+Le service IA et le smoke préparent les observations métier localement : Mistral
+reçoit les estimations dès le premier message et choisit une attaque ou une potion
+en une requête (plus une correction si la sélection est refusée), avec `max_tokens=150`. Les validations et le secours local restent
+actifs. Le smoke accepte `--exploratory-tools` pour comparer avec l'ancienne boucle.
+Les métriques séparent `precomputed_tools` des outils demandés par le modèle.
+Voir [le protocole et les commandes de comparaison](docs/ai.md).
+
 Les positions d'attaque utilisent désormais le nom `attack_slot` dans le domaine,
 les réponses HTTP, les outils IA et React : `AttackAction(attack_slot=0)`.
 Les actions sauvegardées s'écrivent `{"action_type": "attack", "attack_slot": 0}`

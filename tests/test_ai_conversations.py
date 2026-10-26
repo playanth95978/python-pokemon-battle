@@ -41,7 +41,10 @@ class Server:
         self.requests.append((request.url.path, payload))
         index = len(self.requests)
         inputs = payload["inputs"]
-        if any(item.get("role") == "user" for item in inputs):
+        users = [json.loads(item["content"]) for item in inputs if item.get("role") == "user"]
+        if users and isinstance(users[0].get("current_request"), dict) and "observations" in users[0]["current_request"]:
+            name, args = "select_attack", {"attack_slot": 0, "comment": "Je joue."}
+        elif users:
             name = "estimate_damage"
             args = {}
         else:
@@ -83,6 +86,7 @@ def testLAdaptateurUtiliseLesEntreesMistralEtLeDernierIdentifiant():
     assert server.requests[0][1]["store"] is True
     # L'API Conversations refuse "any" (422) : l'adaptateur le traduit en "required".
     assert server.requests[0][1]["completion_args"]["tool_choice"] == "required"
+    assert server.requests[0][1]["completion_args"]["max_tokens"] == 150
     path, payload = server.requests[1]
     assert path == "/v1/conversations/conv-1"
     assert "model" not in payload and "instructions" not in payload
@@ -102,27 +106,37 @@ def testDeuxToursReprennentLaConversationMemeApresRecreationDuService(battles):
             second = await AiBattleService(battles, factory).play_turn(record.id, 0, expected_turn=1, idempotency_key=uuid4())
             assert first.turn.record.battle.turn == 1
             assert second.turn.record.battle.turn == 2
-            assert second.metrics["tokens"]["total_tokens"] == 236
+            assert second.metrics["tokens"]["total_tokens"] == 118
             assert second.decision["source"] == "llm"
         finally:
             await client.aclose()
     asyncio.run(run())
-    path, payload = server.requests[2]
-    assert path == "/v1/conversations/conv-2"
-    assert payload["inputs"][0]["tool_call_id"] == "call-2"
+    path, payload = server.requests[1]
+    assert path == "/v1/conversations/conv-1"
+    assert payload["inputs"][0]["tool_call_id"] == "call-1"
     memory = json.loads(payload["inputs"][1]["content"])
     assert memory["current_turn"] == 1
     assert memory["recent_resolved_turns"][0]["turn"] == 1
+    first_memory = json.loads(server.requests[0][1]["inputs"][0]["content"])
+    # Les observations sont un objet JSON, pas une chaîne JSON échappée dans le message.
+    first_observations = first_memory["current_request"]["observations"]
+    latest_observations = memory["current_request"]["observations"]
+    assert first_observations["inspect_battle"]["turn"] == 0
+    assert latest_observations["inspect_battle"]["turn"] == 1
+    assert latest_observations["inspect_battle"]["fighter"]["hp"] < first_observations["inspect_battle"]["fighter"]["hp"]
+    assert {tool["function"]["name"] for tool in server.requests[0][1]["tools"]} == {"select_attack", "select_potion"}
+    assert len(server.requests) == 2
     assert "player_move" not in json.dumps(memory)
 
 
-def testUneConversationCreeeAvecDAutresOutilsEstRecreee(battles):
+@pytest.mark.parametrize("old_version", ["", tools_version()])
+def testUneConversationCreeeAvecDAutresOutilsEstRecreee(battles, old_version):
     """Mistral fige les outils à la création : un contrat inconnu ou ancien force une nouvelle conversation."""
     record = battles.create_battle("test", "test")
     with battles.repository.transaction() as session:
         # État persistant d'avant select_potion : pas de tools_version enregistrée.
         session.save_ai_state(record.id, {"conversation": {"conversation_id": "conv-ancienne", "turns": 1,
-                                                           "model": "modele-factice"}})
+                                                           "model": "modele-factice", "tools_version": old_version}})
     server = Server()
     async def run():
         client = client_for(server)
@@ -137,7 +151,7 @@ def testUneConversationCreeeAvecDAutresOutilsEstRecreee(battles):
     assert "select_potion" in [tool["function"]["name"] for tool in payload["tools"]]
     assert any(item["event"] == "conversation_reset" and item["tools_changed"] for item in result.metrics["trace"])
     with battles.repository.transaction() as session:
-        assert session.get_ai_state(record.id)["conversation"]["tools_version"] == tools_version()
+        assert session.get_ai_state(record.id)["conversation"]["tools_version"] == tools_version(precompute_reads=True)
 
 
 def testUneConversationAvecLeContratCourantEstReprise(battles):
@@ -145,7 +159,7 @@ def testUneConversationAvecLeContratCourantEstReprise(battles):
     record = battles.create_battle("test", "test")
     with battles.repository.transaction() as session:
         session.save_ai_state(record.id, {"conversation": {"conversation_id": "conv-courante", "turns": 1,
-                                                           "model": "modele-factice", "tools_version": tools_version()}})
+                                                           "model": "modele-factice", "tools_version": tools_version(precompute_reads=True)}})
     server = Server()
     async def run():
         client = client_for(server)
@@ -211,7 +225,7 @@ def testLaRotationRecreeUneConversationAvecMemoireCompacte(battles, rotation, th
         finally:
             await client.aclose()
     asyncio.run(run())
-    path, payload = server.requests[8]
+    path, payload = server.requests[4]
     assert path == "/v1/conversations"
     assert len(payload["inputs"]) == 1
     memory = json.loads(payload["inputs"][0]["content"])
@@ -236,7 +250,7 @@ def testUneRepriseIdempotenteNeRappellePasLeModele(battles):
         finally:
             await client.aclose()
     asyncio.run(run())
-    assert len(server.requests) == 2
+    assert len(server.requests) == 1
     assert battles.get_battle(record.id).battle.turn == 1
 
 
@@ -264,7 +278,7 @@ def testDeuxRequetesConcurrentesNExecutentQuUneDecision(battles):
             release.set()
             await client.aclose()
     asyncio.run(run())
-    assert len(server.requests) == 2
+    assert len(server.requests) == 1
 
 
 def testUnTourModifiePendantLeReseauRefuseLaDecisionPerimee(battles):
@@ -389,7 +403,7 @@ def testLaRouteExposeUnTourIaSansChoixAdverseDuClient(tmp_path):
             assert invalid.status_code == 422
     finally:
         asyncio.run(client.aclose())
-    assert len(server.requests) == 2
+    assert len(server.requests) == 1
 
 
 def testLaRouteIaAccepteUnePotionHumaineEtRejoueLeRecu(tmp_path):
@@ -414,7 +428,7 @@ def testLaRouteIaAccepteUnePotionHumaineEtRejoueLeRecu(tmp_path):
             assert http.post(url, json=changed).status_code == 409
     finally:
         asyncio.run(client.aclose())
-    assert len(server.requests) == 2
+    assert len(server.requests) == 1
     memory = json.loads(server.requests[0][1]["inputs"][0]["content"])
     assert "player_action" not in memory
     assert memory["recent_resolved_turns"] == []
@@ -436,3 +450,54 @@ def testUneReponseConversationsMalformeeNeDevientPasUneDecision(payload):
         finally:
             await client.aclose()
     asyncio.run(run())
+
+
+class CorrectingServer:
+    """Première sélection illégale (slot inexistant), puis correction après le function.result d'erreur."""
+    def __init__(self):
+        self.requests = []
+
+    def __call__(self, request):
+        payload = json.loads(request.content)
+        self.requests.append((request.url.path, payload))
+        if len(self.requests) == 1:
+            name, args = "select_attack", {"attack_slot": 3}
+        else:
+            error = json.loads(payload["inputs"][0]["result"])
+            assert payload["inputs"][0]["tool_call_id"] == "call-1" and error["error"] == "illegal_move"
+            name, args = "select_attack", {"attack_slot": 0}
+        index = len(self.requests)
+        return httpx.Response(200, json={"conversation_id": "conv-correction", "outputs": [
+            {"type": "function.call", "tool_call_id": f"call-{index}", "name": name, "arguments": args}]})
+
+
+def testLaCorrectionPasseParLaConversationSansRepli(battles):
+    """Le refus est renvoyé comme function.result ; la seconde requête suffit et aucun secours n'est utilisé."""
+    record = battles.create_battle("test", "test")
+    server = CorrectingServer()
+    async def run():
+        client = client_for(server)
+        try:
+            return await AiBattleService(battles, lambda state, memory: MistralConversationAdapter(client, state, memory)
+                                         ).play_turn(record.id, 0, expected_turn=0, idempotency_key=uuid4())
+        finally:
+            await client.aclose()
+    result = asyncio.run(run())
+    assert (result.decision["source"], result.decision["attack_slot"]) == ("llm", 0)
+    assert [path for path, _ in server.requests] == ["/v1/conversations", "/v1/conversations/conv-correction"]
+    assert result.metrics["tool_errors"] == 1
+
+
+def testUneDemandeTexteResteUneChaine():
+    """Seules les demandes JSON sont insérées comme objet ; un texte libre est transmis tel quel."""
+    server = Server()
+    async def run():
+        client = client_for(server)
+        try:
+            adapter = MistralConversationAdapter(client, ConversationState(), {"current_turn": 0})
+            await adapter.complete([Message("system", "Consigne"), Message("user", "Choisis")], tools=[], tool_choice="any")
+        finally:
+            await client.aclose()
+    asyncio.run(run())
+    memory = json.loads(server.requests[0][1]["inputs"][0]["content"])
+    assert memory["current_request"] == "Choisis"
