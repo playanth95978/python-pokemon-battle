@@ -1,7 +1,6 @@
 /** POC : Clairbois en 3D, page séparée de la carte 2D. */
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { Sky } from 'three/addons/objects/Sky.js'
 import type { Direction, PlayerState } from '../world/types'
 import {
     boatActionAtDock,
@@ -15,13 +14,13 @@ import {
 import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter, WATER_LEVEL } from './buildWorld3D'
 import { GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
 import { createWorldMaterials } from './worldMaterials'
+import { createAtmosphere, createResolutionScaler, createTrainer } from './scenery'
 import { WorldStreamer } from './worldStreamer'
 import './world3d.css'
 
 const STEP_DURATION = 170
 /** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
 const STREAM_BUDGET_MS = 4
-const MAX_PIXEL_RATIO = Math.min(devicePixelRatio, 2), MIN_PIXEL_RATIO = 0.6
 const CAMERA_OFFSET = new THREE.Vector3(0, 4.2, 7), LOOK_OFFSET = new THREE.Vector3(0, 0, -1.5)
 const KEYS: Record<string, Direction> = {
     arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right',
@@ -31,7 +30,6 @@ const ANGLES: Record<Direction, number> = {down: 0, right: Math.PI / 2, up: Math
 
 const host = document.getElementById('world3d')!
 const renderer = new THREE.WebGLRenderer({antialias: true, powerPreference: 'high-performance'})
-renderer.setPixelRatio(MAX_PIXEL_RATIO)
 renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -44,33 +42,7 @@ const scene = new THREE.Scene()
 scene.fog = new THREE.FogExp2(0xa9c4d4, 0.034)
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1200)
 
-// Ciel physique en fin d'après-midi ; il sert aussi d'éclairage d'ambiance (reflets PBR).
-const sunDirection = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(215))
-const sky = new Sky()
-sky.scale.setScalar(1000)
-const skyUniforms = sky.material.uniforms
-skyUniforms.turbidity.value = 4
-skyUniforms.rayleigh.value = 1.4
-skyUniforms.mieCoefficient.value = 0.004
-skyUniforms.mieDirectionalG.value = 0.85
-skyUniforms.sunPosition.value.copy(sunDirection)
-scene.add(sky)
-const pmrem = new THREE.PMREMGenerator(renderer)
-const skyScene = new THREE.Scene()
-skyScene.add(sky.clone())
-scene.environment = pmrem.fromScene(skyScene).texture
-scene.environmentIntensity = 0.35
-
-scene.add(new THREE.HemisphereLight(0xcfe6ff, 0x4a6a3a, 0.6))
-const sun = new THREE.DirectionalLight(0xffe2b8, 3.4)
-sun.castShadow = true
-sun.shadow.mapSize.set(2048, 2048)
-sun.shadow.camera.left = sun.shadow.camera.bottom = -16
-sun.shadow.camera.right = sun.shadow.camera.top = 16
-sun.shadow.camera.far = 80
-sun.shadow.bias = -0.0004
-sun.shadow.normalBias = 0.03
-scene.add(sun, sun.target)
+const {sun, sunDirection} = createAtmosphere(renderer, scene)
 
 const materials = createWorldMaterials(WORLD_MAP, renderer)
 const base = buildWorldBase(scene, WORLD_MAP, materials)
@@ -78,32 +50,6 @@ const streamer = new WorldStreamer(WORLD_MAP, scene, [
     {name: 'decor', loadRadius: LOAD_RADIUS, unloadRadius: UNLOAD_RADIUS, build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, materials), dispose: disposeChunk},
     {name: 'grass', loadRadius: GRASS_RADIUS, unloadRadius: GRASS_UNLOAD_RADIUS, build: (chunk) => buildGrassChunk(WORLD_MAP, chunk, materials), dispose: disposeChunk},
 ])
-
-// Dresseur stylisé fait de primitives (aucun modèle extrait des jeux).
-function createTrainer() {
-    const trainer = new THREE.Group()
-    const parts: [THREE.BufferGeometry, number, [number, number, number]][] = [
-        [new THREE.CapsuleGeometry(0.075, 0.32, 4, 8), 0x2c3e66, [-0.1, 0.22, 0]],
-        [new THREE.CapsuleGeometry(0.075, 0.32, 4, 8), 0x2c3e66, [0.1, 0.22, 0]],
-        [new THREE.CapsuleGeometry(0.2, 0.32, 6, 12), 0xd8433b, [0, 0.72, 0]],
-        [new THREE.BoxGeometry(0.3, 0.36, 0.16), 0xe6b33d, [0, 0.76, -0.2]],
-        [new THREE.SphereGeometry(0.2, 20, 16), 0xf2c9a0, [0, 1.17, 0]],
-        [new THREE.SphereGeometry(0.215, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), 0xd8433b, [0, 1.21, 0]],
-        [new THREE.CylinderGeometry(0.15, 0.15, 0.03, 16, 1, false, -Math.PI / 2, Math.PI), 0xf5f5f5, [0, 1.22, 0.14]],
-    ]
-    for (const [geometry, color, position] of parts) {
-        const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({color, roughness: 0.7}))
-        mesh.position.set(...position)
-        mesh.castShadow = true
-        trainer.add(mesh)
-    }
-    for (const side of [-1, 1]) {
-        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), new THREE.MeshStandardMaterial({color: 0x1b1b22}))
-        eye.position.set(side * 0.07, 1.18, 0.18)
-        trainer.add(eye)
-    }
-    return trainer
-}
 
 function createBoat() {
     const boat = new THREE.Group()
@@ -222,7 +168,7 @@ function updateHud() {
         + (landmark ? `<p><b>${landmark.name}</b> — ${landmark.message}</p>` : '')
         + (loading < 100 ? `<p>Chargement du monde… ${loading} %</p>` : '')
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
-        + '<p class="world3d-help">Flèches / ZQSD pour marcher · molette pour zoomer · <a href="/">carte 2D</a></p>'
+        + '<p class="world3d-help">Flèches / ZQSD pour marcher · molette pour zoomer · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>'
 }
 
 addEventListener('resize', () => {
@@ -231,21 +177,7 @@ addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight)
 })
 
-// Résolution dynamique : baisse la définition quand les images ralentissent, la remonte quand il y a de la marge.
-let pixelRatio = MAX_PIXEL_RATIO, frameTime = 16, lastResolutionChange = 0
-
-function adaptResolution(now: number, frameSeconds: number) {
-    // Un onglet en arrière-plan est ralenti par le navigateur : ce n'est pas un manque de puissance.
-    if (document.hidden || frameSeconds > 0.25) return
-    frameTime = frameTime * 0.95 + frameSeconds * 1000 * 0.05
-    if (now - lastResolutionChange < 1500) return
-    const wanted = frameTime > 24 ? pixelRatio * 0.85 : frameTime < 18 ? pixelRatio * 1.1 : pixelRatio
-    const next = THREE.MathUtils.clamp(wanted, MIN_PIXEL_RATIO, MAX_PIXEL_RATIO)
-    if (Math.abs(next - pixelRatio) < 0.05) return
-    pixelRatio = next
-    lastResolutionChange = now
-    renderer.setPixelRatio(pixelRatio)
-}
+const resolution = createResolutionScaler(renderer)
 
 const clock = new THREE.Clock()
 const cameraGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3(), look = from.clone()
@@ -289,5 +221,5 @@ renderer.setAnimationLoop((now) => {
 
     updateHud()
     renderer.render(scene, camera)
-    adaptResolution(now, frameSeconds)
+    resolution.update(now, frameSeconds)
 })

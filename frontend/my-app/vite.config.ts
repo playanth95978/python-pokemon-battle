@@ -12,6 +12,7 @@ export default defineConfig({
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
         world3d: resolve(import.meta.dirname, 'world3d.html'),
+        openWorld: resolve(import.meta.dirname, 'open-world.html'),
       },
     },
   },

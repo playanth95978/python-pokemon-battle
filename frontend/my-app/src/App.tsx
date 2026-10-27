@@ -13,6 +13,7 @@ export default function App() {
         setBattleVisited(true); setPage('battle')
       }}>Arène</button>
       <a href="/world3d.html">Vue 3D</a>
+      <a href="/open-world.html">Monde ouvert</a>
     </nav>
     <div hidden={page !== 'world'}><WorldPage active={page === 'world'} /></div>
     {battleVisited && <div hidden={page !== 'battle'}><BattlePage /></div>}

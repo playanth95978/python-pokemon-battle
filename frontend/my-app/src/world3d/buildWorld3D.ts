@@ -76,7 +76,7 @@ function addGround(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials)
     scene.add(hills)
 }
 
-function waterNormals() {
+export function waterNormals() {
     const size = 256, data = new Uint8Array(size * size * 4)
     for (let y = 0; y < size; y++) {
         for (let x = 0; x < size; x++) {
