@@ -1,0 +1,18 @@
+.world-encounter-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: #0b1020f5;
+    color: #ecf3ff;
+}
+.world-encounter-overlay .battle-page { min-height: 100%; }
+.world-encounter-overlay .battle-page > h1 { font-size: 26px; font-weight: 750; margin: 0 0 20px; }
+.world-encounter-overlay .battle-page > p { margin: 12px 0; }
+.world-encounter-overlay .battle-page > button { margin: 12px 12px 12px 0; }
+.world-encounter-overlay .battle-page > [role='alert'] {
+    border-left: 3px solid #fb7185;
+    padding: 12px;
+    background: #3a1c2c;
+}

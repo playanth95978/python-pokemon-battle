@@ -155,6 +155,37 @@ function cellMeshes(set: TreeSet, byVariant: { matrices: Float32Array; colors: F
     return group
 }
 
+/** Attend qu'une texture chargée par ez-tree ait reçu son image (au plus 10 s, pour ne jamais bloquer le monde). */
+function loaded(texture: THREE.Texture) {
+    const start = performance.now()
+    return new Promise<void>((resolve) => {
+        const check = () => texture.image || performance.now() - start > 10000 ? resolve() : setTimeout(check, 16)
+        check()
+    })
+}
+
+/**
+ * Génère toutes les variantes, attend leurs textures, les envoie au GPU et compile leurs shaders avec l'éclairage
+ * de `scene` : aucun arbre n'apparaît blanc, sans écorce ni feuilles, ni ne fige l'image à sa première apparition.
+ */
+export async function prepareTrees(renderer: THREE.WebGLRenderer, scene: THREE.Scene, kinds: TreeKind[]) {
+    const preview = new THREE.Scene()
+    const one = {matrices: new Float32Array(new THREE.Matrix4().toArray()), colors: new Float32Array([1, 1, 1])}
+    for (const kind of kinds) {
+        for (const detail of ['near', 'far'] as const) {
+            const set = treeSet(kind, detail)
+            preview.add(cellMeshes(set, set.variants.map(() => one), true))
+        }
+    }
+    const textures = new Set<THREE.Texture>()
+    for (const {bark, leaves} of kinds.map((kind) => treeSet(kind))) {
+        for (const texture of [bark.map, bark.normalMap, bark.aoMap, bark.roughnessMap, leaves.map]) if (texture) textures.add(texture)
+    }
+    await Promise.all([...textures].map(loaded))
+    textures.forEach((texture) => renderer.initTexture(texture))
+    await renderer.compileAsync(preview, new THREE.PerspectiveCamera(), scene)
+}
+
 /**
  * Instancie une essence : `matrices` (16 flottants par arbre, en coordonnées monde) et `colors` (teinte du feuillage, 3 par arbre).
  * Chaque arbre prend une variante selon sa position, toujours la même d'un chargement à l'autre ; chaque cellule
@@ -188,8 +219,9 @@ export function treeInstances(kind: TreeKind, matrices: Float32Array, colors: Fl
         const lod = new THREE.LOD()
         lod.position.copy(center)
         lod.addLevel(cellMeshes(near, arrays, castShadow), 0)
-        // Les arbres lointains sortent du champ des ombres : inutile de les dessiner une seconde fois pour elles.
-        lod.addLevel(cellMeshes(far, arrays, false), FAR_DISTANCE)
+        // Les versions allégées projettent aussi leur ombre : elle est déjà là quand l'arbre complet prend le relais.
+        // La marge de 10 % évite qu'une cellule clignote entre les deux versions à la limite.
+        lod.addLevel(cellMeshes(far, arrays, castShadow), FAR_DISTANCE, 0.1)
         group.add(lod)
     }
     return group

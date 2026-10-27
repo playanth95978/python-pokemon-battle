@@ -3,7 +3,8 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { Direction } from '../world/types'
 import { waterNormals } from '../world3d/buildWorld3D'
-import { createAtmosphere, createResolutionScaler, createTrainer } from '../world3d/scenery'
+import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from '../world3d/scenery'
+import { createFirstPersonView } from '../world3d/firstPerson'
 import { blocksMovement, plantAt } from './vegetation'
 import { createWorldLayers, VIEW_RADIUS } from './worldLayers'
 import { TERRAIN_CHUNK } from './terrainGeometry'
@@ -47,6 +48,7 @@ scene.fog = new THREE.Fog(0xa9c4d4, VIEW_DISTANCE * 0.35, VIEW_DISTANCE * 0.95)
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 2000)
 const {sun, sunDirection} = createAtmosphere(renderer, scene, 30)
 sun.shadow.camera.far = 300
+const firstPerson = createFirstPersonView(renderer.domElement, camera)
 
 const layers = createWorldLayers(scene, renderer, seed)
 
@@ -119,8 +121,9 @@ let from = groundAt(tile), to = from.clone(), followerFrom = from.clone(), follo
 
 function step(now: number) {
     if (!held || now - stepStart < stepDuration) return
-    direction = held
-    const delta = DELTAS[held], distance = flying ? FLY_DISTANCE : 1
+    // En vue FPS, les touches sont relatives au regard.
+    direction = firstPerson.enabled ? firstPerson.direction(held) : held
+    const delta = DELTAS[direction], distance = flying ? FLY_DISTANCE : 1
     const next = {x: tile.x + delta.x * distance, y: tile.y + delta.y * distance}
     const inside = next.x >= 0 && next.y >= 0 && next.x < WORLD_SIZE && next.y < WORLD_SIZE
     // En survol on ignore le relief et l'eau, pas les bords du monde.
@@ -137,6 +140,7 @@ function step(now: number) {
 addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase()
     if (key === 'shift') running = true
+    if (key === 'v' && !event.repeat) firstPerson.toggle(direction)
     if (key === 'f' && !event.repeat) {
         flying = !flying
         // Retour au sol : uniquement sur une case où l'on peut se tenir.
@@ -158,7 +162,7 @@ addEventListener('blur', () => {
 })
 // Glisser avec la souris fait tourner la caméra autour du dresseur.
 renderer.domElement.addEventListener('pointermove', (event) => {
-    if (event.buttons & 1) yaw -= event.movementX * 0.005
+    if (event.buttons & 1 && !firstPerson.enabled) yaw -= event.movementX * 0.005
 })
 addEventListener('wheel', (event) => {
     zoom = THREE.MathUtils.clamp(zoom + event.deltaY * 0.001, 0.45, 2.5)
@@ -180,7 +184,8 @@ function updateHud() {
     const text = `<strong>${BIOME_NAMES[here.biome]}</strong>`
         + `<p>Case ${tile.x}, ${tile.y} · altitude ${Math.round(here.height)} m · graine ${seed}</p>`
         + `<p>${terrain} chunks de terrain, ${vegetation} de végétation${pending ? ` · ${pending} en calcul (${workers} workers)` : ''} · ${Math.round(fps)} i/s · résolution ×${resolution.ratio().toFixed(2)}</p>`
-        + `<p class="world3d-help">ZQSD / flèches · Maj pour courir · F ${flying ? 'pour atterrir' : 'pour survoler'} · molette pour zoomer · glisser pour tourner · `
+        + `<p class="world3d-help">ZQSD / flèches · Maj pour courir · F ${flying ? 'pour atterrir' : 'pour survoler'} · `
+        + (firstPerson.enabled ? 'souris pour regarder (clic pour la capturer) · V : vue de dos · ' : 'molette pour zoomer · glisser pour tourner · V : vue FPS · ')
         + '<a href="/world3d.html">Clairbois 3D</a> · <a href="/">carte 2D</a></p>'
     if (text === lastHud) return
     lastHud = text
@@ -217,20 +222,26 @@ renderer.setAnimationLoop((now) => {
     sea.position.set(Math.round(trainer.position.x / 32) * 32, SEA_LEVEL - 0.15, Math.round(trainer.position.z / 32) * 32)
     normals.offset.set(now * 0.000012 + sea.position.x / 6, now * 0.000007 - sea.position.z / 6)
 
-    offset.copy(flying ? FLY_CAMERA_OFFSET : CAMERA_OFFSET).multiplyScalar(zoom).applyAxisAngle(THREE.Object3D.DEFAULT_UP, yaw)
-    cameraGoal.copy(trainer.position).add(offset)
-    // La caméra ne passe jamais sous le relief.
-    cameraGoal.y = Math.max(cameraGoal.y, world.height(cameraGoal.x, cameraGoal.z) + 1.5)
-    camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 5))
-    lookGoal.copy(trainer.position).setY(trainer.position.y + 0.9)
-    // En survol, la caméra vise loin devant le dresseur pour montrer l'horizon.
-    if (flying) lookGoal.addScaledVector(offset.setY(0).normalize(), -40)
-    look.lerp(lookGoal, 1 - Math.exp(-delta * 8))
-    camera.lookAt(look)
-    minimap.update(now, {x: trainer.position.x, y: trainer.position.z}, direction,
-        Math.atan2(camera.position.x - trainer.position.x, camera.position.z - trainer.position.z))
-    sun.target.position.copy(trainer.position)
-    sun.position.copy(trainer.position).addScaledVector(sunDirection, 120)
+    // En vue FPS le dresseur disparaît : la caméra est sa tête.
+    trainer.visible = !firstPerson.enabled
+    if (firstPerson.enabled) {
+        firstPerson.place(trainer.position)
+    } else {
+        offset.copy(flying ? FLY_CAMERA_OFFSET : CAMERA_OFFSET).multiplyScalar(zoom).applyAxisAngle(THREE.Object3D.DEFAULT_UP, yaw)
+        cameraGoal.copy(trainer.position).add(offset)
+        // La caméra ne passe jamais sous le relief.
+        cameraGoal.y = Math.max(cameraGoal.y, world.height(cameraGoal.x, cameraGoal.z) + 1.5)
+        camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 5))
+        lookGoal.copy(trainer.position).setY(trainer.position.y + 0.9)
+        // En survol, la caméra vise loin devant le dresseur pour montrer l'horizon.
+        if (flying) lookGoal.addScaledVector(offset.setY(0).normalize(), -40)
+        look.lerp(lookGoal, 1 - Math.exp(-delta * 8))
+        camera.lookAt(look)
+    }
+    camera.getWorldDirection(offset)
+    minimap.update(now, {x: trainer.position.x, y: trainer.position.z}, direction, Math.atan2(-offset.x, -offset.z))
+    // La carte d'ombre suit le regard : l'avant de la scène a ses ombres avant qu'on s'en approche.
+    followShadow(sun, sunDirection, camera, trainer.position, 18, 120)
 
     if ((hudTimer -= delta) <= 0) {
         hudTimer = 0.25

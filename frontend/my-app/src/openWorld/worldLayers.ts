@@ -5,7 +5,7 @@ import type { TerrainData } from './terrainGeometry'
 import { lodFor } from './terrainGeometry'
 import { createTerrainMaterial } from './terrainMaterial'
 import type { TreeKind } from '../world3d/realTrees'
-import { animateTrees, treeInstances } from '../world3d/realTrees'
+import { animateTrees, prepareTrees, treeInstances } from '../world3d/realTrees'
 import type { Species, SpeciesInstances } from './vegetation'
 import { FAR_LEVEL } from './vegetation'
 import { grassBlade, speciesGeometry, windMaterial } from './vegetationModels'
@@ -74,6 +74,12 @@ export function createWorldLayers(scene: THREE.Scene, renderer: THREE.WebGLRende
         dispose: (object) => object.traverse((child) => { if (child instanceof THREE.InstancedMesh) child.dispose() }),
     })
 
+    // La végétation attend que les arbres soient prêts (textures envoyées, shaders compilés) : aucun arbre blanc ni à-coup.
+    let treesReady = false
+    void prepareTrees(renderer, scene, [...new Set(Object.values(REAL_TREES))]).then(() => {
+        treesReady = true
+    })
+
     const grass = new ChunkStreamer<Omit<SpeciesInstances, 'species'>>(scene, pool, {
         kind: 'grass', radius: 1, levelFor: () => 0,
         build: (data) => data.matrices.length ? instances(grassBlade, grassMaterial, data, false) : null,
@@ -86,7 +92,7 @@ export function createWorldLayers(scene: THREE.Scene, renderer: THREE.WebGLRende
             time.value = seconds
             animateTrees(seconds)
             terrain.update(player)
-            vegetation.update(player)
+            if (treesReady) vegetation.update(player)
             grass.update(player)
         },
         stats() {

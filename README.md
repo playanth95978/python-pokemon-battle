@@ -245,8 +245,13 @@ image des 10 000 × 10 000 cases ni charger de chunks supplémentaires.
 
 Dans `/world3d.html`, le Salamèche de Clairbois possède désormais une définition
 `WorldPokemon` : identifiant individuel, clé d'espèce `charmander` et position en
-cases. Son placement 3D utilise cette définition. Il s'agit du premier branchement
-pour les futures rencontres ; aucun combat n'est encore déclenché par sa proximité.
+cases. Approcher Salamèche (case 30, 38), puis appuyer sur **E** ouvre le panneau
+de rencontre. **Commencer le combat** crée un duel Pikachu contre Salamèche via
+FastAPI : le backend doit être disponible. Le panneau réutilise l'interface de
+combat, les attaques et les potions ; l'adversaire IA reste optionnel.
+L'exploration et la caméra sont suspendues pendant la rencontre. **Retour à
+l'exploration** reprend le monde à la même position. Fermer le panneau puis ouvrir
+une nouvelle rencontre permet de créer un nouveau duel, sans reprendre le précédent.
 
 ### Prototype d'exploration 2D
 

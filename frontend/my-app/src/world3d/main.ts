@@ -16,10 +16,13 @@ import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCen
 import { GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
 import { createWorldMaterials } from './worldMaterials'
 import { leadsToOpenWorld, nearExit, OPEN_WORLD_URL } from './worldExit'
-import { createAtmosphere, createResolutionScaler, createTrainer } from './scenery'
+import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from './scenery'
+import { createFirstPersonView } from './firstPerson'
+import { prepareTrees } from './realTrees'
 import { WorldStreamer } from './worldStreamer'
+import { createEncounterOverlay } from './encounterOverlay'
 import './world3d.css'
-import { canInteractWithPokemon } from "./pokemonInteraction.ts";
+import { canInteractWithPokemon } from './pokemonInteraction'
 
 const STEP_DURATION = 170
 /** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
@@ -39,15 +42,24 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = 0.72
 host.appendChild(renderer.domElement)
+renderer.domElement.tabIndex = 0
+renderer.domElement.setAttribute('aria-label', 'Monde 3D de Clairbois')
 
 const scene = new THREE.Scene()
 // Le brouillard masque la limite des chunks chargés (LOAD_RADIUS × CHUNK_SIZE ≈ 24 cases).
 scene.fog = new THREE.FogExp2(0xa9c4d4, 0.034)
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1200)
 
-const {sun, sunDirection} = createAtmosphere(renderer, scene)
+// Carte d'ombre plus large et plus fine, centrée devant la caméra (voir followShadow).
+const {sun, sunDirection} = createAtmosphere(renderer, scene, 20, 3072)
+const firstPerson = createFirstPersonView(renderer.domElement, camera)
 
 const materials = createWorldMaterials(WORLD_MAP, renderer)
+// Les chunks attendent que les arbres soient prêts (textures envoyées, shaders compilés) : rien n'apparaît à moitié chargé.
+let treesReady = false
+void prepareTrees(renderer, scene, ['oak', 'aspen', 'pine']).then(() => {
+    treesReady = true
+})
 const base = buildWorldBase(scene, WORLD_MAP, materials)
 const streamer = new WorldStreamer(WORLD_MAP, scene, [
     {
@@ -139,13 +151,15 @@ void loadPokemon('/models/poc/charmander.glb', 0.38).then(({root}) => {
 })
 
 function step(now: number) {
-    if (!held || now - stepStart < STEP_DURATION) return
+    if (encounterOverlay.isOpen || !held || now - stepStart < STEP_DURATION) return
     const previous = player.position
-    const position = nextPosition(WORLD_MAP, previous, held, player.travelMode)
-    player = {...player, direction: held, position}
+    // En vue FPS, les touches sont relatives au regard.
+    const direction = firstPerson.enabled ? firstPerson.direction(held) : held
+    const position = nextPosition(WORLD_MAP, previous, direction, player.travelMode)
+    player = {...player, direction, position}
     if (position === previous) {
         // Au bout de la route est, pousser vers les arbres fait sortir vers le monde ouvert.
-        if (player.travelMode === 'walking' && leadsToOpenWorld(previous, held)) {
+        if (player.travelMode === 'walking' && leadsToOpenWorld(previous, direction)) {
             held = null
             location.assign(OPEN_WORLD_URL)
         }
@@ -160,7 +174,13 @@ function step(now: number) {
 }
 
 addEventListener('keydown', (event) => {
+    if (encounterOverlay.isOpen || event.ctrlKey || event.metaKey || event.altKey) return
     const key = event.key.toLowerCase()
+    if (key === 'v' && !event.repeat) {
+        firstPerson.toggle(player.direction)
+        lastHud = ''
+        return
+    }
     if (key === 'e') {
         if (event.repeat) return
 
@@ -172,11 +192,7 @@ addEventListener('keydown', (event) => {
             && canInteractWithPokemon(player.position, wildCharmander)
 
         if (nearCharmander) {
-            
-            console.info('Rencontre avec Salamèche', {
-                pokemonId: wildCharmander.id,
-                speciesKey: wildCharmander.speciesKey,
-            })
+            encounterOverlay.open(wildCharmander)
             return
         }
 
@@ -198,6 +214,7 @@ addEventListener('blur', () => {
     held = null
 })
 addEventListener('wheel', (event) => {
+    if (encounterOverlay.isOpen) return
     zoom = THREE.MathUtils.clamp(zoom + event.deltaY * 0.001, 0.45, 1.8)
 }, {passive: true})
 
@@ -205,21 +222,37 @@ const hud = document.createElement('div')
 hud.className = 'world3d-hud'
 document.body.appendChild(hud)
 let lastHud = ''
+const encounterOverlay = createEncounterOverlay({
+    background: [host, hud],
+    onPause: () => {
+        held = null
+        firstPerson.setActive(false)
+        renderer.setAnimationLoop(null)
+    },
+    onResume: () => {
+        held = null
+        firstPerson.setActive(true)
+        clock.getDelta()
+        renderer.setAnimationLoop(animate)
+    },
+})
 
 function updateHud() {
-    const loading = Math.round(Math.min(materials.progress(), streamer.progress(player.position)) * 100)
+    const loading = Math.round(Math.min(materials.progress(), treesReady ? streamer.progress(player.position) : 0) * 100)
     const landmark = nearbyLandmark(WORLD_MAP, player.position)
     const boatAction = boatActionAtDock(player)
     const exit = nearExit(player.position)
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}`
+    const nearCharmander = player.travelMode === 'walking' && canInteractWithPokemon(player.position, wildCharmander)
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}`
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = `<strong>${zoneAt(player.position)}</strong>`
         + (landmark ? `<p><b>${landmark.name}</b> — ${landmark.message}</p>` : '')
         + (loading < 100 ? `<p>Chargement du monde… ${loading} %</p>` : '')
         + (exit ? '<p><b>Sortie est</b> — continue vers l’est pour rejoindre le monde ouvert.</p>' : '')
+        + (nearCharmander ? '<p><b>Salamèche</b> — E : ouvrir le combat</p>' : '')
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
-        + '<p class="world3d-help">Flèches / ZQSD pour marcher · molette pour zoomer · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>'
+        + `<p class="world3d-help">Flèches / ZQSD pour marcher · ${firstPerson.enabled ? 'souris pour regarder (clic pour la capturer) · V : vue de dos' : 'molette pour zoomer · V : vue FPS'} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
 }
 
 addEventListener('resize', () => {
@@ -234,11 +267,11 @@ const clock = new THREE.Clock()
 const cameraGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3(), look = from.clone()
 camera.position.copy(from).add(new THREE.Vector3(0, 7, 8))
 
-renderer.setAnimationLoop((now) => {
+function animate(now: number) {
     const frameSeconds = clock.getDelta()
     const delta = Math.min(frameSeconds, 0.05)
     step(now)
-    streamer.update(player.position, STREAM_BUDGET_MS)
+    if (treesReady) streamer.update(player.position, STREAM_BUDGET_MS)
     const progress = Math.min(1, (now - stepStart) / STEP_DURATION)
     const moving = progress < 1
     const onBoat = player.travelMode === 'boat'
@@ -260,17 +293,24 @@ renderer.setAnimationLoop((now) => {
     companions.forEach(({mixer}) => mixer.update(delta))
     base.update(now / 1000)
 
-    // Caméra à la troisième personne, amortie.
-    cameraGoal.copy(trainer.position).addScaledVector(CAMERA_OFFSET, zoom)
-    camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 5))
-    lookGoal.copy(trainer.position).setY(0.9).add(LOOK_OFFSET)
-    look.lerp(lookGoal, 1 - Math.exp(-delta * 8))
-    camera.lookAt(look)
-    // L'ombre portée suit le joueur pour garder une carte d'ombre nette.
-    sun.target.position.copy(trainer.position)
-    sun.position.copy(trainer.position).addScaledVector(sunDirection, 40)
+    // En vue FPS le dresseur disparaît : la caméra est sa tête.
+    trainer.visible = !firstPerson.enabled
+    if (firstPerson.enabled) {
+        firstPerson.place(trainer.position)
+    } else {
+        // Caméra à la troisième personne, amortie.
+        cameraGoal.copy(trainer.position).addScaledVector(CAMERA_OFFSET, zoom)
+        camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 5))
+        lookGoal.copy(trainer.position).setY(0.9).add(LOOK_OFFSET)
+        look.lerp(lookGoal, 1 - Math.exp(-delta * 8))
+        camera.lookAt(look)
+    }
+    // La carte d'ombre suit le regard : l'avant de la scène a ses ombres avant qu'on s'en approche.
+    followShadow(sun, sunDirection, camera, trainer.position, 10, 40)
 
     updateHud()
     renderer.render(scene, camera)
     resolution.update(now, frameSeconds)
-})
+}
+
+renderer.setAnimationLoop(animate)

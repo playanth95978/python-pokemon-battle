@@ -1,6 +1,8 @@
 import { BattleSession } from '../battle/BattlePage'
 import { useBattle } from '../battle/useBattle'
 import type { WorldPokemon } from './worldPokemon'
+import { useEffect, useRef } from 'react'
+import type { KeyboardEvent } from 'react'
 
 interface Props {
     opponent: WorldPokemon
@@ -10,6 +12,23 @@ interface Props {
 export function EncounterBattle({ opponent, onClose }: Props) {
     const session = useBattle()
     const busy = session.pending !== null
+    const dialogRef = useRef<HTMLElement>(null)
+
+    useEffect(() => { dialogRef.current?.focus() }, [])
+
+    function keepFocusInDialog(event: KeyboardEvent<HTMLElement>) {
+        if (event.key !== 'Tab') return
+        const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]',
+        ))
+        if (!controls.length) { event.preventDefault(); event.currentTarget.focus(); return }
+        const first = controls[0], last = controls[controls.length - 1]
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+            event.preventDefault(); last.focus()
+        } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === event.currentTarget)) {
+            event.preventDefault(); first.focus()
+        }
+    }
 
     function startBattle() {
         void session.createBattle({
@@ -20,9 +39,13 @@ export function EncounterBattle({ opponent, onClose }: Props) {
 
     return (
         <section
+            ref={dialogRef}
+            tabIndex={-1}
+            onKeyDown={keepFocusInDialog}
             className="battle-page"
             role="dialog"
             aria-modal="true"
+            aria-busy={busy}
             aria-labelledby="encounter-title"
         >
             <h1 id="encounter-title">Une rencontre sauvage !</h1>
