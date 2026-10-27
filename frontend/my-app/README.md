@@ -59,6 +59,11 @@ avec un bouton pour réessayer. Voir `../../docs/catalogue.md` pour les dates et
 
 ## Structure
 
+- `src/openWorld/minimap.ts` : radar local du monde ouvert, centré sur le personnage,
+  tournant avec la caméra, avec nord et départ ; calcul progressif et cache borné.
+- `src/world3d/worldPokemon.ts` : identité et position des Pokémon rencontrables,
+  utilisée pour le Salamèche de Clairbois, sans lancement de combat pour l'instant.
+
 - `src/battle/BattlePage.tsx` : formulaire et assemblage des composants.
 - `BattleArena`, `PokemonCard`, `AttackPanel`, `BattleLog` : affichage et callbacks uniquement.
 - `useBattle.ts` : copie unique du dernier état serveur, événements reçus, états de requête.

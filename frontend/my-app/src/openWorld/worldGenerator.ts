@@ -30,7 +30,8 @@ export interface WorldGenerator {
     sample: (x: number, y: number) => WorldSample
     height: (x: number, y: number) => number
     canWalk: (from: { x: number; y: number }, to: { x: number; y: number }) => boolean
-    findSpawn: () => { x: number; y: number }
+    /** `isFree` exclut en plus les cases occupées (arbres, rochers…). */
+    findSpawn: (isFree?: (tile: { x: number; y: number }) => boolean) => { x: number; y: number }
 }
 
 function smoothstep(edge0: number, edge1: number, value: number) {
@@ -83,16 +84,16 @@ export function createWorldGenerator(seed: number): WorldGenerator {
         return target >= SEA_LEVEL && Math.abs(target - height(from.x + 0.5, from.y + 0.5)) <= MAX_STEP_HEIGHT
     }
 
-    /** Première plaine plate en spirale autour du centre du monde. */
-    function findSpawn() {
+    /** Première plaine tempérée et plate, en spirale autour du centre du monde. */
+    function findSpawn(isFree: (tile: { x: number; y: number }) => boolean = () => true) {
         const center = WORLD_SIZE / 2
         for (let radius = 0; radius < WORLD_SIZE / 2; radius += 7) {
             for (let angle = 0; angle < Math.PI * 2; angle += Math.max(0.05, 7 / Math.max(1, radius))) {
                 const x = Math.round(center + Math.cos(angle) * radius), y = Math.round(center + Math.sin(angle) * radius)
                 const here = sample(x + 0.5, y + 0.5)
-                if (here.biome !== 'plains') continue
+                if (here.biome !== 'plains' || here.temperature < -0.1 || here.temperature > 0.15 || !isFree({x, y})) continue
                 const neighbours = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({x: x + dx, y: y + dy}))
-                if (neighbours.every((neighbour) => canWalk({x, y}, neighbour))) return {x, y}
+                if (neighbours.every((neighbour) => canWalk({x, y}, neighbour) && isFree(neighbour))) return {x, y}
             }
         }
         return {x: center, y: center}
@@ -108,8 +109,8 @@ function biomeOf(height: number, river: number, land: number, temperature: numbe
     }
     if (height > 62 || (height > 42 && temperature < -0.3)) return 'snow'
     if (height > 30) return 'mountain'
-    if (height < 1.6 && land < 0.08) return temperature < -0.35 ? 'tundra' : 'beach'
-    if (temperature < -0.38) return 'tundra'
+    if (height < 1.6 && land < 0.08) return temperature < -0.45 ? 'tundra' : 'beach'
+    if (temperature < -0.45) return 'tundra'
     if (temperature > 0.2 && moisture < 0.1) return 'desert'
     if (moisture > 0.32 && height < 9) return 'swamp'
     if (moisture > 0.02) return 'forest'

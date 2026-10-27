@@ -2,6 +2,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { Direction, PlayerState } from '../world/types'
+import type { WorldPokemon } from './worldPokemon'
 import {
     boatActionAtDock,
     nearbyLandmark,
@@ -14,6 +15,7 @@ import {
 import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter, WATER_LEVEL } from './buildWorld3D'
 import { GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
 import { createWorldMaterials } from './worldMaterials'
+import { leadsToOpenWorld, nearExit, OPEN_WORLD_URL } from './worldExit'
 import { createAtmosphere, createResolutionScaler, createTrainer } from './scenery'
 import { WorldStreamer } from './worldStreamer'
 import './world3d.css'
@@ -109,9 +111,15 @@ let held: Direction | null = null
 let zoom = 1
 
 let pikachu: Companion | null = null
+const wildCharmander: WorldPokemon = {
+    id: 'charmander-prairie-01',
+    speciesKey: 'charmander',
+    position: {x: 30, y: 38},
+}
 void loadPokemon('/models/poc/pikachu.glb', 0.32).then((companion) => { pikachu = companion })
 void loadPokemon('/models/poc/charmander.glb', 0.38).then(({root}) => {
-    root.position.copy(tileCenter(30, 38))
+    root.name = wildCharmander.id
+    root.position.copy(tileCenter(wildCharmander.position.x, wildCharmander.position.y))
     root.rotation.y = -0.6
 })
 
@@ -120,7 +128,14 @@ function step(now: number) {
     const previous = player.position
     const position = nextPosition(WORLD_MAP, previous, held, player.travelMode)
     player = {...player, direction: held, position}
-    if (position === previous) return
+    if (position === previous) {
+        // Au bout de la route est, pousser vers les arbres fait sortir vers le monde ouvert.
+        if (player.travelMode === 'walking' && leadsToOpenWorld(previous, held)) {
+            held = null
+            location.assign(OPEN_WORLD_URL)
+        }
+        return
+    }
     // Pikachu suit le dresseur une case derrière, comme dans les jeux de la série.
     followerFrom = followerTo.clone()
     followerTo = tileCenter(previous.x, previous.y)
@@ -161,12 +176,14 @@ function updateHud() {
     const loading = Math.round(Math.min(materials.progress(), streamer.progress(player.position)) * 100)
     const landmark = nearbyLandmark(WORLD_MAP, player.position)
     const boatAction = boatActionAtDock(player)
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}`
+    const exit = nearExit(player.position)
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}`
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = `<strong>${zoneAt(player.position)}</strong>`
         + (landmark ? `<p><b>${landmark.name}</b> — ${landmark.message}</p>` : '')
         + (loading < 100 ? `<p>Chargement du monde… ${loading} %</p>` : '')
+        + (exit ? '<p><b>Sortie est</b> — continue vers l’est pour rejoindre le monde ouvert.</p>' : '')
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
         + '<p class="world3d-help">Flèches / ZQSD pour marcher · molette pour zoomer · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>'
 }

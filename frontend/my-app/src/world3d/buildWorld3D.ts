@@ -6,6 +6,7 @@ import { GROUND_TILE } from './worldMaterials'
 import type { WorldMaterials } from './worldMaterials'
 import type { ChunkKey } from './worldChunks'
 import { chunkTiles } from './worldChunks'
+import { EXIT, isExitGap } from './worldExit'
 
 export const WATER_LEVEL = -0.12
 const LAKE_DEPTH = -0.55
@@ -155,6 +156,45 @@ function addSigns(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials) 
     scene.add(posts, boards)
 }
 
+/** Portail en bois au bout de la route est, avec un panneau vers le monde ouvert. */
+function addExitGate(scene: THREE.Scene, materials: WorldMaterials) {
+    const gate = new THREE.Group()
+    const x = EXIT.x + 1, south = EXIT.maxY + 1, north = EXIT.minY
+    gate.position.set(x, 0, (north + south) / 2)
+    const span = south - north + 0.4
+    for (const side of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.6, 0.22), materials.wood)
+        post.position.set(0, 1.3, side * span / 2)
+        gate.add(post)
+    }
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, span + 0.5), materials.wood)
+    beam.position.y = 2.55
+    gate.add(beam)
+    const canvas = document.createElement('canvas')
+    canvas.width = 512
+    canvas.height = 128
+    const context = canvas.getContext('2d')!
+    context.fillStyle = '#5a3a24'
+    context.fillRect(0, 0, 512, 128)
+    context.fillStyle = '#f6e7c1'
+    context.font = 'bold 54px sans-serif'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.fillText('Monde ouvert →', 256, 66)
+    const label = new THREE.CanvasTexture(canvas)
+    label.colorSpace = THREE.SRGBColorSpace
+    // Panneau tourné vers le village (vers l'ouest), lisible en arrivant par la route.
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshStandardMaterial({map: label, roughness: 0.8}))
+    board.position.set(-0.15, 2.1, 0)
+    board.rotation.y = -Math.PI / 2
+    gate.add(board)
+    const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), materials.glass)
+    lantern.position.set(-0.2, 2.3, span / 2)
+    gate.add(lantern)
+    gate.traverse((object) => { object.castShadow = true })
+    scene.add(gate)
+}
+
 export interface WorldBase {
     update: (time: number) => void
 }
@@ -164,6 +204,7 @@ export function buildWorldBase(scene: THREE.Scene, map: WorldMap, materials: Wor
     const animateWater = addWater(scene, map, materials)
     addBridge(scene, map, materials)
     addSigns(scene, map, materials)
+    addExitGate(scene, materials)
     return {
         update(time) {
             materials.time.value = time
@@ -275,7 +316,7 @@ function addHouse(group: THREE.Group, building: Building, materials: WorldMateri
 export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, materials: WorldMaterials) {
     const group = chunkGroup(`decor ${chunk.cx},${chunk.cy}`)
     const tiles = chunkTiles(map, chunk)
-    addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree'), materials)
+    addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree' && !isExitGap(tile)), materials)
     // Une maison appartient au chunk de son coin nord-ouest.
     const inChunk = new Set(tiles.map(({x, y}) => `${x},${y}`))
     map.buildings.filter((building) => inChunk.has(`${building.x},${building.y}`))

@@ -1,0 +1,13 @@
+.open-world-radar { position: fixed; z-index: 5; left: 20px; bottom: 18px; color: #f1f5ed; user-select: none; font-family: system-ui, sans-serif; }
+.radar-panel { width: 192px; }
+.radar-toggle { display: block; margin: 0 auto 2px; padding: 4px 12px; border: 1px solid #dbe5d252; border-radius: 5px; background: #15212acc; color: #f1f5ed; cursor: pointer; font: 600 11px system-ui, sans-serif; }
+.radar-toggle:focus-visible { outline: 3px solid #f1ca80; outline-offset: 3px; }
+.radar-canvas { display: block; width: 192px; height: 192px; filter: drop-shadow(0 3px 9px #0008); pointer-events: none; }
+.radar-coordinates, .radar-legend { width: fit-content; max-width: 192px; margin: 0 auto; padding: 3px 8px; text-align: center; font-size: 10px; background: #15212acc; border-radius: 3px; }
+.radar-legend { color: #d0dbd2; margin-top: 3px; font-size: 9px; }
+@media (max-width: 600px), (max-height: 550px) {
+    .open-world-radar { left: 10px; bottom: 10px; }
+    .radar-panel { width: 152px; }
+    .radar-canvas { width: 152px; height: 152px; }
+    .radar-coordinates, .radar-legend { max-width: 152px; }
+}

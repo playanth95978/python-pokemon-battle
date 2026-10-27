@@ -232,6 +232,22 @@ configuration de logging n'est déjà en place.
 
 ## Interface React
 
+### Monde ouvert 3D et mini-carte
+
+`/open-world.html` affiche le monde procédural. Un radar circulaire en bas à gauche
+suit la position interpolée du personnage : flèche de direction, repère du nord,
+coordonnées et point de départ. Le terrain tourne avec la caméra, déplacée en
+glissant la souris. La mini-carte montre un voisinage d'environ 87 unités de rayon,
+les biomes et un échantillon des obstacles ; elle ne constitue pas une carte exacte
+des collisions. Son bouton permet de la masquer et de la réafficher.
+Les échantillons sont calculés progressivement et mis en cache, sans générer une
+image des 10 000 × 10 000 cases ni charger de chunks supplémentaires.
+
+Dans `/world3d.html`, le Salamèche de Clairbois possède désormais une définition
+`WorldPokemon` : identifiant individuel, clé d'espèce `charmander` et position en
+cases. Son placement 3D utilise cette définition. Il s'agit du premier branchement
+pour les futures rencontres ; aucun combat n'est encore déclenché par sa proximité.
+
 ### Prototype d'exploration 2D
 
 L'onglet **Explorer** ouvre Clairbois : une carte de 64 × 64 cases de 32 pixels,
