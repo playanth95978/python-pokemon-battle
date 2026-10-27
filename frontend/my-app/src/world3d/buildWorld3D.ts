@@ -75,40 +75,20 @@ function addGround(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials)
     scene.add(hills)
 }
 
-export function waterNormals() {
-    const size = 256, data = new Uint8Array(size * size * 4)
-    for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-            // Fonctions périodiques sur 256 px : la texture se répète sans couture.
-            const u = x / size * Math.PI * 2, v = y / size * Math.PI * 2
-            const a = Math.sin(u * 3 + v * 2) + Math.sin(u * 5 - v * 4) * 0.5
-            const b = Math.cos(v * 3 - u) + Math.cos(u * 4 + v * 6) * 0.5
-            const offset = (y * size + x) * 4
-            data.set([128 + a * 30, 128 + b * 30, 255, 255], offset)
+/** Rectangle couvrant toutes les cases d'eau (lac et rivière), avec une case de marge : seul plan d'eau à refléter. */
+export function waterBounds(map: WorldMap) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (let y = 0; y < map.height; y++) {
+        for (let x = 0; x < map.width; x++) {
+            if (tileAt(map, {x, y}) !== 'water') continue
+            minX = Math.min(minX, x)
+            minY = Math.min(minY, y)
+            maxX = Math.max(maxX, x + 1)
+            maxY = Math.max(maxY, y + 1)
         }
     }
-    const texture = new THREE.DataTexture(data, size, size)
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping
-    texture.repeat.set(10, 10)
-    texture.magFilter = THREE.LinearFilter
-    texture.minFilter = THREE.LinearMipmapLinearFilter
-    texture.generateMipmaps = true
-    texture.needsUpdate = true
-    return texture
+    return {x: (minX + maxX) / 2, z: (minY + maxY) / 2, width: maxX - minX + 2, depth: maxY - minY + 2}
 }
-
-function addWater(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials) {
-    const normals = waterNormals()
-    materials.water.normalMap = normals
-    materials.water.normalScale.setScalar(0.35)
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(map.width, map.height), materials.water)
-    water.rotation.x = -Math.PI / 2
-    water.position.set(map.width / 2, WATER_LEVEL, map.height / 2)
-    water.receiveShadow = true
-    scene.add(water)
-    return (time: number) => normals.offset.set(time * 0.012, time * 0.007)
-}
-
 function addBridge(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials) {
     const planks: Position[] = []
     for (let y = 0; y < map.height; y++) {
@@ -198,8 +178,8 @@ export interface WorldBase {
 }
 
 export function buildWorldBase(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials): WorldBase {
+    // L'eau est créée à part (voir water.ts et waterBounds) : elle a besoin du renderer pour ses reflets.
     addGround(scene, map, materials)
-    const animateWater = addWater(scene, map, materials)
     addBridge(scene, map, materials)
     addSigns(scene, map, materials)
     addExitGate(scene, materials)
@@ -207,7 +187,6 @@ export function buildWorldBase(scene: THREE.Scene, map: WorldMap, materials: Wor
         update(time) {
             materials.time.value = time
             animateTrees(time)
-            animateWater(time)
         },
     }
 }

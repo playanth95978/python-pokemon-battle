@@ -2,7 +2,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { Direction } from '../world/types'
-import { waterNormals } from '../world3d/buildWorld3D'
+import { createWater } from '../world3d/water'
 import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from '../world3d/scenery'
 import { createFirstPersonView } from '../world3d/firstPerson'
 import { createPostProcessing } from '../world3d/postProcessing'
@@ -60,16 +60,12 @@ const layers = createWorldLayers(scene, renderer, seed)
 
 // La mer est un seul plan qui suit le joueur ; les rivières sont creusées sous son niveau.
 scene.background = new THREE.Color(0xa9c4d4)
-const normals = waterNormals()
-// Une répétition de texture toutes les 6 unités, compensée quand le plan se déplace.
-normals.repeat.setScalar(SEA_SIZE / 6)
-const sea = new THREE.Mesh(new THREE.PlaneGeometry(SEA_SIZE, SEA_SIZE), new THREE.MeshPhysicalMaterial({
-    color: 0x14506a, roughness: 0.12, transparent: true, opacity: 0.9, normalMap: normals,
-    normalScale: new THREE.Vector2(0.25, 0.25), envMapIntensity: 0.45,
-}))
-sea.rotation.x = -Math.PI / 2
-sea.receiveShadow = true
-scene.add(sea)
+// Sommets resserrés autour du joueur : les vagues sont fines de près, le large ne coûte presque rien.
+const water = createWater(renderer, scene, sunDirection, {
+    width: SEA_SIZE, depth: SEA_SIZE, segments: 256, focused: true,
+    waveHeight: 0.22, wavelength: 16, shallowColor: 0xc4e4e0, deepColor: 0x0a2a3a, absorption: 0.45, foamWidth: 0.35,
+})
+const sea = water.mesh
 
 const trainer = createTrainer()
 scene.add(trainer)
@@ -227,9 +223,8 @@ renderer.setAnimationLoop((now) => {
         pikachu.mixer.update(delta)
     }
 
-    // La mer suit le joueur par pas de 32 cases : sa texture ne glisse pas sous les pieds.
+    // La mer suit le joueur par pas de 32 cases ; vagues et rides sont calculées en coordonnées du monde, elles ne glissent pas.
     sea.position.set(Math.round(trainer.position.x / 32) * 32, SEA_LEVEL - 0.15, Math.round(trainer.position.z / 32) * 32)
-    normals.offset.set(now * 0.000012 + sea.position.x / 6, now * 0.000007 - sea.position.z / 6)
 
     // En vue FPS le dresseur disparaît : la caméra est sa tête.
     trainer.visible = !firstPerson.enabled
@@ -256,6 +251,7 @@ renderer.setAnimationLoop((now) => {
         hudTimer = 0.25
         updateHud()
     }
+    water.prepare(camera, now / 1000)
     post.render()
     resolution.update(now, frameSeconds)
 })

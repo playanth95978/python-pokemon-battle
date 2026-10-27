@@ -12,7 +12,8 @@ import {
     WORLD_SPAWN,
     zoneAt
 } from '../world/worldMap'
-import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter, WATER_LEVEL } from './buildWorld3D'
+import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter, WATER_LEVEL, waterBounds } from './buildWorld3D'
+import { createWater } from './water'
 import { GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
 import { createWorldMaterials } from './worldMaterials'
 import { leadsToOpenWorld, nearExit, OPEN_WORLD_URL } from './worldExit'
@@ -59,7 +60,7 @@ const {sun, sunDirection} = createAtmosphere(renderer, scene, 20, 3072)
 const firstPerson = createFirstPersonView(renderer.domElement, camera)
 const post = createPostProcessing(renderer, scene, camera)
 // En développement, la scène est exposée pour mesurer le coût du rendu depuis la console.
-if (import.meta.env.DEV) Object.assign(window, {world3d: {renderer, scene, camera, post}})
+if (import.meta.env.DEV) Object.assign(window, {world3d: {renderer, scene, camera, post, water: () => water}})
 
 const materials = createWorldMaterials(WORLD_MAP, renderer)
 // Les chunks attendent que les arbres et les maisons soient prêts (modèles chargés, textures envoyées, shaders compilés) :
@@ -69,6 +70,13 @@ void Promise.all([prepareTrees(renderer, scene, ['oak', 'aspen', 'pine']), loadV
     village = models
 })
 const base = buildWorldBase(scene, WORLD_MAP, materials)
+// Lac et rivière : eau peu profonde, claire au bord et vert sombre au milieu, petites vagues.
+const lake = waterBounds(WORLD_MAP)
+const water = createWater(renderer, scene, sunDirection, {
+    width: lake.width, depth: lake.depth, segments: Math.ceil(Math.max(lake.width, lake.depth) * 4),
+    waveHeight: 0.02, wavelength: 2.4, shallowColor: 0xcfe6dc, deepColor: 0x0e3438, absorption: 3.2, foamWidth: 0.1,
+})
+water.mesh.position.set(lake.x, WATER_LEVEL, lake.z)
 const streamer = new WorldStreamer(WORLD_MAP, scene, [
     {
         name: 'decor',
@@ -322,6 +330,7 @@ function animate(now: number) {
     followShadow(sun, sunDirection, camera, trainer.position, 10, 40)
 
     updateHud()
+    water.prepare(camera, now / 1000)
     post.render()
     resolution.update(now, frameSeconds)
 }

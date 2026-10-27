@@ -17,7 +17,6 @@ export interface WorldMaterials {
     wood: THREE.MeshStandardMaterial
     stone: THREE.MeshStandardMaterial
     glass: THREE.MeshStandardMaterial
-    water: THREE.MeshPhysicalMaterial
     roof: (color: string) => THREE.MeshStandardMaterial
     /** Temps partagé par les shaders animés (vent). */
     time: { value: number }
@@ -165,10 +164,6 @@ export function createWorldMaterials(map: WorldMap, renderer: THREE.WebGLRendere
         foliage: new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.9, flatShading: true}),
         stone: new THREE.MeshStandardMaterial({color: 0x8d877d, roughness: 1}),
         glass: new THREE.MeshStandardMaterial({color: 0xffe2a3, emissive: 0xffb54d, emissiveIntensity: 1.6, roughness: 0.2}),
-        water: new THREE.MeshPhysicalMaterial({
-            color: 0x2f7f9c, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.82,
-            clearcoat: 1, clearcoatRoughness: 0.1,
-        }),
         ready: Promise.all(pending).then(() => undefined),
         progress: () => total ? loaded / total : 1,
     }
