@@ -251,8 +251,9 @@ export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: Village
 }
 
 /** Brins d'herbe et fleurs d'un chunk : seulement près du joueur, c'est la couche la plus dense. */
-export function buildGrassChunk(map: WorldMap, chunk: ChunkKey, materials: WorldMaterials) {
-    const tiles = chunkTiles(map, chunk).filter((tile) => tileAt(map, tile) === 'grass')
+export function buildGrassChunk(map: WorldMap, chunk: ChunkKey, materials: WorldMaterials, bare: (tile: Position) => boolean = () => false) {
+    // `bare` : cases d'herbe recouvertes par une construction (le château et son chemin pavé).
+    const tiles = chunkTiles(map, chunk).filter((tile) => tileAt(map, tile) === 'grass' && !bare(tile))
     if (!tiles.length) return null
     const group = chunkGroup(`grass ${chunk.cx},${chunk.cy}`)
     const grass = instanced(bladeGeometry, materials.blade, tiles.length * GRASS_PER_TILE, false)

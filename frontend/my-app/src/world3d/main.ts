@@ -19,6 +19,8 @@ import { createWorldMaterials } from './worldMaterials'
 import { leadsToOpenWorld, nearExit, OPEN_WORLD_URL } from './worldExit'
 import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from './scenery'
 import { createFirstPersonView } from './firstPerson'
+import type { CameraFraming } from './cameraRig'
+import { createCameraRig } from './cameraRig'
 import { prepareTrees } from './realTrees'
 import type { VillageModels } from './villageModels'
 import { loadVillageModels } from './villageModels'
@@ -27,11 +29,19 @@ import { WorldStreamer } from './worldStreamer'
 import { createEncounterOverlay } from './encounterOverlay'
 import './world3d.css'
 import { canInteractWithPokemon } from './pokemonInteraction'
+import { createCastleMaterials } from './castle/castleMaterials'
+import { buildCastleExterior, CASTLE_DOORSTEP, castleBlocks, entersCastle, isCastleGround } from './castle/castleExterior'
+import { createCastle } from './castle/castleMode'
+import { playBattleTransition } from './battleTransition'
 
 const STEP_DURATION = 170
 /** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
 const STREAM_BUDGET_MS = 4
-const CAMERA_OFFSET = new THREE.Vector3(0, 4.2, 7), LOOK_OFFSET = new THREE.Vector3(0, 0, -1.5)
+const CAMERA_OFFSET = new THREE.Vector3(0, 4.2, 7)
+/** Cadrage dehors : caméra en hauteur derrière le dresseur, regard un peu devant lui. */
+const OUTDOOR_FRAMING: CameraFraming = {offset: new THREE.Vector3(), lookHeight: 0.9, lookAhead: 1.5}
+/** Cadrage dans le château : plus bas et plus près, sous les plafonds, sans traverser les murs. */
+const CASTLE_FRAMING: CameraFraming = {offset: new THREE.Vector3(0, 2.4, 3.6), lookHeight: 1.1, lookAhead: 1.2}
 const KEYS: Record<string, Direction> = {
     arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right',
     z: 'up', w: 'up', s: 'down', q: 'left', a: 'left', d: 'right',
@@ -58,9 +68,13 @@ const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 12
 // Carte d'ombre plus large et plus fine, centrée devant la caméra (voir followShadow).
 const {sun, sunDirection} = createAtmosphere(renderer, scene, 20, 3072)
 const firstPerson = createFirstPersonView(renderer.domElement, camera)
+const rig = createCameraRig(camera, renderer.domElement, firstPerson)
 const post = createPostProcessing(renderer, scene, camera)
 // En développement, la scène est exposée pour mesurer le coût du rendu depuis la console.
-if (import.meta.env.DEV) Object.assign(window, {world3d: {renderer, scene, camera, post, water: () => water}})
+if (import.meta.env.DEV) Object.assign(window, {world3d: {
+    renderer, scene, camera, post, water: () => water, castle: () => castle,
+    enterCastle: () => enterCastle(performance.now()),
+}})
 
 const materials = createWorldMaterials(WORLD_MAP, renderer)
 // Les chunks attendent que les arbres et les maisons soient prêts (modèles chargés, textures envoyées, shaders compilés) :
@@ -89,7 +103,7 @@ const streamer = new WorldStreamer(WORLD_MAP, scene, [
         name: 'grass',
         loadRadius: GRASS_RADIUS,
         unloadRadius: GRASS_UNLOAD_RADIUS,
-        build: (chunk) => buildGrassChunk(WORLD_MAP, chunk, materials),
+        build: (chunk) => buildGrassChunk(WORLD_MAP, chunk, materials, isCastleGround),
         dispose: disposeChunk
     },
 ])
@@ -112,6 +126,13 @@ function createBoat() {
 const trainer = createTrainer()
 const boat = createBoat()
 scene.add(trainer, boat)
+
+// Château du pré sud-ouest : extérieur dans Clairbois, intérieur dans sa propre scène (trois étages, Mewtwo au sommet).
+const castleMaterials = createCastleMaterials(renderer)
+const castleOutside = buildCastleExterior(scene, castleMaterials)
+const castle = createCastle(renderer, camera, castleMaterials)
+/** Exposition plus forte à l'intérieur : la lumière n'y vient que des torches et des fenêtres. */
+const CASTLE_EXPOSURE = 1.3, OUTDOOR_EXPOSURE = renderer.toneMappingExposure
 
 interface Companion {
     root: THREE.Group;
@@ -167,11 +188,28 @@ void loadPokemon('/models/poc/charmander.glb', 0.38).then(({root}) => {
 })
 
 function step(now: number) {
-    if (encounterOverlay.isOpen || !held || now - stepStart < STEP_DURATION) return
+    if (encounterOverlay.isOpen || challenging || !held) return
+    // Les touches sont relatives à la vue (caméra libre, vue de dos ou regard FPS).
+    const direction = rig.direction(held)
+    if (castle.active) {
+        const event = castle.step(direction, now)?.type
+        if (event === 'exit') leaveCastle(now)
+        // Après un escalier, la touche encore enfoncée ramènerait aussitôt dans l'escalier : il faut la relâcher.
+        if (event === 'stairs') {
+            held = null
+            rig.release()
+        }
+        return
+    }
+    if (now - stepStart < STEP_DURATION) return
     const previous = player.position
-    // En vue FPS, les touches sont relatives au regard.
-    const direction = firstPerson.enabled ? firstPerson.direction(held) : held
     const position = nextPosition(WORLD_MAP, previous, direction, player.travelMode)
+    // Le château n'est pas sur la carte 2D : ses murs bloquent, sa grande porte fait entrer.
+    if (castleBlocks(position)) {
+        player = {...player, direction}
+        if (player.travelMode === 'walking' && entersCastle(position, direction)) enterCastle(now)
+        return
+    }
     player = {...player, direction, position}
     if (position === previous) {
         // Au bout de la route est, pousser vers les arbres fait sortir vers le monde ouvert.
@@ -189,11 +227,48 @@ function step(now: number) {
     stepStart = now
 }
 
+function enterCastle(now: number) {
+    held = null
+    boat.visible = false
+    castle.enter(trainer, pikachu?.root ?? null, now)
+    rig.snap(trainer.position, CASTLE_FRAMING)
+    renderer.toneMappingExposure = CASTLE_EXPOSURE
+    lastHud = ''
+}
+
+/** Retour devant la grande porte, face à l'ouest ; Pikachu suit une case derrière. */
+function leaveCastle(now: number) {
+    castle.leave()
+    renderer.toneMappingExposure = OUTDOOR_EXPOSURE
+    held = null
+    player = {...player, direction: 'left', position: {...CASTLE_DOORSTEP}}
+    from = to = tileCenter(CASTLE_DOORSTEP.x, CASTLE_DOORSTEP.y)
+    followerFrom = followerTo = tileCenter(CASTLE_DOORSTEP.x + 1, CASTLE_DOORSTEP.y)
+    stepStart = now - STEP_DURATION
+    trainer.rotation.y = ANGLES.left
+    rig.snap(to, outdoorFraming())
+    lastHud = ''
+}
+
+let challenging = false
+
+/** E devant Mewtwo : transition manga jusqu'au noir, puis l'arène s'ouvre dessous. */
+function challengeMewtwo() {
+    held = null
+    challenging = true
+    const transition = playBattleTransition('Mewtwo !', 'Le Pokémon génétique se dresse devant le trône')
+    void transition.blackout.then(() => {
+        challenging = false
+        encounterOverlay.open({id: 'mewtwo-chateau', speciesKey: castle.boss.speciesKey, position: castle.boss.position})
+        transition.leave()
+    })
+}
+
 addEventListener('keydown', (event) => {
-    if (encounterOverlay.isOpen || event.ctrlKey || event.metaKey || event.altKey) return
+    if (encounterOverlay.isOpen || challenging || event.ctrlKey || event.metaKey || event.altKey) return
     const key = event.key.toLowerCase()
     if (key === 'v' && !event.repeat) {
-        firstPerson.toggle(player.direction)
+        rig.cycle(castle.state?.facing ?? player.direction)
         lastHud = ''
         return
     }
@@ -202,7 +277,11 @@ addEventListener('keydown', (event) => {
 
         event.preventDefault()
         held = null
-
+        if (castle.active) {
+            if (castle.nearBoss()) challengeMewtwo()
+            return
+        }
+        console.log(player,wildCharmander)
         const nearCharmander =
             player.travelMode === 'walking'
             && canInteractWithPokemon(player.position, wildCharmander)
@@ -221,13 +300,20 @@ addEventListener('keydown', (event) => {
     const direction = KEYS[key]
     if (!direction) return
     event.preventDefault()
+    // La répétition automatique d'une touche dont le pas a été interrompu (escalier, combat) ne relance pas la marche.
+    if (event.repeat && !held) return
+    // Nouvelle touche : le repère de la vue est figé jusqu'à ce qu'elle soit relâchée.
+    if (direction !== held) rig.press()
     held = direction
 })
 addEventListener('keyup', (event) => {
-    if (KEYS[event.key.toLowerCase()] === held) held = null
+    if (KEYS[event.key.toLowerCase()] !== held) return
+    held = null
+    rig.release()
 })
 addEventListener('blur', () => {
     held = null
+    rig.release()
 })
 addEventListener('wheel', (event) => {
     if (encounterOverlay.isOpen) return
@@ -242,18 +328,25 @@ const encounterOverlay = createEncounterOverlay({
     background: [host, hud],
     onPause: () => {
         held = null
-        firstPerson.setActive(false)
+        rig.setActive(false)
         renderer.setAnimationLoop(null)
     },
     onResume: () => {
         held = null
-        firstPerson.setActive(true)
+        rig.setActive(true)
         clock.getDelta()
         renderer.setAnimationLoop(animate)
     },
 })
 
-function updateHud() {
+function updateHud(now: number) {
+    if (castle.active) {
+        const text = castle.hud(now, viewHelp())
+        if (text === lastHud) return
+        lastHud = text
+        hud.innerHTML = text
+        return
+    }
     const loading = Math.round(Math.min(materials.progress(), village ? streamer.progress(player.position) : 0) * 100)
     const landmark = nearbyLandmark(WORLD_MAP, player.position)
     const boatAction = boatActionAtDock(player)
@@ -268,7 +361,7 @@ function updateHud() {
         + (exit ? '<p><b>Sortie est</b> — continue vers l’est pour rejoindre le monde ouvert.</p>' : '')
         + (nearCharmander ? '<p><b>Salamèche</b> — E : ouvrir le combat</p>' : '')
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
-        + `<p class="world3d-help">Flèches / ZQSD pour marcher · ${firstPerson.enabled ? 'souris pour regarder (clic pour la capturer) · V : vue de dos' : 'molette pour zoomer · V : vue FPS'} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
+        + `<p class="world3d-help">Flèches / ZQSD pour marcher · ${viewHelp()} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
 }
 
 addEventListener('resize', () => {
@@ -276,21 +369,47 @@ addEventListener('resize', () => {
     camera.updateProjectionMatrix()
     renderer.setSize(innerWidth, innerHeight)
     post.setSize(innerWidth, innerHeight)
+    castle.setSize(innerWidth, innerHeight)
 })
 
 const resolution = createResolutionScaler(renderer, undefined, undefined, (ratio) => {
     renderer.setPixelRatio(ratio)
     post.setPixelRatio(ratio)
+    castle.setPixelRatio(ratio)
 })
 
+/** Aide du HUD sur les vues : la vue actuelle et ce que fait V. */
+function viewHelp() {
+    const look = rig.mode === 'fps' ? 'souris pour regarder (clic pour la capturer)' : 'glisser pour tourner la caméra · molette pour zoomer'
+    return `${look} · V : ${rig.next}`
+}
+
+/** Le recul dehors suit le zoom de la molette. */
+function outdoorFraming() {
+    OUTDOOR_FRAMING.offset.copy(CAMERA_OFFSET).multiplyScalar(zoom)
+    return OUTDOOR_FRAMING
+}
+
+CASTLE_FRAMING.reach = castle.cameraReach
+
 const clock = new THREE.Clock()
-const cameraGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3(), look = from.clone()
 camera.position.copy(from).add(new THREE.Vector3(0, 7, 8))
 
 function animate(now: number) {
     const frameSeconds = clock.getDelta()
     const delta = Math.min(frameSeconds, 0.05)
     step(now)
+    if (castle.active) {
+        // À l'intérieur : seul le château est animé et dessiné ; Clairbois attend dehors.
+        castle.update(now, delta)
+        companions.forEach(({mixer}) => mixer.update(delta))
+        trainer.visible = rig.mode !== 'fps'
+        rig.update(delta, trainer.position, castle.state!.facing, held !== null, CASTLE_FRAMING)
+        updateHud(now)
+        castle.render()
+        resolution.update(now, frameSeconds)
+        return
+    }
     if (village) streamer.update(player.position, STREAM_BUDGET_MS)
     const progress = Math.min(1, (now - stepStart) / STEP_DURATION)
     const onBoat = player.travelMode === 'boat'
@@ -315,21 +434,13 @@ function animate(now: number) {
     base.update(now / 1000)
 
     // En vue FPS le dresseur disparaît : la caméra est sa tête.
-    trainer.visible = !firstPerson.enabled
-    if (firstPerson.enabled) {
-        firstPerson.place(trainer.position)
-    } else {
-        // Caméra à la troisième personne, amortie.
-        cameraGoal.copy(trainer.position).addScaledVector(CAMERA_OFFSET, zoom)
-        camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 5))
-        lookGoal.copy(trainer.position).setY(0.9).add(LOOK_OFFSET)
-        look.lerp(lookGoal, 1 - Math.exp(-delta * 8))
-        camera.lookAt(look)
-    }
+    trainer.visible = rig.mode !== 'fps'
+    rig.update(delta, trainer.position, player.direction, held !== null, outdoorFraming())
     // La carte d'ombre suit le regard : l'avant de la scène a ses ombres avant qu'on s'en approche.
     followShadow(sun, sunDirection, camera, trainer.position, 10, 40)
+    castleOutside.update(now / 1000)
 
-    updateHud()
+    updateHud(now)
     water.prepare(camera, now / 1000)
     post.render()
     resolution.update(now, frameSeconds)

@@ -3,8 +3,14 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { Direction } from '../world/types'
 import { createWater } from '../world3d/water'
+import type { LeviathanFrame } from './leviathan'
+import { createLeviathan } from './leviathan'
+import { createEncounterOverlay } from '../world3d/encounterOverlay'
+import { playBattleTransition } from '../world3d/battleTransition'
 import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from '../world3d/scenery'
 import { createFirstPersonView } from '../world3d/firstPerson'
+import type { CameraFraming } from '../world3d/cameraRig'
+import { createCameraRig } from '../world3d/cameraRig'
 import { createPostProcessing } from '../world3d/postProcessing'
 import { blocksMovement, plantAt } from './vegetation'
 import { createWorldLayers, VIEW_RADIUS } from './worldLayers'
@@ -29,6 +35,9 @@ const CAMERA_OFFSET = new THREE.Vector3(0, 4.2, 7), FLY_CAMERA_OFFSET = new THRE
 const VIEW_DISTANCE = VIEW_RADIUS * TERRAIN_CHUNK
 /** La mer dépasse largement le brouillard : sous l'horizon, le ciel physique est noir. */
 const SEA_SIZE = 8000
+const LEVIATHAN_HOME = {x: 5258, z: 5839}
+/** Espèce du catalogue du backend jouée par le Léviathan en combat (Léviator). */
+const LEVIATHAN_SPECIES = 'gyarados'
 
 const seed = Number(new URLSearchParams(location.search).get('graine')) || 42
 const world = createWorldGenerator(seed)
@@ -50,6 +59,7 @@ const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 20
 const {sun, sunDirection} = createAtmosphere(renderer, scene, 30)
 sun.shadow.camera.far = 300
 const firstPerson = createFirstPersonView(renderer.domElement, camera)
+const rig = createCameraRig(camera, renderer.domElement, firstPerson)
 const post = createPostProcessing(renderer, scene, camera)
 const resolution = createResolutionScaler(renderer, undefined, undefined, (ratio) => {
     renderer.setPixelRatio(ratio)
@@ -63,12 +73,17 @@ scene.background = new THREE.Color(0xa9c4d4)
 // Sommets resserrés autour du joueur : les vagues sont fines de près, le large ne coûte presque rien.
 const water = createWater(renderer, scene, sunDirection, {
     width: SEA_SIZE, depth: SEA_SIZE, segments: 256, focused: true,
-    waveHeight: 0.22, wavelength: 16, shallowColor: 0xc4e4e0, deepColor: 0x0a2a3a, absorption: 0.45, foamWidth: 0.35,
+    waveHeight: 0.14, wavelength: 14, shallowColor: 0xc4e4e0, deepColor: 0x0a2a3a, absorption: 0.45, foamWidth: 0.35,
 })
 const sea = water.mesh
 
 const trainer = createTrainer()
 scene.add(trainer)
+// Le Léviathan hante la rivière au sud du départ (graine 42 : ?x=5254&y=5839) ; sans eau profonde à cet endroit, il n'existe pas.
+const leviathan = createLeviathan(world, scene, LEVIATHAN_HOME)
+let beast: LeviathanFrame = {message: null, shake: 0}
+// En développement, la scène est exposée pour l'inspecter depuis la console.
+if (import.meta.env.DEV) Object.assign(window, {openWorld: {renderer, scene, camera, leviathan}})
 let pikachu: { root: THREE.Group; mixer: THREE.AnimationMixer } | null = null
 void new GLTFLoader().loadAsync('/models/poc/pikachu.glb').then((gltf) => {
     const root = new THREE.Group()
@@ -115,7 +130,7 @@ if (import.meta.hot) import.meta.hot.dispose(() => {
 })
 let direction: Direction = 'down'
 let held: Direction | null = null
-let running = false, zoom = 1, yaw = 0
+let running = false, zoom = 1
 // Un départ sur l'eau ou une falaise commence en survol.
 let flying = world.height(tile.x + 0.5, tile.y + 0.5) < SEA_LEVEL
 let stepStart = 0, stepDuration = WALK_STEP
@@ -124,7 +139,7 @@ let from = groundAt(tile), to = from.clone(), followerFrom = from.clone(), follo
 function step(now: number) {
     if (!held || now - stepStart < stepDuration) return
     // En vue FPS, les touches sont relatives au regard.
-    direction = firstPerson.enabled ? firstPerson.direction(held) : held
+    direction = rig.direction(held)
     const delta = DELTAS[direction], distance = flying ? FLY_DISTANCE : 1
     const next = {x: tile.x + delta.x * distance, y: tile.y + delta.y * distance}
     const inside = next.x >= 0 && next.y >= 0 && next.x < WORLD_SIZE && next.y < WORLD_SIZE
@@ -140,9 +155,15 @@ function step(now: number) {
 }
 
 addEventListener('keydown', (event) => {
+    if (encounterOverlay.isOpen || challenging || event.ctrlKey || event.metaKey || event.altKey) return
     const key = event.key.toLowerCase()
+    if (key === 'e' && !event.repeat && !flying && leviathan?.canChallenge(trainer.position)) {
+        event.preventDefault()
+        challengeLeviathan()
+        return
+    }
     if (key === 'shift') running = true
-    if (key === 'v' && !event.repeat) firstPerson.toggle(direction)
+    if (key === 'v' && !event.repeat) rig.cycle(direction)
     if (key === 'f' && !event.repeat) {
         flying = !flying
         // Retour au sol : uniquement sur une case où l'on peut se tenir.
@@ -151,22 +172,24 @@ addEventListener('keydown', (event) => {
     const next = KEYS[key]
     if (!next) return
     event.preventDefault()
+    // Nouvelle touche : le repère de la vue est figé jusqu'à ce qu'elle soit relâchée.
+    if (next !== held) rig.press()
     held = next
 })
 addEventListener('keyup', (event) => {
     const key = event.key.toLowerCase()
     if (key === 'shift') running = false
-    if (KEYS[key] === held) held = null
+    if (KEYS[key] !== held) return
+    held = null
+    rig.release()
 })
 addEventListener('blur', () => {
-    held = null;
+    held = null
     running = false
-})
-// Glisser avec la souris fait tourner la caméra autour du dresseur.
-renderer.domElement.addEventListener('pointermove', (event) => {
-    if (event.buttons & 1 && !firstPerson.enabled) yaw -= event.movementX * 0.005
+    rig.release()
 })
 addEventListener('wheel', (event) => {
+    if (encounterOverlay.isOpen) return
     zoom = THREE.MathUtils.clamp(zoom + event.deltaY * 0.001, 0.45, 2.5)
 }, {passive: true})
 addEventListener('resize', () => {
@@ -181,27 +204,74 @@ hud.className = 'world3d-hud'
 document.body.appendChild(hud)
 let lastHud = '', fps = 60
 
+// Combat contre le Léviathan : la scène se fige pendant l'arène et reprend à la fermeture.
+const encounterOverlay = createEncounterOverlay({
+    background: [host, hud, minimap.element],
+    onPause: () => {
+        held = null
+        running = false
+        rig.setActive(false)
+        renderer.setAnimationLoop(null)
+    },
+    onResume: () => {
+        held = null
+        rig.setActive(true)
+        clock.getDelta()
+        renderer.setAnimationLoop(frame)
+    },
+})
+let challenging = false
+
+/** E près du Léviathan : il se dresse, la transition manga monte jusqu'au noir, puis l'arène s'ouvre dessous. */
+function challengeLeviathan() {
+    held = null
+    running = false
+    challenging = true
+    leviathan!.provoke()
+    const transition = playBattleTransition('Léviator sauvage !', 'Le Léviathan surgit de la rivière')
+    void transition.blackout.then(() => {
+        challenging = false
+        const {x, z} = leviathan!.state
+        encounterOverlay.open({id: 'leviathan-riviere', speciesKey: LEVIATHAN_SPECIES, position: {x: Math.floor(x), y: Math.floor(z)}})
+        transition.leave()
+    })
+}
+
 function updateHud() {
     const here = world.sample(tile.x + 0.5, tile.y + 0.5)
     const {terrain, vegetation, pending, workers} = layers.stats()
     const text = `<strong>${BIOME_NAMES[here.biome]}</strong>`
+        + (beast.message ? `<p><b>${beast.message}</b></p>` : '')
         + `<p>Case ${tile.x}, ${tile.y} · altitude ${Math.round(here.height)} m · graine ${seed}</p>`
         + `<p>${terrain} chunks de terrain, ${vegetation} de végétation${pending ? ` · ${pending} en calcul (${workers} workers)` : ''} · ${Math.round(fps)} i/s · résolution ×${resolution.ratio().toFixed(2)}</p>`
         + `<p class="world3d-help">ZQSD / flèches · Maj pour courir · F ${flying ? 'pour atterrir' : 'pour survoler'} · `
-        + (firstPerson.enabled ? 'souris pour regarder (clic pour la capturer) · V : vue de dos · ' : 'molette pour zoomer · glisser pour tourner · V : vue FPS · ')
+        + (rig.mode === 'fps' ? 'souris pour regarder (clic pour la capturer)' : 'glisser pour tourner la caméra · molette pour zoomer')
+        + ` · V : ${rig.next} · `
         + '<a href="/world3d.html">Clairbois 3D</a> · <a href="/">carte 2D</a></p>'
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = text
 }
 
+const FRAMING: CameraFraming = {
+    offset: new THREE.Vector3(), lookHeight: 0.9, lookAhead: 0,
+    // La caméra ne passe jamais sous le relief.
+    adjust: (goal) => { goal.y = Math.max(goal.y, world.height(goal.x, goal.z) + 1.5) },
+}
+
+/** Cadrage selon le zoom ; en survol, recul plus grand et regard loin devant pour montrer l'horizon. */
+function framing() {
+    FRAMING.offset.copy(flying ? FLY_CAMERA_OFFSET : CAMERA_OFFSET).multiplyScalar(zoom)
+    FRAMING.lookAhead = flying ? 40 : 0
+    return FRAMING
+}
+
 const clock = new THREE.Clock()
-const cameraGoal = new THREE.Vector3(), look = from.clone(), lookGoal = new THREE.Vector3(),
-    offset = new THREE.Vector3()
+const offset = new THREE.Vector3()
 camera.position.copy(from).add(CAMERA_OFFSET)
 let hudTimer = 0
 
-renderer.setAnimationLoop((now) => {
+function frame(now: number) {
     const frameSeconds = clock.getDelta()
     const delta = Math.min(frameSeconds, 0.05)
     fps = fps * 0.95 + (1 / Math.max(frameSeconds, 0.001)) * 0.05
@@ -227,25 +297,15 @@ renderer.setAnimationLoop((now) => {
     sea.position.set(Math.round(trainer.position.x / 32) * 32, SEA_LEVEL - 0.15, Math.round(trainer.position.z / 32) * 32)
 
     // En vue FPS le dresseur disparaît : la caméra est sa tête.
-    trainer.visible = !firstPerson.enabled
-    if (firstPerson.enabled) {
-        firstPerson.place(trainer.position)
-    } else {
-        offset.copy(flying ? FLY_CAMERA_OFFSET : CAMERA_OFFSET).multiplyScalar(zoom).applyAxisAngle(THREE.Object3D.DEFAULT_UP, yaw)
-        cameraGoal.copy(trainer.position).add(offset)
-        // La caméra ne passe jamais sous le relief.
-        cameraGoal.y = Math.max(cameraGoal.y, world.height(cameraGoal.x, cameraGoal.z) + 1.5)
-        camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 5))
-        lookGoal.copy(trainer.position).setY(trainer.position.y + 0.9)
-        // En survol, la caméra vise loin devant le dresseur pour montrer l'horizon.
-        if (flying) lookGoal.addScaledVector(offset.setY(0).normalize(), -40)
-        look.lerp(lookGoal, 1 - Math.exp(-delta * 8))
-        camera.lookAt(look)
-    }
+    trainer.visible = rig.mode !== 'fps'
+    rig.update(delta, trainer.position, direction, held !== null, framing())
     camera.getWorldDirection(offset)
     minimap.update(now, {x: trainer.position.x, y: trainer.position.z}, direction, Math.atan2(-offset.x, -offset.z))
     // La carte d'ombre suit le regard : l'avant de la scène a ses ombres avant qu'on s'en approche.
     followShadow(sun, sunDirection, camera, trainer.position, 18, 120)
+    beast = leviathan?.update(delta, now / 1000, trainer.position) ?? beast
+    // Secousse pendant les attaques, après le placement de la caméra ; l'amorti la ramène d'elle-même ensuite.
+    if (beast.shake) camera.position.add(offset.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(beast.shake * 2))
 
     if ((hudTimer -= delta) <= 0) {
         hudTimer = 0.25
@@ -254,4 +314,6 @@ renderer.setAnimationLoop((now) => {
     water.prepare(camera, now / 1000)
     post.render()
     resolution.update(now, frameSeconds)
-})
+}
+
+renderer.setAnimationLoop(frame)

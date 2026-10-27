@@ -1,0 +1,165 @@
+/* Transition de combat façon manga : lignes de vitesse, éclair, cases tramées, onomatopée et titre tamponné. */
+.manga-transition {
+  --manga-ink: #0d0d10;
+  --manga-paper: #fdfbf3;
+  --manga-accent: #ffd400;
+  --manga-blood: #e8202a;
+  position: fixed;
+  inset: 0;
+  /* Au-dessus de l'arène (z-index 50) : le voile noir s'efface par-dessus le combat qui s'ouvre. */
+  z-index: 60;
+  overflow: hidden;
+  pointer-events: none;
+  font-family: Impact, 'Arial Black', 'Segoe UI Black', sans-serif;
+}
+
+.manga-transition__flash {
+  position: absolute;
+  inset: 0;
+  background: var(--manga-paper);
+  animation: manga-flash 260ms ease-out both;
+}
+
+/* Lignes de vitesse : rayons noirs qui convergent vers le centre, laissé dégagé. */
+.manga-transition__speedlines {
+  position: absolute;
+  inset: -50%;
+  background: repeating-conic-gradient(from 0deg, var(--manga-ink) 0deg 0.9deg, transparent 0.9deg 4.5deg);
+  mask-image: radial-gradient(circle, transparent 14%, #000 42%);
+  animation: manga-speedlines 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Cases : deux bandes noires en diagonale, tramées de points, qui claquent depuis les bords. */
+.manga-transition__panel {
+  position: absolute;
+  left: -10%;
+  width: 120%;
+  height: 34%;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.4px, transparent 1.6px) 0 0 / 9px 9px,
+    var(--manga-ink);
+  border-block: 6px solid var(--manga-paper);
+  box-shadow: 0 0 0 3px var(--manga-ink);
+}
+
+.manga-transition__panel--top {
+  top: -6%;
+  transform: rotate(-7deg);
+  animation: manga-slam-left 340ms 180ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+
+.manga-transition__panel--bottom {
+  bottom: -6%;
+  transform: rotate(-7deg);
+  animation: manga-slam-right 340ms 260ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+
+.manga-transition__impact {
+  position: absolute;
+  top: 18%;
+  right: 12%;
+  color: var(--manga-blood);
+  font-size: clamp(64px, 14vw, 180px);
+  font-style: italic;
+  line-height: 1;
+  -webkit-text-stroke: 5px var(--manga-ink);
+  paint-order: stroke fill;
+  text-shadow: 8px 8px 0 var(--manga-ink);
+  animation: manga-stamp 380ms 420ms cubic-bezier(0.2, 1.6, 0.4, 1) both, manga-shake 120ms 800ms 4 linear;
+}
+
+.manga-transition__title {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+  transform: rotate(-7deg);
+}
+
+.manga-transition__title strong {
+  color: var(--manga-accent);
+  font-size: clamp(36px, 8vw, 104px);
+  font-style: italic;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  -webkit-text-stroke: 4px var(--manga-ink);
+  paint-order: stroke fill;
+  text-shadow: 6px 6px 0 var(--manga-ink), -2px -2px 0 var(--manga-paper);
+  animation: manga-stamp 420ms 520ms cubic-bezier(0.2, 1.6, 0.4, 1) both, manga-shake 100ms 940ms 5 linear;
+}
+
+.manga-transition__title small {
+  padding: 4px 14px;
+  background: var(--manga-paper);
+  color: var(--manga-ink);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: clamp(14px, 2.2vw, 22px);
+  font-weight: 800;
+  border: 3px solid var(--manga-ink);
+  animation: manga-slam-right 280ms 760ms ease-out both;
+}
+
+/* Fondu au noir avant l'arène, puis disparition une fois le combat affiché. */
+.manga-transition__curtain {
+  position: absolute;
+  inset: 0;
+  background: var(--manga-ink);
+  animation: manga-curtain 320ms 1400ms ease-in both;
+}
+
+.manga-transition--leaving {
+  animation: manga-leave 360ms ease-out forwards;
+}
+
+@keyframes manga-flash {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes manga-speedlines {
+  from { opacity: 0; transform: scale(2.4) rotate(-8deg); }
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+@keyframes manga-slam-left {
+  from { translate: -110% 0; }
+  to { translate: 0 0; }
+}
+
+@keyframes manga-slam-right {
+  from { translate: 110% 0; }
+  to { translate: 0 0; }
+}
+
+@keyframes manga-stamp {
+  from { opacity: 0; scale: 3.2; }
+  to { opacity: 1; scale: 1; }
+}
+
+@keyframes manga-shake {
+  0%, 100% { translate: 0 0; }
+  25% { translate: -6px 3px; }
+  50% { translate: 5px -4px; }
+  75% { translate: -3px -2px; }
+}
+
+@keyframes manga-curtain {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes manga-leave {
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manga-transition *,
+  .manga-transition {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

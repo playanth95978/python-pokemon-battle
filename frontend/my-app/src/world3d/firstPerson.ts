@@ -6,7 +6,7 @@ const EYE_HEIGHT = 1.15, FOV = 72, SENSITIVITY = 0.0025, MAX_PITCH = 1.35
 /** Directions dans le sens où tourne le regard quand le lacet augmente (vers la gauche). */
 const AROUND: Direction[] = ['up', 'left', 'down', 'right']
 /** Lacet de la caméra pour regarder dans chaque direction du monde (lacet 0 : vers le nord). */
-const FACING_YAW: Record<Direction, number> = {up: 0, left: Math.PI / 2, down: Math.PI, right: -Math.PI / 2}
+export const FACING_YAW: Record<Direction, number> = {up: 0, left: Math.PI / 2, down: Math.PI, right: -Math.PI / 2}
 
 /** Direction du monde d'une touche (`up` = avancer, `left` = pas de côté…) pour un regard de lacet `yaw`. */
 export function relativeDirection(yaw: number, key: Direction) {
