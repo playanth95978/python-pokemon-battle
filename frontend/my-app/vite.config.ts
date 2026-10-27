@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
@@ -5,6 +6,15 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      // Le POC 3D est une seconde page, indépendante de l'application React.
+      input: {
+        main: resolve(import.meta.dirname, 'index.html'),
+        world3d: resolve(import.meta.dirname, 'world3d.html'),
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {

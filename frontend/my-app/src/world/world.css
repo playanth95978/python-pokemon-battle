@@ -43,7 +43,8 @@
 .world-prototype-note { color: #aab9ac; font-size: 12px; line-height: 1.7; margin: 0; }
 .app-navigation { display: flex; align-items: center; gap: 6px; padding: 12px max(20px, calc((100vw - 1324px) / 2)); border-bottom: 1px solid #3b514b; background: #172e28; }
 .app-navigation strong { margin-right: auto; color: #e6dfbc; font: 700 18px 'Trebuchet MS', sans-serif; }
-.app-navigation button { border-radius: 7px; padding: 9px 16px; font-size: 13px; background: transparent; border-color: transparent; color: #bdc9be; }
+.app-navigation button, .app-navigation a { border-radius: 7px; padding: 9px 16px; font-size: 13px; background: transparent; border-color: transparent; color: #bdc9be; }
+.app-navigation a { border: 1px solid transparent; text-decoration: none; }
 .app-navigation button[aria-current='page'] { background: #3b5542; color: #fff1cb; border-color: #6c815c; }
 @media (max-width: 800px) {
   .world-page { padding: 20px 12px; }
@@ -60,5 +61,5 @@
   .world-sidebar { gap: 12px; }
   .world-coordinates { font-size: 10px; }
   .app-navigation { padding: 10px 12px; }
-  .app-navigation button { padding: 9px 10px; }
+  .app-navigation button, .app-navigation a { padding: 9px 10px; }
 }

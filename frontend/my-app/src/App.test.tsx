@@ -30,6 +30,11 @@ describe('Accès au monde et aux combats', () => {
     expect(screen.queryByText('En bateau')).not.toBeInTheDocument()
   })
 
+  it('ouvre la vue 3D du monde dans sa propre page', () => {
+    render(<App />)
+    expect(screen.getByRole('link', { name: 'Vue 3D' })).toHaveAttribute('href', '/world3d.html')
+  })
+
   it('permet de marcher, lire un panneau et retrouver sa position après un passage dans l’arène', () => {
     render(<App />)
     expect(screen.getByText('Case 18, 36')).toBeVisible()

@@ -1,0 +1,12 @@
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1622; font-family: system-ui, sans-serif; }
+#world3d { position: fixed; inset: 0; }
+#world3d canvas { display: block; outline: none; }
+.world3d-hud {
+  position: fixed; left: 16px; top: 16px; max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 16px; border-radius: 12px; color: #f4f1e8;
+  background: rgb(10 18 28 / .62); backdrop-filter: blur(6px); line-height: 1.4;
+}
+.world3d-hud strong { display: block; font-size: 1.1rem; }
+.world3d-hud p { margin: 6px 0 0; font-size: .9rem; }
+.world3d-hud a { color: #ffd66b; }
+.world3d-help { opacity: .75; font-size: .8rem !important; }

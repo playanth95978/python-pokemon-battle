@@ -12,6 +12,7 @@ export default function App() {
       <button type="button" aria-current={page === 'battle' ? 'page' : undefined} onClick={() => {
         setBattleVisited(true); setPage('battle')
       }}>Arène</button>
+      <a href="/world3d.html">Vue 3D</a>
     </nav>
     <div hidden={page !== 'world'}><WorldPage active={page === 'world'} /></div>
     {battleVisited && <div hidden={page !== 'battle'}><BattlePage /></div>}
