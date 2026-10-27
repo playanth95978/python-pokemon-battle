@@ -1,5 +1,6 @@
 /** Ciel, lumière et dresseur communs aux vues 3D (Clairbois et monde ouvert). */
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Sky } from 'three/addons/objects/Sky.js'
 
 export function createAtmosphere(renderer: THREE.WebGLRenderer, scene: THREE.Scene, shadowExtent = 16, shadowMapSize = 2048) {
@@ -53,8 +54,61 @@ export function followShadow(sun: THREE.DirectionalLight, sunDirection: THREE.Ve
     sun.position.copy(sun.target.position).addScaledVector(sunDirection, height)
 }
 
-// Dresseur stylisé fait de primitives (aucun modèle extrait des jeux).
+export type Gait = 'idle' | 'walk' | 'run'
+
+const TRAINER_MODEL = '/models/trainer/casual_character.glb'
+const TRAINER_HEIGHT = 1.45
+/** Boucle par allure, accélérée pour suivre le pas du jeu (une case en 170 ms à la marche, 85 ms en courant). */
+const CLIPS: Record<Gait, [string, number]> = {
+    idle: ['CharacterArmature|Idle', 1],
+    walk: ['CharacterArmature|Walk', 1.8],
+    run: ['CharacterArmature|Run', 1.4],
+}
+
+/**
+ * Dresseur animé (modèle CC0 « Casual Character » de Quaternius). La silhouette en primitives sert le temps du
+ * chargement, ou si le modèle manque ; `animate` choisit la boucle (repos, marche, course) avec un fondu.
+ */
 export function createTrainer() {
+    let animateModel: ((delta: number, gait: Gait) => void) | null = null
+    const trainer = Object.assign(new THREE.Group(), {
+        animate: (delta: number, gait: Gait) => animateModel?.(delta, gait),
+    })
+    const placeholder = createPlaceholderTrainer()
+    trainer.add(placeholder)
+    void new GLTFLoader().loadAsync(TRAINER_MODEL).then((gltf) => {
+        const model = gltf.scene
+        model.traverse((object) => {
+            object.castShadow = true
+            // Les maillages animés sortent de leur boîte de repos : on ne les écarte jamais du rendu par erreur.
+            object.frustumCulled = false
+        })
+        model.updateMatrixWorld(true)
+        const box = new THREE.Box3().setFromObject(model)
+        model.scale.setScalar(TRAINER_HEIGHT / (box.max.y - box.min.y))
+        trainer.remove(placeholder)
+        trainer.add(model)
+        const mixer = new THREE.AnimationMixer(model)
+        const actions = Object.fromEntries(Object.entries(CLIPS).map(([gait, [name, speed]]) => {
+            const clip = gltf.animations.find((animation) => animation.name === name)
+            return [gait, clip ? mixer.clipAction(clip).setEffectiveTimeScale(speed) : null]
+        })) as Record<Gait, THREE.AnimationAction | null>
+        let current: Gait = 'idle'
+        actions.idle?.play()
+        animateModel = (delta, gait) => {
+            if (gait !== current && actions[gait]) {
+                actions[gait]!.reset().play()
+                actions[current]?.crossFadeTo(actions[gait]!, 0.18, false)
+                current = gait
+            }
+            mixer.update(delta)
+        }
+    }).catch(() => undefined)
+    return trainer
+}
+
+// Silhouette faite de primitives (aucun modèle extrait des jeux).
+function createPlaceholderTrainer() {
     const trainer = new THREE.Group()
     const parts: [THREE.BufferGeometry, number, [number, number, number]][] = [
         [new THREE.CapsuleGeometry(0.075, 0.32, 4, 8), 0x2c3e66, [-0.1, 0.22, 0]],
@@ -80,9 +134,10 @@ export function createTrainer() {
 }
 
 /** Résolution dynamique : baisse la définition quand les images ralentissent, la remonte quand il y a de la marge. */
-export function createResolutionScaler(renderer: THREE.WebGLRenderer, max = Math.min(devicePixelRatio, 2), min = 0.6) {
+export function createResolutionScaler(renderer: THREE.WebGLRenderer, max = Math.min(devicePixelRatio, 2), min = 0.6,
+                                       apply = (ratio: number) => renderer.setPixelRatio(ratio)) {
     let pixelRatio = max, frameTime = 16, lastChange = 0
-    renderer.setPixelRatio(max)
+    apply(max)
     return {
         ratio: () => pixelRatio,
         update(now: number, frameSeconds: number) {
@@ -95,7 +150,7 @@ export function createResolutionScaler(renderer: THREE.WebGLRenderer, max = Math
             if (Math.abs(next - pixelRatio) < 0.05) return
             pixelRatio = next
             lastChange = now
-            renderer.setPixelRatio(pixelRatio)
+            apply(pixelRatio)
         },
     }
 }

@@ -19,6 +19,9 @@ import { leadsToOpenWorld, nearExit, OPEN_WORLD_URL } from './worldExit'
 import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from './scenery'
 import { createFirstPersonView } from './firstPerson'
 import { prepareTrees } from './realTrees'
+import type { VillageModels } from './villageModels'
+import { loadVillageModels } from './villageModels'
+import { createPostProcessing } from './postProcessing'
 import { WorldStreamer } from './worldStreamer'
 import { createEncounterOverlay } from './encounterOverlay'
 import './world3d.css'
@@ -35,7 +38,8 @@ const KEYS: Record<string, Direction> = {
 const ANGLES: Record<Direction, number> = {down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2}
 
 const host = document.getElementById('world3d')!
-const renderer = new THREE.WebGLRenderer({antialias: true, powerPreference: 'high-performance'})
+// Pas de MSAA sur l'écran : l'image passe par le post-traitement, dont le FXAA lisse les bords.
+const renderer = new THREE.WebGLRenderer({antialias: false, powerPreference: 'high-performance'})
 renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -53,12 +57,16 @@ const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 12
 // Carte d'ombre plus large et plus fine, centrée devant la caméra (voir followShadow).
 const {sun, sunDirection} = createAtmosphere(renderer, scene, 20, 3072)
 const firstPerson = createFirstPersonView(renderer.domElement, camera)
+const post = createPostProcessing(renderer, scene, camera)
+// En développement, la scène est exposée pour mesurer le coût du rendu depuis la console.
+if (import.meta.env.DEV) Object.assign(window, {world3d: {renderer, scene, camera, post}})
 
 const materials = createWorldMaterials(WORLD_MAP, renderer)
-// Les chunks attendent que les arbres soient prêts (textures envoyées, shaders compilés) : rien n'apparaît à moitié chargé.
-let treesReady = false
-void prepareTrees(renderer, scene, ['oak', 'aspen', 'pine']).then(() => {
-    treesReady = true
+// Les chunks attendent que les arbres et les maisons soient prêts (modèles chargés, textures envoyées, shaders compilés) :
+// rien n'apparaît à moitié chargé.
+let village: VillageModels | null = null
+void Promise.all([prepareTrees(renderer, scene, ['oak', 'aspen', 'pine']), loadVillageModels(renderer)]).then(([, models]) => {
+    village = models
 })
 const base = buildWorldBase(scene, WORLD_MAP, materials)
 const streamer = new WorldStreamer(WORLD_MAP, scene, [
@@ -66,7 +74,7 @@ const streamer = new WorldStreamer(WORLD_MAP, scene, [
         name: 'decor',
         loadRadius: LOAD_RADIUS,
         unloadRadius: UNLOAD_RADIUS,
-        build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, materials),
+        build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, village!),
         dispose: disposeChunk
     },
     {
@@ -238,7 +246,7 @@ const encounterOverlay = createEncounterOverlay({
 })
 
 function updateHud() {
-    const loading = Math.round(Math.min(materials.progress(), treesReady ? streamer.progress(player.position) : 0) * 100)
+    const loading = Math.round(Math.min(materials.progress(), village ? streamer.progress(player.position) : 0) * 100)
     const landmark = nearbyLandmark(WORLD_MAP, player.position)
     const boatAction = boatActionAtDock(player)
     const exit = nearExit(player.position)
@@ -259,9 +267,13 @@ addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight
     camera.updateProjectionMatrix()
     renderer.setSize(innerWidth, innerHeight)
+    post.setSize(innerWidth, innerHeight)
 })
 
-const resolution = createResolutionScaler(renderer)
+const resolution = createResolutionScaler(renderer, undefined, undefined, (ratio) => {
+    renderer.setPixelRatio(ratio)
+    post.setPixelRatio(ratio)
+})
 
 const clock = new THREE.Clock()
 const cameraGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3(), look = from.clone()
@@ -271,13 +283,14 @@ function animate(now: number) {
     const frameSeconds = clock.getDelta()
     const delta = Math.min(frameSeconds, 0.05)
     step(now)
-    if (treesReady) streamer.update(player.position, STREAM_BUDGET_MS)
+    if (village) streamer.update(player.position, STREAM_BUDGET_MS)
     const progress = Math.min(1, (now - stepStart) / STEP_DURATION)
-    const moving = progress < 1
     const onBoat = player.travelMode === 'boat'
 
     trainer.position.lerpVectors(from, to, progress)
-    trainer.position.y = (onBoat ? WATER_LEVEL + 0.1 : 0) + (moving ? Math.abs(Math.sin(progress * Math.PI)) * 0.06 : 0)
+    trainer.position.y = onBoat ? WATER_LEVEL + 0.1 : 0
+    // Petite marge après chaque pas : la marche ne se coupe pas entre deux cases enchaînées.
+    trainer.animate(delta, !onBoat && now - stepStart < STEP_DURATION + 60 ? 'walk' : 'idle')
     trainer.rotation.y = THREE.MathUtils.lerp(trainer.rotation.y, ANGLES[player.direction], 0.25)
     boat.visible = onBoat
     boat.position.set(trainer.position.x, WATER_LEVEL + Math.sin(now * 0.002) * 0.03, trainer.position.z)
@@ -309,7 +322,7 @@ function animate(now: number) {
     followShadow(sun, sunDirection, camera, trainer.position, 10, 40)
 
     updateHud()
-    renderer.render(scene, camera)
+    post.render()
     resolution.update(now, frameSeconds)
 }
 

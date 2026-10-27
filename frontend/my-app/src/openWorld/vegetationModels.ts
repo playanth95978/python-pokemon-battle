@@ -1,6 +1,7 @@
 /** Modèles low-poly de la végétation : une géométrie fusionnée par espèce, en version proche et lointaine. */
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { createGrassBlade } from '../world3d/grassBlade'
 import type { Species } from './vegetation'
 
 type Part = [THREE.BufferGeometry, number, (geometry: THREE.BufferGeometry) => void]
@@ -98,8 +99,8 @@ export function speciesGeometry(species: Species, far: boolean) {
     return geometry
 }
 
-/** Brin d'herbe : trois triangles ouverts, base au sol ; sa couleur vient de chaque instance. */
-export const grassBlade = model([[new THREE.ConeGeometry(0.04, 0.4, 3, 1, true), 0xffffff, at(0, 0.2, 0)]])
+/** Brin d'herbe courbé, base au sol ; sa teinte vient de chaque instance. */
+export const grassBlade = createGrassBlade(0.42, 0.07)
 
 /** Matériau des plantes avec vent : le haut oscille, la base reste ancrée. `strength` en unités par unité de hauteur. */
 export function windMaterial(time: { value: number }, strength: number) {

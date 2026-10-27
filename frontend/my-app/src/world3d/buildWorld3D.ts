@@ -1,6 +1,6 @@
 /** Décor 3D construit à partir de la carte 2D existante, lue sans la modifier. */
 import * as THREE from 'three'
-import type { Building, Position, WorldMap } from '../world/types'
+import type { Position, WorldMap } from '../world/types'
 import { tileAt } from '../world/worldMap'
 import { GROUND_TILE } from './worldMaterials'
 import type { WorldMaterials } from './worldMaterials'
@@ -9,10 +9,12 @@ import { chunkTiles } from './worldChunks'
 import { EXIT, isExitGap } from './worldExit'
 import type { TreeKind } from './realTrees'
 import { animateTrees, treeInstances } from './realTrees'
+import { createGrassBlade } from './grassBlade'
+import type { VillageModels } from './villageModels'
 
 export const WATER_LEVEL = -0.12
 const LAKE_DEPTH = -0.55
-const GRASS_PER_TILE = 10
+const GRASS_PER_TILE = 16
 
 /** Centre d'une case de la grille en coordonnées 3D (1 case = 1 unité). */
 export function tileCenter(x: number, y: number) {
@@ -23,12 +25,6 @@ export function tileCenter(x: number, y: number) {
 function hash(x: number, y: number, seed = 0) {
     const value = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453
     return value - Math.floor(value)
-}
-
-/** Géométrie propre à un chunk : libérée avec lui (les géométries partagées ne le sont jamais). */
-function owned<T extends THREE.BufferGeometry>(geometry: T) {
-    geometry.userData.chunkOwned = true
-    return geometry
 }
 
 function instanced(geometry: THREE.BufferGeometry, material: THREE.Material, count: number, castShadow = true) {
@@ -218,7 +214,7 @@ export function buildWorldBase(scene: THREE.Scene, map: WorldMap, materials: Wor
 
 // --- Chunks chargés en streaming ---
 
-const bladeGeometry = new THREE.ConeGeometry(0.035, 0.32, 3).translate(0, 0.16, 0)
+const bladeGeometry = createGrassBlade(0.34, 0.055)
 const flowerGeometry = new THREE.SphereGeometry(0.05, 6, 4)
 
 function chunkGroup(name: string) {
@@ -263,72 +259,15 @@ function addTrees(group: THREE.Group, tiles: Position[]) {
     }
 }
 
-/** Répète une texture selon la taille réelle de chaque face d'une boîte (1 répétition par `unit`). */
-function boxUv(geometry: THREE.BoxGeometry, width: number, height: number, depth: number, unit = 2) {
-    const normals = geometry.attributes.normal, uvs = geometry.attributes.uv
-    for (let index = 0; index < uvs.count; index++) {
-        const [u, v] = Math.abs(normals.getX(index)) > 0.5 ? [depth, height]
-            : Math.abs(normals.getY(index)) > 0.5 ? [width, depth] : [width, height]
-        uvs.setXY(index, uvs.getX(index) * u / unit, uvs.getY(index) * v / unit)
-    }
-    return geometry
-}
-
-function addHouse(group: THREE.Group, building: Building, materials: WorldMaterials) {
-    const house = new THREE.Group()
-    const width = building.width - 0.3, depth = building.height - 0.4, wallHeight = 1.9
-    house.position.set(building.x + building.width / 2, 0, building.y + building.height / 2 - 0.1)
-    const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) => {
-        const mesh = new THREE.Mesh(owned(geometry), material)
-        mesh.position.set(x, y, z)
-        mesh.castShadow = true
-        mesh.receiveShadow = true
-        house.add(mesh)
-        return mesh
-    }
-    add(boxUv(new THREE.BoxGeometry(width + 0.15, 0.3, depth + 0.15), width, 0.3, depth), materials.stone, 0, 0.15, 0)
-    add(boxUv(new THREE.BoxGeometry(width, wallHeight, depth), width, wallHeight, depth), materials.plaster, 0, 0.3 + wallHeight / 2, 0)
-    // Colombages : poteaux d'angle et poutre haute en bois.
-    for (const [x, z] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-        add(new THREE.BoxGeometry(0.16, wallHeight, 0.16), materials.wood, x * width / 2, 0.3 + wallHeight / 2, z * depth / 2)
-    }
-    add(boxUv(new THREE.BoxGeometry(width + 0.1, 0.14, 0.14), width, 0.14, 0.14), materials.wood, 0, 0.3 + wallHeight - 0.07, depth / 2 + 0.02)
-    // Toit à deux pans extrudé sur la profondeur, avec débord.
-    const roofHeight = 1.5, overhang = 0.35
-    const profile = new THREE.Shape()
-    profile.moveTo(-width / 2 - overhang, 0)
-    profile.lineTo(0, roofHeight)
-    profile.lineTo(width / 2 + overhang, 0)
-    profile.lineTo(width / 2 + overhang, -0.12)
-    profile.lineTo(0, roofHeight - 0.12)
-    profile.lineTo(-width / 2 - overhang, -0.12)
-    const roofGeometry = new THREE.ExtrudeGeometry(profile, {depth: depth + overhang * 2, bevelEnabled: false})
-    roofGeometry.translate(0, 0, -(depth + overhang * 2) / 2)
-    add(roofGeometry, materials.roof(building.roof), 0, 0.3 + wallHeight, 0)
-    const gableShape = new THREE.Shape([new THREE.Vector2(-width / 2, 0), new THREE.Vector2(0, roofHeight - 0.1), new THREE.Vector2(width / 2, 0)])
-    for (const side of [-1, 1]) {
-        // Les pignons sont des faces simples : celui du nord est retourné vers l'extérieur.
-        add(new THREE.ShapeGeometry(gableShape), materials.plaster, 0, 0.3 + wallHeight, side * depth / 2).rotation.y = side < 0 ? Math.PI : 0
-    }
-    add(new THREE.BoxGeometry(0.4, 1.1, 0.4), materials.stone, width / 4, 0.3 + wallHeight + roofHeight * 0.6, -depth / 5)
-    // Façade sud : porte et fenêtres émissives. Pas de lumière ponctuelle : chacune coûterait sur tous les pixels de la scène.
-    add(new THREE.BoxGeometry(0.75, 1.3, 0.08), materials.wood, 0, 0.95, depth / 2 + 0.04)
-    for (const side of [-1, 1]) {
-        add(new THREE.BoxGeometry(0.6, 0.55, 0.06), materials.glass, side * width / 3.2, 1.35, depth / 2 + 0.03).castShadow = false
-        add(new THREE.BoxGeometry(0.72, 0.08, 0.12), materials.wood, side * width / 3.2, 1.05, depth / 2 + 0.05)
-    }
-    group.add(house)
-}
-
 /** Arbres et maisons d'un chunk : visibles de loin, construits dans le rayon de chargement. */
-export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, materials: WorldMaterials) {
+export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: VillageModels) {
     const group = chunkGroup(`decor ${chunk.cx},${chunk.cy}`)
     const tiles = chunkTiles(map, chunk)
     addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree' && !isExitGap(tile)))
     // Une maison appartient au chunk de son coin nord-ouest.
     const inChunk = new Set(tiles.map(({x, y}) => `${x},${y}`))
     map.buildings.filter((building) => inChunk.has(`${building.x},${building.y}`))
-        .forEach((building) => addHouse(group, building, materials))
+        .forEach((building) => group.add(village.house(building)))
     return group.children.length ? freeze(group) : null
 }
 
@@ -347,7 +286,7 @@ export function buildGrassChunk(map: WorldMap, chunk: ChunkKey, materials: World
             rotation.setFromEuler(euler.set((hash(x, index, y) - 0.5) * 0.5, hash(y, x, index) * 6, 0))
             const size = 0.6 + hash(index, x, y) * 0.9
             grass.setMatrixAt(tile * GRASS_PER_TILE + index, matrix.compose(position, rotation, new THREE.Vector3(size, size, size)))
-            grass.setColorAt(tile * GRASS_PER_TILE + index, color.setHSL(0.24 + hash(x, y, index + 20) * 0.06, 0.6, 0.16 + hash(x, y, index + 30) * 0.08))
+            grass.setColorAt(tile * GRASS_PER_TILE + index, color.setHSL(0.22 + hash(x, y, index + 20) * 0.07, 0.55, 0.24 + hash(x, y, index + 30) * 0.1))
         }
         if (hash(x, y, 40) > 0.82) {
             flowers.setMatrixAt(flowerCount, matrix.makeTranslation(x + hash(x, y, 41), 0.12, y + hash(x, y, 42)))
@@ -362,8 +301,8 @@ export function buildGrassChunk(map: WorldMap, chunk: ChunkKey, materials: World
 /** Libère les ressources GPU propres à un chunk ; les géométries et matériaux partagés restent en cache. */
 export function disposeChunk(group: THREE.Object3D) {
     group.traverse((object) => {
+        // Les géométries (arbres, herbe, maisons) sont partagées entre chunks : seules les instances sont libérées.
         if (object instanceof THREE.InstancedMesh) object.dispose()
-        if (object instanceof THREE.Mesh && object.geometry.userData.chunkOwned) object.geometry.dispose()
     })
     group.removeFromParent()
 }

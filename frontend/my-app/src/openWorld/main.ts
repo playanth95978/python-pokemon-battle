@@ -5,6 +5,7 @@ import type { Direction } from '../world/types'
 import { waterNormals } from '../world3d/buildWorld3D'
 import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from '../world3d/scenery'
 import { createFirstPersonView } from '../world3d/firstPerson'
+import { createPostProcessing } from '../world3d/postProcessing'
 import { blocksMovement, plantAt } from './vegetation'
 import { createWorldLayers, VIEW_RADIUS } from './worldLayers'
 import { TERRAIN_CHUNK } from './terrainGeometry'
@@ -33,14 +34,14 @@ const seed = Number(new URLSearchParams(location.search).get('graine')) || 42
 const world = createWorldGenerator(seed)
 
 const host = document.getElementById('world3d')!
-const renderer = new THREE.WebGLRenderer({antialias: true, powerPreference: 'high-performance'})
+// Pas de MSAA sur l'écran : l'image passe par le post-traitement, dont le FXAA lisse les bords.
+const renderer = new THREE.WebGLRenderer({antialias: false, powerPreference: 'high-performance'})
 renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = 0.72
 host.appendChild(renderer.domElement)
-const resolution = createResolutionScaler(renderer)
 
 const scene = new THREE.Scene()
 // Brouillard linéaire calé sur le rayon chargé : le bord du terrain n'est jamais visible.
@@ -49,6 +50,11 @@ const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 20
 const {sun, sunDirection} = createAtmosphere(renderer, scene, 30)
 sun.shadow.camera.far = 300
 const firstPerson = createFirstPersonView(renderer.domElement, camera)
+const post = createPostProcessing(renderer, scene, camera)
+const resolution = createResolutionScaler(renderer, undefined, undefined, (ratio) => {
+    renderer.setPixelRatio(ratio)
+    post.setPixelRatio(ratio)
+})
 
 const layers = createWorldLayers(scene, renderer, seed)
 
@@ -171,6 +177,7 @@ addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight
     camera.updateProjectionMatrix()
     renderer.setSize(innerWidth, innerHeight)
+    post.setSize(innerWidth, innerHeight)
 })
 
 const hud = document.createElement('div')
@@ -208,7 +215,9 @@ renderer.setAnimationLoop((now) => {
 
     trainer.position.lerpVectors(from, to, progress)
     if (flying) trainer.position.y += 6 + Math.sin(now * 0.003) * 0.3
-    else if (progress < 1) trainer.position.y += Math.abs(Math.sin(progress * Math.PI)) * 0.06
+    // Petite marge après chaque pas : la marche ne se coupe pas entre deux cases enchaînées.
+    const stepping = !flying && now - stepStart < stepDuration + 60
+    trainer.animate(delta, stepping ? (stepDuration === RUN_STEP ? 'run' : 'walk') : 'idle')
     trainer.rotation.y = THREE.MathUtils.lerp(trainer.rotation.y, ANGLES[direction], 0.25)
     if (pikachu) {
         pikachu.root.visible = !flying
@@ -247,6 +256,6 @@ renderer.setAnimationLoop((now) => {
         hudTimer = 0.25
         updateHud()
     }
-    renderer.render(scene, camera)
+    post.render()
     resolution.update(now, frameSeconds)
 })

@@ -125,7 +125,8 @@ export function createWorldMaterials(map: WorldMap, renderer: THREE.WebGLRendere
         ground.needsUpdate = true
     }).catch(() => undefined)
 
-    const blade = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 1, envMapIntensity: 0.15})
+    // Brins en ruban vus des deux côtés ; leur dégradé de sommet assombrit le pied de la touffe.
+    const blade = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 1, envMapIntensity: 0.15, vertexColors: true, side: THREE.DoubleSide})
     // Vent : le haut des brins oscille, la base reste fixe.
     blade.onBeforeCompile = (shader) => {
         shader.uniforms.uTime = time
