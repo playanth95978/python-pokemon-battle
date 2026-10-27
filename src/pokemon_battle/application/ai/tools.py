@@ -120,8 +120,9 @@ def execute_tool(context: ToolsContext, call: ToolCall) -> dict[str, Any]:
     elif call.name == "evaluate_matchups":
         result = {"matchups": [_matchup(move, context.view.opponent.types) for move in context.legal_moves]}
     elif call.name == "estimate_damage":
-        result = {"estimates": [estimate_move(context, move) for move in context.legal_moves],
-                  "assumption": "Attaque isolée sur les PV actuels ; suppose que l'acteur peut agir. Ne prédit ni le choix adverse ni un combat complet."}
+        result = {"estimates": [estimate_move(context, move) for move in context.legal_moves if move.deals_damage],
+                  "assumption": "Attaque isolée sur les PV actuels ; suppose que l'acteur peut agir. Ne prédit ni le choix adverse ni un combat complet. "
+                                "Les attaques de statut, sans dégâts, ne sont pas estimées."}
     elif call.name == "estimate_healing":
         healing = estimate_healing(context)
         result = {

@@ -38,9 +38,11 @@ class LocalOpponent:
             raise InvalidMoveError("Le combattant IA n'a plus d'action disponible")
         # Heuristique stable : puissance, précision, efficacité et bonus du même type.
         # Aucun tirage ni calcul réel de dégâts n'est effectué par cette stratégie.
+        # Une attaque de statut vaut 0 : elle n'est choisie que si rien ne fait de dégâts.
         move = max(context.legal_moves, key=lambda move: (
-            move.power * move.accuracy * effectiveness(move.type, context.view.opponent.types)
-            * (3 if move.type in context.view.fighter.types else 2), -move.attack_slot,
+            move.power * move.hit_chance * effectiveness(move.type, context.view.opponent.types)
+            * (3 if move.type in context.view.fighter.types else 2) if move.deals_damage else 0,
+            -move.attack_slot,
         ))
         context.decision = AttackDecision(move.attack_slot, "local")
         return context.decision

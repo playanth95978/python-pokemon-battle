@@ -18,15 +18,16 @@ def damage_rolls(attacker: FighterView, defender: FighterView, move: MoveView, t
                                            attacker.types, multiplier, roll)) for roll in range(85, 101)]
 
 
-def ko_probability(damages: list[int], target_hp: int, accuracy: int) -> Fraction:
-    return Fraction(sum(damage >= target_hp for damage in damages), len(damages)) * Fraction(accuracy, 100)
+def ko_probability(damages: list[int], target_hp: int, hit_chance: int) -> Fraction:
+    return Fraction(sum(damage >= target_hp for damage in damages), len(damages)) * Fraction(hit_chance, 100)
 
 
 def estimate_move(context: ToolsContext, move: MoveView) -> dict[str, Any]:
+    """Estimation d'une attaque à dégâts ; les attaques de statut sont filtrées par les appelants."""
     actor, target = context.view.fighter, context.view.opponent
     multiplier = effectiveness(move.type, target.types)
     damages = damage_rolls(actor, target, move, target.hp)
-    hit_probability = Fraction(move.accuracy, 100)
+    hit_probability = Fraction(move.hit_chance, 100)
     mean_on_hit = Fraction(sum(damages), len(damages))
     return {
         "attack_slot": move.attack_slot, "name": move.name, "category": move.category.value,
@@ -35,5 +36,5 @@ def estimate_move(context: ToolsContext, move: MoveView) -> dict[str, Any]:
         "min_damage_on_hit": min(damages), "max_damage_on_hit": max(damages),
         "mean_damage_on_hit": float(mean_on_hit),
         "expected_damage": float(mean_on_hit * hit_probability),
-        "ko_probability": float(ko_probability(damages, target.hp, move.accuracy)),
+        "ko_probability": float(ko_probability(damages, target.hp, move.hit_chance)),
     }

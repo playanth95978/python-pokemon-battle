@@ -103,6 +103,9 @@ modèle qui observe sans conclure doive choisir. Avec Conversations, Mistral con
 outils déclarés à la création : cette restriction n'y a pas d'effet.
 
 `estimate_damage` accepte `{}` et retourne `estimates` ainsi qu'une hypothèse explicite.
+Les attaques de statut (sans puissance) n'y figurent pas, ni parmi les menaces de
+`estimate_incoming_damage` ; le secours local ne les choisit que si aucune attaque
+à dégâts n'est jouable. Leur intérêt tactique n'est pas encore évalué.
 Il utilise la même fonction pure `damage_for_roll` que le moteur : niveau, attaque/défense
 physiques ou spéciales, puissance, bonus de même type, efficacité et arrondis.
 Les 16 tirages uniformes de 85 à 100 sont énumérés sans RNG et les dégâts sont bornés

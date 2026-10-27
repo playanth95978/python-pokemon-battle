@@ -130,6 +130,9 @@ SQLite utilise uniquement la bibliothèque standard Python.
 ```
 
 Le catalogue de démonstration propose `bulbizarre`, `salameche` et `carapuce`.
+Pikachu (Cage Éclair, Abri) et Salamèche (Feu Follet, Danse Lames) y connaissent aussi
+des attaques de statut, relevées sur PokéAPI : un duel `pikachu` contre `salameche`
+permet de voir paralysie, brûlure, crans et protection.
 La réponse **201** contient l'UUID, le tour initial (0), les deux combattants avec
 leurs PV et PP, et `winner: null` avec `is_over: false`. Chaque combattant expose
 aussi `status` (`paralysis`, `burn` ou `null`) et `stat_stages` (crans de -6 à +6) ;

@@ -10,7 +10,8 @@ from .tools_context import MoveView, ToolsContext
 def estimate_incoming_damage(context: ToolsContext) -> dict[str, Any]:
     actor, opponent = context.view.fighter, context.view.opponent
     hp_after_potion = actor.hp + potion_healing(actor.hp, actor.max_hp) if context.can_use_potion else None
-    threats = [_threat(context, move, hp_after_potion) for move in context.view.opponent_revealed_moves if move.pp > 0]
+    threats = [_threat(context, move, hp_after_potion) for move in context.view.opponent_revealed_moves
+               if move.pp > 0 and move.deals_damage]
     turn_order = _turn_order(actor.stats.speed, opponent.stats.speed)
     risk_now = max((item["ko_probability_now"] for item in threats), default=None)
     risk_after = max((item["ko_probability_after_potion"] for item in threats
@@ -44,12 +45,12 @@ def _threat(context: ToolsContext, move: MoveView, hp_after_potion: int | None) 
     damages = damage_rolls(opponent, actor, move, actor.max_hp)
     after_potion = None
     if hp_after_potion is not None:
-        after_potion = float(ko_probability(damages, hp_after_potion, move.accuracy))
+        after_potion = float(ko_probability(damages, hp_after_potion, move.hit_chance))
     return {
         "name": move.name, "type": move.type.value, "category": move.category.value,
         "power": move.power, "accuracy": move.accuracy, "pp": move.pp,
         "min_damage_on_hit": min(damages), "max_damage_on_hit": max(damages),
-        "ko_probability_now": float(ko_probability(damages, actor.hp, move.accuracy)),
+        "ko_probability_now": float(ko_probability(damages, actor.hp, move.hit_chance)),
         "ko_probability_after_potion": after_potion,
     }
 
@@ -70,7 +71,8 @@ def _ko_before_riposte(context: ToolsContext, turn_order: str) -> list[tuple[str
     first = _FIRST_PROBABILITY[turn_order]
     if first == 0:
         return []
-    return [(move.name, estimate_move(context, move)["ko_probability"] * first) for move in context.legal_moves]
+    return [(move.name, estimate_move(context, move)["ko_probability"] * first)
+            for move in context.legal_moves if move.deals_damage]
 
 
 def _best(ko_chances: list[tuple[str, float]]) -> dict[str, Any] | None:

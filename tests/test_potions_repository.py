@@ -1,11 +1,10 @@
-from dataclasses import asdict
-
 import pytest
 
 from pokemon_battle.application.battle_service import BattleService
 from pokemon_battle.application.catalog import CATALOG
 from pokemon_battle.infrastructure.sqlite_battle_repository import (
     SqliteBattleRepository,
+    _battle_snapshot,
     _fighter,
 )
 
@@ -31,7 +30,8 @@ def record(repository):
 
 def testUnAncienCombattantCommenceAvecDeuxPotions(record):
     """Un ancien instantané sans stock de potions doit rester lisible."""
-    data = asdict(record.battle.first)
+    # Partir du format réellement enregistré : asdict seul perd le type des effets d'attaque.
+    data = _battle_snapshot(record.battle)["first"]
     data.pop("potions")
     restored = _fighter(data)
     assert restored.potions == 2

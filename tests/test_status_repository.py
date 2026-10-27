@@ -77,7 +77,8 @@ def testUnAncienCombattantSansEtatDeCombatEstReluAvecDesValeursNeutres(tmp_path)
     """Un instantané antérieur aux statuts n'a ni état de combat ni champs d'attaque récents : il reste lisible."""
     repository = SqliteBattleRepository(tmp_path / "battles.sqlite3")
     repository.initialize()
-    record = BattleService(repository, CATALOG).create_battle("pikachu", "charmander")
+    # Bulbizarre n'a que des attaques à dégâts, comme toutes les espèces des combats de cette époque.
+    record = BattleService(repository, CATALOG).create_battle("bulbizarre", "carapuce")
     data = asdict(record.battle.first)
     for key in ("status", "stat_stages", "protected", "protected_last_turn"):
         data.pop(key)

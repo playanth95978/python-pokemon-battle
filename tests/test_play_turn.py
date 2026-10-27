@@ -63,7 +63,7 @@ def testUnTourRetourneLesEvenementsEtPersisteLesRessources(context):
 
 @pytest.mark.parametrize("exhausted", [False, True])
 def testUnMauvaisChoixRefuseLeTourSansModifierLaBase(context, exhausted):
-    """Une attaque inexistante ou sans PP donne 400 sans jouer la première attaque."""
+    """Une attaque inexistante ou sans PP donne 400 sans jouer l'autre attaque, pourtant valide."""
     client, repository, battle_id = context
     record = repository.get(battle_id)
     if exhausted:
@@ -71,7 +71,7 @@ def testUnMauvaisChoixRefuseLeTourSansModifierLaBase(context, exhausted):
         repository.save(record)
     before = repository.get(battle_id)
     response = client.post(f"/battles/{battle_id}/turns", json={**command(),
-        "first_move": 0, "second_move": 0 if exhausted else 3,
+        "first_move": 0 if exhausted else 3, "second_move": 0,
     })
     assert response.status_code == 400
     assert repository.get(battle_id) == before

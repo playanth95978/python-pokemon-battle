@@ -34,10 +34,19 @@ class MoveView:
     name: str
     type: Type
     category: Category
-    power: int
-    accuracy: int
+    power: int | None
+    accuracy: int | None
     pp: int
     max_pp: int
+
+    @property
+    def deals_damage(self) -> bool:
+        return self.category != Category.STATUS
+
+    @property
+    def hit_chance(self) -> int:
+        """Précision en pourcentage ; une précision non applicable touche toujours."""
+        return 100 if self.accuracy is None else self.accuracy
 
 
 @dataclass(frozen=True, slots=True)

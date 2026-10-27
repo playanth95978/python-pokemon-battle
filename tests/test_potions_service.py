@@ -42,7 +42,8 @@ def testUnePotionEstSauvegardeeEtUneRepriseNeLaConsommePasDeuxFois(service):
     assert saved == result.record
     assert saved.battle.first.potions == 1
     assert saved.battle.first.pp == initial_pp
-    assert saved.battle.second.pp == [34, 25]
+    # Seule Charge (emplacement 0) a été jouée ; Feu Follet et Danse Lames restent intacts.
+    assert saved.battle.second.pp == [34, 25, 15, 20]
     before_retry = asdict(saved)
 
     # Recréer le service prouve que la reprise utilise SQLite plutôt qu'un cache en mémoire.
