@@ -24,7 +24,7 @@ function battleStatus(battle: Battle, winnerSpecies: string | undefined): string
     return `Tour ${battle.turn}`
 }
 
-function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: {
+export function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: {
     battle: Battle;
     events: BattleEvent[];
     busy: boolean;

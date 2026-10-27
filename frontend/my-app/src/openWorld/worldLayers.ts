@@ -4,13 +4,18 @@ import { ChunkStreamer } from './chunkStreamer'
 import type { TerrainData } from './terrainGeometry'
 import { lodFor } from './terrainGeometry'
 import { createTerrainMaterial } from './terrainMaterial'
-import type { SpeciesInstances } from './vegetation'
+import type { TreeKind } from '../world3d/realTrees'
+import { animateTrees, treeInstances } from '../world3d/realTrees'
+import type { Species, SpeciesInstances } from './vegetation'
+import { FAR_LEVEL } from './vegetation'
 import { grassBlade, speciesGeometry, windMaterial } from './vegetationModels'
 import { WorkerPool } from './workerPool'
 
-/** Terrain sur 10 chunks (320 cases) ; arbres détaillés sur 3, simplifiés jusqu'à 7 ; herbe sur 1. */
+/** Terrain sur 10 chunks (320 cases) ; arbres réalistes sur 1, low-poly sur 3, simplifiés jusqu'à 7 ; herbe sur 1. */
 export const VIEW_RADIUS = 10
-const TREE_RADIUS = 7, DETAILED_TREE_RADIUS = 3
+const TREE_RADIUS = 7, DETAILED_TREE_RADIUS = 3, REAL_TREE_RADIUS = 1
+/** Espèces remplacées de près par un arbre ez-tree ; les autres gardent leur modèle low-poly. */
+const REAL_TREES: Partial<Record<Species, TreeKind>> = {oak: 'oak', pine: 'pine', bush: 'bush'}
 
 function instances(geometry: THREE.BufferGeometry, material: THREE.Material, {matrices, colors}: Omit<SpeciesInstances, 'species'>, castShadow: boolean) {
     const mesh = new THREE.InstancedMesh(geometry, material, matrices.length / 16)
@@ -53,12 +58,17 @@ export function createWorldLayers(scene: THREE.Scene, renderer: THREE.WebGLRende
     })
 
     const vegetation = new ChunkStreamer<SpeciesInstances[]>(scene, pool, {
-        kind: 'vegetation', radius: TREE_RADIUS, levelFor: (distance) => distance <= DETAILED_TREE_RADIUS ? 0 : 1,
+        kind: 'vegetation', radius: TREE_RADIUS,
+        levelFor: (distance) => distance <= REAL_TREE_RADIUS ? 0 : distance <= DETAILED_TREE_RADIUS ? 1 : FAR_LEVEL,
         build(data, level) {
             if (!data.length) return null
             const group = new THREE.Group()
             // Une instance par espèce et par chunk : un appel de dessin pour toute une forêt d'un même arbre.
-            for (const species of data) group.add(instances(speciesGeometry(species.species, level === 1), plantMaterial, species, level === 0))
+            for (const species of data) {
+                const real = level === 0 ? REAL_TREES[species.species] : undefined
+                group.add(real ? treeInstances(real, species.matrices, species.colors, true)
+                    : instances(speciesGeometry(species.species, level === FAR_LEVEL), plantMaterial, species, level < FAR_LEVEL))
+            }
             return group
         },
         dispose: (object) => object.traverse((child) => { if (child instanceof THREE.InstancedMesh) child.dispose() }),
@@ -74,6 +84,7 @@ export function createWorldLayers(scene: THREE.Scene, renderer: THREE.WebGLRende
         /** Le terrain passe en premier : il est servi avant la végétation quand les workers sont occupés. */
         update(player: { x: number; y: number }, seconds: number) {
             time.value = seconds
+            animateTrees(seconds)
             terrain.update(player)
             vegetation.update(player)
             grass.update(player)

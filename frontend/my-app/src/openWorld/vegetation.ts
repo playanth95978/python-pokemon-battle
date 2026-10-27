@@ -82,12 +82,15 @@ export function writeMatrix(target: Float32Array, offset: number, x: number, y: 
     target.set([cos, 0, -sin, 0, 0, scale, 0, 0, sin, 0, cos, 0, x, y, z, 1], offset)
 }
 
+/** Niveau de détail à partir duquel seuls les arbres restent, en version simplifiée. */
+export const FAR_LEVEL = 2
+
 /**
- * Instances de végétation d'un chunk. Niveau 0 : toutes les espèces ; niveau 1 : seulement les
- * arbres, pour leur version simplifiée lointaine.
+ * Instances de végétation d'un chunk. Niveaux 0 (arbres réalistes) et 1 (low-poly) : toutes les espèces ;
+ * niveau `FAR_LEVEL` : seulement les arbres, pour leur version simplifiée lointaine.
  */
 export function buildVegetationData(world: WorldGenerator, cx: number, cy: number, level: number): SpeciesInstances[] {
-    const kept = level === 0 ? SPECIES : FAR_SPECIES
+    const kept = level < FAR_LEVEL ? SPECIES : FAR_SPECIES
     const found = new Map<Species, { position: number[]; plant: Plant }[]>()
     for (let y = cy * TERRAIN_CHUNK; y < (cy + 1) * TERRAIN_CHUNK; y++) {
         for (let x = cx * TERRAIN_CHUNK; x < (cx + 1) * TERRAIN_CHUNK; x++) {

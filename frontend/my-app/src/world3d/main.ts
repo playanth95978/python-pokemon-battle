@@ -19,6 +19,7 @@ import { leadsToOpenWorld, nearExit, OPEN_WORLD_URL } from './worldExit'
 import { createAtmosphere, createResolutionScaler, createTrainer } from './scenery'
 import { WorldStreamer } from './worldStreamer'
 import './world3d.css'
+import { canInteractWithPokemon } from "./pokemonInteraction.ts";
 
 const STEP_DURATION = 170
 /** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
@@ -49,8 +50,20 @@ const {sun, sunDirection} = createAtmosphere(renderer, scene)
 const materials = createWorldMaterials(WORLD_MAP, renderer)
 const base = buildWorldBase(scene, WORLD_MAP, materials)
 const streamer = new WorldStreamer(WORLD_MAP, scene, [
-    {name: 'decor', loadRadius: LOAD_RADIUS, unloadRadius: UNLOAD_RADIUS, build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, materials), dispose: disposeChunk},
-    {name: 'grass', loadRadius: GRASS_RADIUS, unloadRadius: GRASS_UNLOAD_RADIUS, build: (chunk) => buildGrassChunk(WORLD_MAP, chunk, materials), dispose: disposeChunk},
+    {
+        name: 'decor',
+        loadRadius: LOAD_RADIUS,
+        unloadRadius: UNLOAD_RADIUS,
+        build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, materials),
+        dispose: disposeChunk
+    },
+    {
+        name: 'grass',
+        loadRadius: GRASS_RADIUS,
+        unloadRadius: GRASS_UNLOAD_RADIUS,
+        build: (chunk) => buildGrassChunk(WORLD_MAP, chunk, materials),
+        dispose: disposeChunk
+    },
 ])
 
 function createBoat() {
@@ -116,7 +129,9 @@ const wildCharmander: WorldPokemon = {
     speciesKey: 'charmander',
     position: {x: 30, y: 38},
 }
-void loadPokemon('/models/poc/pikachu.glb', 0.32).then((companion) => { pikachu = companion })
+void loadPokemon('/models/poc/pikachu.glb', 0.32).then((companion) => {
+    pikachu = companion
+})
 void loadPokemon('/models/poc/charmander.glb', 0.38).then(({root}) => {
     root.name = wildCharmander.id
     root.position.copy(tileCenter(wildCharmander.position.x, wildCharmander.position.y))
@@ -147,6 +162,25 @@ function step(now: number) {
 addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase()
     if (key === 'e') {
+        if (event.repeat) return
+
+        event.preventDefault()
+        held = null
+
+        const nearCharmander =
+            player.travelMode === 'walking'
+            && canInteractWithPokemon(player.position, wildCharmander)
+
+        if (nearCharmander) {
+            
+            console.info('Rencontre avec Salamèche', {
+                pokemonId: wildCharmander.id,
+                speciesKey: wildCharmander.speciesKey,
+            })
+            return
+        }
+
+        // Conserver ici le code actuel d'embarquement.
         player = toggleBoatAtDock(WORLD_MAP, player)
         from = to = tileCenter(player.position.x, player.position.y)
         followerFrom = followerTo = to.clone()

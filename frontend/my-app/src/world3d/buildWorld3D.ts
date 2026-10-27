@@ -7,6 +7,8 @@ import type { WorldMaterials } from './worldMaterials'
 import type { ChunkKey } from './worldChunks'
 import { chunkTiles } from './worldChunks'
 import { EXIT, isExitGap } from './worldExit'
+import type { TreeKind } from './realTrees'
+import { animateTrees, treeInstances } from './realTrees'
 
 export const WATER_LEVEL = -0.12
 const LAKE_DEPTH = -0.55
@@ -208,6 +210,7 @@ export function buildWorldBase(scene: THREE.Scene, map: WorldMap, materials: Wor
     return {
         update(time) {
             materials.time.value = time
+            animateTrees(time)
             animateWater(time)
         },
     }
@@ -215,8 +218,6 @@ export function buildWorldBase(scene: THREE.Scene, map: WorldMap, materials: Wor
 
 // --- Chunks chargés en streaming ---
 
-const trunkGeometry = new THREE.CylinderGeometry(0.09, 0.14, 1, 7).translate(0, 0.5, 0)
-const foliageGeometry = new THREE.IcosahedronGeometry(0.62, 1)
 const bladeGeometry = new THREE.ConeGeometry(0.035, 0.32, 3).translate(0, 0.16, 0)
 const flowerGeometry = new THREE.SphereGeometry(0.05, 6, 4)
 
@@ -236,23 +237,30 @@ function freeze(group: THREE.Object3D) {
     return group
 }
 
-function addTrees(group: THREE.Group, tiles: Position[], materials: WorldMaterials) {
-    if (!tiles.length) return
-    const trunk = instanced(trunkGeometry, materials.bark, tiles.length)
-    const layers = [0, 1, 2].map(() => instanced(foliageGeometry, materials.foliage, tiles.length))
-    const matrix = new THREE.Matrix4(), color = new THREE.Color(), rotation = new THREE.Quaternion(), euler = new THREE.Euler()
-    tiles.forEach(({x, y}, index) => {
-        const height = 0.8 + hash(x, y) * 0.9
-        const center = tileCenter(x + (hash(x, y, 1) - 0.5) * 0.4, y + (hash(x, y, 2) - 0.5) * 0.4)
-        trunk.setMatrixAt(index, matrix.compose(center, rotation.identity(), new THREE.Vector3(1, height, 1)))
-        layers.forEach((layer, level) => {
-            const size = (1.15 - level * 0.28) * (0.85 + hash(x, y, 3) * 0.4)
-            rotation.setFromEuler(euler.set(0, hash(x, y, level) * 6.3, 0))
-            layer.setMatrixAt(index, matrix.compose(center.clone().setY(height + 0.35 + level * 0.5), rotation, new THREE.Vector3(size, size * 0.85, size)))
-            layer.setColorAt(index, color.setHSL(0.27 + hash(x, y, 5) * 0.06, 0.45, 0.22 + level * 0.05 + hash(x, y, 6) * 0.05))
+/** Essence d'une case d'arbre : surtout des chênes, des trembles et quelques pins. */
+function treeKind(x: number, y: number): TreeKind {
+    const roll = hash(x, y, 7)
+    return roll < 0.55 ? 'oak' : roll < 0.82 ? 'aspen' : 'pine'
+}
+
+function addTrees(group: THREE.Group, tiles: Position[]) {
+    const byKind = new Map<TreeKind, Position[]>()
+    for (const tile of tiles) {
+        const kind = treeKind(tile.x, tile.y)
+        byKind.set(kind, [...byKind.get(kind) ?? [], tile])
+    }
+    const matrix = new THREE.Matrix4(), rotation = new THREE.Quaternion(), euler = new THREE.Euler(), scale = new THREE.Vector3()
+    for (const [kind, positions] of byKind) {
+        const matrices = new Float32Array(positions.length * 16), colors = new Float32Array(positions.length * 3)
+        positions.forEach(({x, y}, index) => {
+            const center = tileCenter(x + (hash(x, y, 1) - 0.5) * 0.4, y + (hash(x, y, 2) - 0.5) * 0.4)
+            rotation.setFromEuler(euler.set(0, hash(x, y, 3) * Math.PI * 2, 0))
+            matrix.compose(center, rotation, scale.setScalar(0.8 + hash(x, y) * 0.45)).toArray(matrices, index * 16)
+            const shade = 0.85 + hash(x, y, 5) * 0.3
+            colors.set([shade, shade, shade * 0.95], index * 3)
         })
-    })
-    group.add(trunk, ...layers)
+        group.add(treeInstances(kind, matrices, colors, true))
+    }
 }
 
 /** Répète une texture selon la taille réelle de chaque face d'une boîte (1 répétition par `unit`). */
@@ -316,7 +324,7 @@ function addHouse(group: THREE.Group, building: Building, materials: WorldMateri
 export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, materials: WorldMaterials) {
     const group = chunkGroup(`decor ${chunk.cx},${chunk.cy}`)
     const tiles = chunkTiles(map, chunk)
-    addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree' && !isExitGap(tile)), materials)
+    addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree' && !isExitGap(tile)))
     // Une maison appartient au chunk de son coin nord-ouest.
     const inChunk = new Set(tiles.map(({x, y}) => `${x},${y}`))
     map.buildings.filter((building) => inChunk.has(`${building.x},${building.y}`))

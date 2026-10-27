@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { blocksMovement, buildGrassData, buildVegetationData, FAR_SPECIES, plantAt, writeMatrix } from './vegetation'
+import { blocksMovement, buildGrassData, buildVegetationData, FAR_LEVEL, FAR_SPECIES, plantAt, writeMatrix } from './vegetation'
 import { createWorldGenerator } from './worldGenerator'
 import type { Biome } from './worldGenerator'
 
@@ -57,7 +57,8 @@ describe('Végétation par biome', () => {
       throw new Error('aucune forêt')
     })()
     const cx = Math.floor(forestTile.x / 32), cy = Math.floor(forestTile.y / 32)
-    const near = buildVegetationData(world, cx, cy, 0), far = buildVegetationData(world, cx, cy, 1)
+    const near = buildVegetationData(world, cx, cy, 0), far = buildVegetationData(world, cx, cy, FAR_LEVEL)
+    expect(buildVegetationData(world, cx, cy, 1)).toEqual(near)
     expect(far.every(({species}) => FAR_SPECIES.includes(species))).toBe(true)
     const trees = (data: typeof near) => data.filter(({species}) => FAR_SPECIES.includes(species)).reduce((sum, {matrices}) => sum + matrices.length / 16, 0)
     expect(trees(far)).toBe(trees(near))
