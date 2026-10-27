@@ -2,10 +2,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Sky } from 'three/addons/objects/Sky.js'
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import type { Direction, PlayerState } from '../world/types'
 import {
     boatActionAtDock,
@@ -16,10 +12,17 @@ import {
     WORLD_SPAWN,
     zoneAt
 } from '../world/worldMap'
-import { buildWorld3D, tileCenter, WATER_LEVEL } from './buildWorld3D'
+import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter, WATER_LEVEL } from './buildWorld3D'
+import { GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
+import { createWorldMaterials } from './worldMaterials'
+import { WorldStreamer } from './worldStreamer'
 import './world3d.css'
 
 const STEP_DURATION = 170
+/** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
+const STREAM_BUDGET_MS = 4
+const MAX_PIXEL_RATIO = Math.min(devicePixelRatio, 2), MIN_PIXEL_RATIO = 0.6
+const CAMERA_OFFSET = new THREE.Vector3(0, 4.2, 7), LOOK_OFFSET = new THREE.Vector3(0, 0, -1.5)
 const KEYS: Record<string, Direction> = {
     arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right',
     z: 'up', w: 'up', s: 'down', q: 'left', a: 'left', d: 'right',
@@ -27,8 +30,8 @@ const KEYS: Record<string, Direction> = {
 const ANGLES: Record<Direction, number> = {down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2}
 
 const host = document.getElementById('world3d')!
-const renderer = new THREE.WebGLRenderer({antialias: false, powerPreference: 'high-performance'})
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+const renderer = new THREE.WebGLRenderer({antialias: true, powerPreference: 'high-performance'})
+renderer.setPixelRatio(MAX_PIXEL_RATIO)
 renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -37,8 +40,9 @@ renderer.toneMappingExposure = 0.72
 host.appendChild(renderer.domElement)
 
 const scene = new THREE.Scene()
-scene.fog = new THREE.FogExp2(0x8db0c4, 0.008)
-const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 400)
+// Le brouillard masque la limite des chunks chargés (LOAD_RADIUS × CHUNK_SIZE ≈ 24 cases).
+scene.fog = new THREE.FogExp2(0xa9c4d4, 0.034)
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1200)
 
 // Ciel physique en fin d'après-midi ; il sert aussi d'éclairage d'ambiance (reflets PBR).
 const sunDirection = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(215))
@@ -68,7 +72,12 @@ sun.shadow.bias = -0.0004
 sun.shadow.normalBias = 0.03
 scene.add(sun, sun.target)
 
-const decor = buildWorld3D(scene, WORLD_MAP)
+const materials = createWorldMaterials(WORLD_MAP, renderer)
+const base = buildWorldBase(scene, WORLD_MAP, materials)
+const streamer = new WorldStreamer(WORLD_MAP, scene, [
+    {name: 'decor', loadRadius: LOAD_RADIUS, unloadRadius: UNLOAD_RADIUS, build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, materials), dispose: disposeChunk},
+    {name: 'grass', loadRadius: GRASS_RADIUS, unloadRadius: GRASS_UNLOAD_RADIUS, build: (chunk) => buildGrassChunk(WORLD_MAP, chunk, materials), dispose: disposeChunk},
+])
 
 // Dresseur stylisé fait de primitives (aucun modèle extrait des jeux).
 function createTrainer() {
@@ -153,7 +162,8 @@ let followerFrom = from.clone(), followerTo = from.clone()
 let held: Direction | null = null
 let zoom = 1
 
-const pikachu = loadPokemon('/models/poc/pikachu.glb', 0.32)
+let pikachu: Companion | null = null
+void loadPokemon('/models/poc/pikachu.glb', 0.32).then((companion) => { pikachu = companion })
 void loadPokemon('/models/poc/charmander.glb', 0.38).then(({root}) => {
     root.position.copy(tileCenter(30, 38))
     root.rotation.y = -0.6
@@ -202,38 +212,50 @@ document.body.appendChild(hud)
 let lastHud = ''
 
 function updateHud() {
+    const loading = Math.round(Math.min(materials.progress(), streamer.progress(player.position)) * 100)
     const landmark = nearbyLandmark(WORLD_MAP, player.position)
     const boatAction = boatActionAtDock(player)
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}`
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}`
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = `<strong>${zoneAt(player.position)}</strong>`
         + (landmark ? `<p><b>${landmark.name}</b> — ${landmark.message}</p>` : '')
+        + (loading < 100 ? `<p>Chargement du monde… ${loading} %</p>` : '')
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
         + '<p class="world3d-help">Flèches / ZQSD pour marcher · molette pour zoomer · <a href="/">carte 2D</a></p>'
 }
-
-const target = new THREE.WebGLRenderTarget(innerWidth, innerHeight, {samples: 4, type: THREE.HalfFloatType})
-const composer = new EffectComposer(renderer, target)
-composer.setPixelRatio(renderer.getPixelRatio())
-composer.addPass(new RenderPass(scene, camera))
-composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.22, 0.5, 0.92))
-composer.addPass(new OutputPass())
 
 addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight
     camera.updateProjectionMatrix()
     renderer.setSize(innerWidth, innerHeight)
-    composer.setSize(innerWidth, innerHeight)
 })
+
+// Résolution dynamique : baisse la définition quand les images ralentissent, la remonte quand il y a de la marge.
+let pixelRatio = MAX_PIXEL_RATIO, frameTime = 16, lastResolutionChange = 0
+
+function adaptResolution(now: number, frameSeconds: number) {
+    // Un onglet en arrière-plan est ralenti par le navigateur : ce n'est pas un manque de puissance.
+    if (document.hidden || frameSeconds > 0.25) return
+    frameTime = frameTime * 0.95 + frameSeconds * 1000 * 0.05
+    if (now - lastResolutionChange < 1500) return
+    const wanted = frameTime > 24 ? pixelRatio * 0.85 : frameTime < 18 ? pixelRatio * 1.1 : pixelRatio
+    const next = THREE.MathUtils.clamp(wanted, MIN_PIXEL_RATIO, MAX_PIXEL_RATIO)
+    if (Math.abs(next - pixelRatio) < 0.05) return
+    pixelRatio = next
+    lastResolutionChange = now
+    renderer.setPixelRatio(pixelRatio)
+}
 
 const clock = new THREE.Clock()
 const cameraGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3(), look = from.clone()
 camera.position.copy(from).add(new THREE.Vector3(0, 7, 8))
 
 renderer.setAnimationLoop((now) => {
-    const delta = Math.min(clock.getDelta(), 0.05)
+    const frameSeconds = clock.getDelta()
+    const delta = Math.min(frameSeconds, 0.05)
     step(now)
+    streamer.update(player.position, STREAM_BUDGET_MS)
     const progress = Math.min(1, (now - stepStart) / STEP_DURATION)
     const moving = progress < 1
     const onBoat = player.travelMode === 'boat'
@@ -245,19 +267,20 @@ renderer.setAnimationLoop((now) => {
     boat.position.set(trainer.position.x, WATER_LEVEL + Math.sin(now * 0.002) * 0.03, trainer.position.z)
     boat.rotation.y = trainer.rotation.y
 
-    void pikachu.then(({root}) => {
+    if (pikachu) {
+        const {root} = pikachu
         root.visible = !onBoat
         root.position.lerpVectors(followerFrom, followerTo, progress)
-        const heading = followerTo.clone().sub(followerFrom)
-        if (heading.lengthSq() > 0.01) root.rotation.y = Math.atan2(heading.x, heading.z)
-    })
+        const dx = followerTo.x - followerFrom.x, dz = followerTo.z - followerFrom.z
+        if (dx * dx + dz * dz > 0.01) root.rotation.y = Math.atan2(dx, dz)
+    }
     companions.forEach(({mixer}) => mixer.update(delta))
-    decor.update(now / 1000)
+    base.update(now / 1000)
 
     // Caméra à la troisième personne, amortie.
-    cameraGoal.copy(trainer.position).add(new THREE.Vector3(0, 4.2 * zoom, 7 * zoom))
+    cameraGoal.copy(trainer.position).addScaledVector(CAMERA_OFFSET, zoom)
     camera.position.lerp(cameraGoal, 1 - Math.exp(-delta * 5))
-    lookGoal.copy(trainer.position).setY(0.9).add(new THREE.Vector3(0, 0, -1.5))
+    lookGoal.copy(trainer.position).setY(0.9).add(LOOK_OFFSET)
     look.lerp(lookGoal, 1 - Math.exp(-delta * 8))
     camera.lookAt(look)
     // L'ombre portée suit le joueur pour garder une carte d'ombre nette.
@@ -265,5 +288,6 @@ renderer.setAnimationLoop((now) => {
     sun.position.copy(trainer.position).addScaledVector(sunDirection, 40)
 
     updateHud()
-    composer.render()
+    renderer.render(scene, camera)
+    adaptResolution(now, frameSeconds)
 })
