@@ -224,6 +224,12 @@ class Species:
             raise ValueError("Species needs one to four attacks")
 
 
+def effective_speed(speed: int, stage: int, status: StatusCondition | None) -> int:
+    """Vitesse après le cran, puis divisée par 2 pour un paralysé (docs/battle-rules.md)."""
+    staged = staged_value(speed, stage)
+    return staged // 2 if status == StatusCondition.PARALYSIS else staged
+
+
 @dataclass(slots=True)
 class Fighter:
     id: str
@@ -253,8 +259,7 @@ class Fighter:
 
     @property
     def effective_speed(self) -> int:
-        speed = staged_value(self.species.stats.speed, self.stat_stages.speed)
-        return speed // 2 if self.status == StatusCondition.PARALYSIS else speed
+        return effective_speed(self.species.stats.speed, self.stat_stages.speed, self.status)
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,8 +2,15 @@
 
 from fractions import Fraction
 
-from .domain import Attack, Category, Stats, staged_value
+from .domain import Attack, BattleStat, Category, Stats, staged_value
 from .types import Type
+
+
+def stage_stats(category: Category) -> tuple[BattleStat, BattleStat]:
+    """Crans à lire pour une attaque : celui de l'attaquant, puis celui du défenseur."""
+    if category == Category.PHYSICAL:
+        return BattleStat.ATTACK, BattleStat.DEFENSE
+    return BattleStat.SPECIAL_ATTACK, BattleStat.SPECIAL_DEFENSE
 
 
 def damage_for_roll(level: int, offense: Stats, defense: Stats, attack: Attack,

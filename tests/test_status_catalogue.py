@@ -82,9 +82,10 @@ def ai_context(tmp_path):
     return ToolsContext.from_record(record, record.battle.second.id, 0)
 
 
-def testLIaLocaleChoisitUneAttaqueADegatsSansPlanterSurLesStatuts(ai_context):
+def testLIaLocaleBruleDAbordUnPikachuEnForme(ai_context):
+    """Pikachu n'est pas de type Feu et n'a aucun statut : Feu Follet (emplacement 2) s'appliquerait."""
     decision = asyncio.run(LocalOpponent().choose(ai_context))
-    assert decision.attack_slot in (0, 1)
+    assert decision.attack_slot == 2
 
 
 def testLesEstimationsDeDegatsIgnorentLesAttaquesDeStatut(ai_context):

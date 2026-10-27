@@ -31,6 +31,7 @@ def testLeRecuRestitueLesEvenementsDeStatutAvecLeursTypes(tmp_path):
         StatusApplied(1, "a", "b", StatusCondition.PARALYSIS),
         StatChanged(1, "a", "a", BattleStat.SPECIAL_ATTACK, 2, 2),
         EffectFailed(1, "a", "b", FailureReason.IMMUNE),
+        EffectFailed(1, "a", "a", FailureReason.STAT_LIMIT, BattleStat.ATTACK, 6),
         ProtectionActivated(1, "b"),
         AttackBlocked(1, "a", "b"),
         FullyParalyzed(1, "b"),
@@ -52,6 +53,7 @@ def testLeRecuRestitueLesEvenementsDeStatutAvecLeursTypes(tmp_path):
     assert restored.result.events[0].condition is StatusCondition.PARALYSIS
     assert restored.result.events[1].stat is BattleStat.SPECIAL_ATTACK
     assert restored.result.events[2].reason is FailureReason.IMMUNE
+    assert restored.result.events[3].stat is BattleStat.ATTACK
 
 
 def testLeStatutDuCombattantEstConserve(tmp_path):

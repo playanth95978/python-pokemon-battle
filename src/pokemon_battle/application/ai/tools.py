@@ -7,12 +7,23 @@ from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError
 
+from pokemon_battle.application.effect_serialization import serialize_effect
 from pokemon_battle.types import Type, effectiveness
 from .generation import ToolCall
 from .damage_estimation import estimate_move
 from .healing_estimation import estimate_healing
 from .incoming_damage_estimation import estimate_incoming_damage, guaranteed_ko_before_riposte
-from .tools_context import AttackDecision, MoveView, ToolsContext
+from .status_evaluation import STATUS_RULES, evaluate_status_moves
+from .tools_context import AttackDecision, FighterView, MoveView, ToolsContext
+
+
+def _move_payload(move: MoveView) -> dict[str, Any]:
+    # asdict seul perdrait le type des effets : Protect() deviendrait {}.
+    return {**asdict(move), "effects": [serialize_effect(effect) for effect in move.effects]}
+
+
+def _fighter_payload(fighter: FighterView) -> dict[str, Any]:
+    return {**asdict(fighter), "effective_speed": fighter.effective_speed}
 
 
 def _matchup(move: MoveView, opponent_types: tuple[Type, ...]) -> dict[str, Any]:
@@ -53,15 +64,20 @@ _DEFINITIONS = {
     "estimate_damage": (
         "Comparer les dégâts des attaques jouables : plage si l'attaque touche, moyenne avec précision, probabilité de KO. Calcul du moteur sur l'état actuel, sans jouer le tour.",
         EmptyRequest),
+    "evaluate_status_moves": (
+        "Évaluer les attaques de statut jouables, qui ne font aucun dégât : effet visé, réussite ou échec prévisible "
+        "(statut déjà présent, immunité de type, cran au maximum, protection deux tours de suite) et probabilité de toucher.",
+        EmptyRequest),
     "estimate_incoming_damage": (
         "Estimer le risque réel : dégâts et probabilité de KO des attaques adverses déjà utilisées, "
         "sur les PV actuels et après une potion, et l'ordre d'action si les deux attaquent.",
         EmptyRequest),
     "select_attack": ("Terminer la décision en sélectionnant un attack_slot jouable, sans exécuter le tour.",
                       SelectAttackRequest),
-    "select_potion": ("Terminer la décision en utilisant une potion ce tour-ci, à la place d'une attaque, sans exécuter le tour. "
-                      "Refusé si les PV sont pleins ou si le stock est vide.",
-                      SelectPotionRequest),
+    "select_potion": (
+        "Terminer la décision en utilisant une potion ce tour-ci, à la place d'une attaque, sans exécuter le tour. "
+        "Refusé si les PV sont pleins ou si le stock est vide.",
+        SelectPotionRequest),
     "estimate_healing": (
         "Estimer les PV restaurés par une potion, les PV après soin et le nombre de potions restantes. Vérifie si le soin est possible sans consommer de potion ni jouer le tour.",
         EmptyRequest,
@@ -112,9 +128,11 @@ def execute_tool(context: ToolsContext, call: ToolCall) -> dict[str, Any]:
         return {"error": "invalid_arguments", "message": "Respecter le schéma JSON de l'outil."}
     if call.name == "inspect_battle":
         result = {"battle_id": str(context.battle_id), "turn": context.view.turn,
-                  "fighter": asdict(context.view.fighter), "opponent": asdict(context.view.opponent)}
+                  "fighter": _fighter_payload(context.view.fighter),
+                  "opponent": _fighter_payload(context.view.opponent)}
     elif call.name == "list_legal_moves":
-        result = {"moves": [asdict(move) for move in context.legal_moves], "potion_available": context.can_use_potion}
+        result = {"moves": [_move_payload(move) for move in context.legal_moves],
+                  "potion_available": context.can_use_potion}
         if not context.legal_moves:
             result["note"] = "Aucune attaque jouable : utilise select_potion pour agir ce tour."
     elif call.name == "evaluate_matchups":
@@ -123,6 +141,8 @@ def execute_tool(context: ToolsContext, call: ToolCall) -> dict[str, Any]:
         result = {"estimates": [estimate_move(context, move) for move in context.legal_moves if move.deals_damage],
                   "assumption": "Attaque isolée sur les PV actuels ; suppose que l'acteur peut agir. Ne prédit ni le choix adverse ni un combat complet. "
                                 "Les attaques de statut, sans dégâts, ne sont pas estimées."}
+    elif call.name == "evaluate_status_moves":
+        result = {"status_moves": evaluate_status_moves(context), "rules": STATUS_RULES}
     elif call.name == "estimate_healing":
         healing = estimate_healing(context)
         result = {

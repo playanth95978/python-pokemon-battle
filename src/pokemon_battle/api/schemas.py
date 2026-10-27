@@ -219,6 +219,8 @@ class EffectFailedResponse(BaseModel):
     actor: str
     target: str
     reason: FailureReason
+    stat: BattleStat | None = None
+    stage: int | None = None
 
 
 class BurnDamageResponse(BaseModel):

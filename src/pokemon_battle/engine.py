@@ -5,11 +5,11 @@ from enum import StrEnum
 from fractions import Fraction
 from typing import Protocol
 
-from .damage import damage_for_roll
+from .damage import damage_for_roll, stage_stats
 from .types import Type, effectiveness
 from .domain import (
     MAX_STAT_STAGE, ApplyStatus, Attack, AttackAction, AttackEffect, BattleAction, BattleStat,
-    Category, Fighter, ModifyStat, Protect, StatusCondition, Target, UsePotionAction,
+    Fighter, ModifyStat, Protect, StatusCondition, Target, UsePotionAction,
     potion_healing,
 )
 
@@ -17,6 +17,20 @@ from .domain import (
 FULL_PARALYSIS_CHANCE = 25
 BURN_DAMAGE_DIVISOR = 16
 STATUS_IMMUNITIES = {StatusCondition.PARALYSIS: Type.ELECTRIC, StatusCondition.BURN: Type.FIRE}
+
+
+def status_failure(condition: StatusCondition, current: StatusCondition | None,
+                   types: tuple[Type, ...]) -> "FailureReason | None":
+    """Raison d'échec d'un statut, ou None s'il s'applique ; partagée avec l'évaluation de l'IA."""
+    if current is not None:
+        return FailureReason.ALREADY_HAS_STATUS
+    if STATUS_IMMUNITIES[condition] in types:
+        return FailureReason.IMMUNE
+    return None
+
+
+def stage_after(current: int, change: int) -> int:
+    return max(-MAX_STAT_STAGE, min(MAX_STAT_STAGE, current + change))
 
 
 class RandomSource(Protocol):
@@ -123,6 +137,9 @@ class ProtectionActivated(ActorEvent):
 @dataclass(frozen=True, slots=True)
 class EffectFailed(TargetedAction):
     reason: FailureReason
+    # Renseignés seulement pour STAT_LIMIT : statistique et cran déjà à la borne.
+    stat: BattleStat | None = None
+    stage: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -314,18 +331,17 @@ class BattleEngine:
     def _apply_status(
             self, turn: int, actor: Fighter, receiver: Fighter, condition: StatusCondition,
     ) -> DomainEvent:
-        if receiver.status is not None:
-            return EffectFailed(turn, actor.id, receiver.id, FailureReason.ALREADY_HAS_STATUS)
-        if STATUS_IMMUNITIES[condition] in receiver.species.types:
-            return EffectFailed(turn, actor.id, receiver.id, FailureReason.IMMUNE)
+        failure = status_failure(condition, receiver.status, receiver.species.types)
+        if failure is not None:
+            return EffectFailed(turn, actor.id, receiver.id, failure)
         receiver.status = condition
         return StatusApplied(turn, actor.id, receiver.id, condition)
 
     def _modify_stat(self, turn: int, actor: Fighter, receiver: Fighter, effect: ModifyStat) -> DomainEvent:
         current = receiver.stat_stages.of(effect.stat)
-        stage = max(-MAX_STAT_STAGE, min(MAX_STAT_STAGE, current + effect.stages))
+        stage = stage_after(current, effect.stages)
         if stage == current:
-            return EffectFailed(turn, actor.id, receiver.id, FailureReason.STAT_LIMIT)
+            return EffectFailed(turn, actor.id, receiver.id, FailureReason.STAT_LIMIT, effect.stat, current)
         receiver.stat_stages = replace(receiver.stat_stages, **{effect.stat.value: stage})
         return StatChanged(turn, actor.id, receiver.id, effect.stat, stage - current, stage)
 
@@ -372,11 +388,10 @@ class BattleEngine:
     def _damage(self, actor: Fighter, target: Fighter, attack: Attack, multiplier: Fraction) -> int:
         if multiplier == 0:
             return 0
-        physical = attack.category == Category.PHYSICAL
+        offense, defense = stage_stats(attack.category)
         return damage_for_roll(
             actor.level, actor.species.stats, target.species.stats, attack,
             actor.species.types, multiplier, self.rng.randint(85, 100),
-            attack_stage=actor.stat_stages.of(BattleStat.ATTACK if physical else BattleStat.SPECIAL_ATTACK),
-            defense_stage=target.stat_stages.of(BattleStat.DEFENSE if physical else BattleStat.SPECIAL_DEFENSE),
+            attack_stage=actor.stat_stages.of(offense), defense_stage=target.stat_stages.of(defense),
             burned=actor.status == StatusCondition.BURN,
         )

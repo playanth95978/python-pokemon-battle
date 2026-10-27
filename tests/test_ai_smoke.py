@@ -33,7 +33,7 @@ def testLaSimulationExecuteLesOutilsEtUnTourSansChargerLaConfiguration(tmp_path,
     assert report["selected_attack"] == "Charge"
     assert report["metrics"]["model_requests"] == 1
     assert report["metrics"]["tool_calls_executed"] == 1
-    assert report["metrics"]["precomputed_tools"] == 6
+    assert report["metrics"]["precomputed_tools"] == 7
     assert report["metrics"]["tokens"] == {}
     assert report["metrics"]["usage_complete"] is False
     assert report["turn"] == {"number": 1, "winner": None, "fighters": [
@@ -344,7 +344,7 @@ def testLeNombreDeRepetitionsDoitEtrePositif(value):
     assert error.value.code == 2
 
 
-@pytest.mark.parametrize("exploratory,requests,tools,precomputed", [(False, 10, 10, 60), (True, 20, 70, 0)])
+@pytest.mark.parametrize("exploratory,requests,tools,precomputed", [(False, 10, 10, 70), (True, 20, 70, 0)])
 def testLesDixScenariosRestentJouablesDansLesDeuxModes(tmp_path, capsys, exploratory, requests, tools, precomputed):
     """La comparaison CLI conserve les dix choix attendus et distingue les lectures locales des appels du modèle."""
     path = tmp_path / "suite.json"

@@ -232,6 +232,29 @@ configuration de logging n'est déjà en place.
 
 ## Interface React
 
+### Prototype d'exploration 2D
+
+L'onglet **Explorer** ouvre Clairbois : une carte de 64 × 64 cases de 32 pixels,
+avec village, prairie, forêt, rivière, pont et lac. Cliquer sur la carte pour lui
+donner le focus, puis utiliser les flèches, ZQSD ou WASD. Maintenir une direction
+pour marcher ; les arbres, bâtiments et plans d'eau bloquent le passage.
+Les boutons directionnels permettent aussi de jouer sur écran tactile.
+
+La caméra suit le personnage. La mini-carte indique sa position ; les quatre lieux
+se cochent lors de leur découverte. **E** ou **Interagir** permet de lire les panneaux
+proches. **Revenir au départ** réinitialise l'exploration. L'onglet **Arène** donne
+accès aux combats existants ; un aller-retour conserve la position et le combat
+tant que la page reste ouverte.
+
+Le prototype fonctionne sans backend ni téléchargement d'images. Les décors et les
+deux Pokémon qui se promènent sont dessinés avec Canvas 2D. Les promeneurs sont
+décoratifs : les rencontres, captures et soins ne sont pas encore branchés. La
+position et les découvertes sont locales à la session et disparaissent au rechargement.
+Les mouvements décoratifs respectent la préférence de réduction des animations.
+
+Depuis `frontend/my-app`, lancer `npm run dev` puis ouvrir l'adresse donnée par Vite.
+Si le port habituel est occupé : `npm run dev -- --port 5188 --strictPort`.
+
 L'interface Vite existante dans `frontend/my-app` utilise React, TypeScript et
 Tailwind CSS. Elle permet de créer un combat, choisir les attaques des deux
 combattants, lire les événements et recommencer. FastAPI conserve l'autorité sur

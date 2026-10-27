@@ -12,7 +12,7 @@ def estimate_incoming_damage(context: ToolsContext) -> dict[str, Any]:
     hp_after_potion = actor.hp + potion_healing(actor.hp, actor.max_hp) if context.can_use_potion else None
     threats = [_threat(context, move, hp_after_potion) for move in context.view.opponent_revealed_moves
                if move.pp > 0 and move.deals_damage]
-    turn_order = _turn_order(actor.stats.speed, opponent.stats.speed)
+    turn_order = _turn_order(actor.effective_speed, opponent.effective_speed)
     risk_now = max((item["ko_probability_now"] for item in threats), default=None)
     risk_after = max((item["ko_probability_after_potion"] for item in threats
                       if item["ko_probability_after_potion"] is not None), default=None)
@@ -35,7 +35,9 @@ def estimate_incoming_damage(context: ToolsContext) -> dict[str, Any]:
         "max_ko_probability_after_potion": risk_after,
         "turn_order": turn_order,
         "assumption": ("Seules les attaques adverses déjà utilisées sont connues ; l'adversaire peut en avoir d'autres. "
-                       "Une potion agit toujours avant l'attaque adverse. Ne prédit pas le choix du joueur."),
+                       "Une potion agit toujours avant l'attaque adverse. L'ordre utilise la vitesse effective "
+                       "(crans, paralysie) et la priorité des attaques ; un paralysé n'agit que 3 fois sur 4. "
+                       "Ne prédit pas le choix du joueur."),
     }
 
 
@@ -45,12 +47,12 @@ def _threat(context: ToolsContext, move: MoveView, hp_after_potion: int | None) 
     damages = damage_rolls(opponent, actor, move, actor.max_hp)
     after_potion = None
     if hp_after_potion is not None:
-        after_potion = float(ko_probability(damages, hp_after_potion, move.hit_chance))
+        after_potion = float(ko_probability(damages, hp_after_potion, move.hit_chance) * opponent.act_chance)
     return {
         "name": move.name, "type": move.type.value, "category": move.category.value,
         "power": move.power, "accuracy": move.accuracy, "pp": move.pp,
         "min_damage_on_hit": min(damages), "max_damage_on_hit": max(damages),
-        "ko_probability_now": float(ko_probability(damages, actor.hp, move.hit_chance)),
+        "ko_probability_now": float(ko_probability(damages, actor.hp, move.hit_chance) * opponent.act_chance),
         "ko_probability_after_potion": after_potion,
     }
 
@@ -62,17 +64,27 @@ _FIRST_PROBABILITY = {"agent_attacks_first": 1.0, "random": 0.5, "opponent_attac
 def guaranteed_ko_before_riposte(context: ToolsContext) -> list[str]:
     """Attaques qui mettent l'adversaire KO à coup sûr avant qu'il n'agisse."""
     actor, opponent = context.view.fighter, context.view.opponent
-    turn_order = _turn_order(actor.stats.speed, opponent.stats.speed)
+    turn_order = _turn_order(actor.effective_speed, opponent.effective_speed)
     return [name for name, probability in _ko_before_riposte(context, turn_order) if probability == 1.0]
 
 
 def _ko_before_riposte(context: ToolsContext, turn_order: str) -> list[tuple[str, float]]:
-    # Un KO n'empêche la riposte que si l'agent agit avant l'adversaire.
-    first = _FIRST_PROBABILITY[turn_order]
-    if first == 0:
-        return []
-    return [(move.name, estimate_move(context, move)["ko_probability"] * first)
-            for move in context.legal_moves if move.deals_damage]
+    # Un KO n'empêche la riposte que si l'agent agit avant l'adversaire, et s'il agit vraiment.
+    act_chance = float(context.view.fighter.act_chance)
+    chances = []
+    for move in context.legal_moves:
+        first = _first_probability(context, move, turn_order)
+        if move.deals_damage and first > 0:
+            chances.append((move.name, estimate_move(context, move)["ko_probability"] * first * act_chance))
+    return chances
+
+
+def _first_probability(context: ToolsContext, move: MoveView, turn_order: str) -> float:
+    """Une priorité supérieure à toutes celles révélées par l'adversaire passe avant la vitesse."""
+    opponent_priority = max((item.priority for item in context.view.opponent_revealed_moves), default=0)
+    if move.priority > opponent_priority:
+        return 1.0
+    return _FIRST_PROBABILITY[turn_order]
 
 
 def _best(ko_chances: list[tuple[str, float]]) -> dict[str, Any] | None:

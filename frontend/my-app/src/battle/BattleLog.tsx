@@ -1,4 +1,4 @@
-import type { Battle, BattleEvent, BattleStat, EffectFailure, StatusCondition } from './types'
+import type { Battle, BattleEvent, BattleStat, StatusCondition } from './types'
 import { signedStage } from './statusLabels'
 
 const appliedStatus: Record<StatusCondition, string> = {paralysis: 'est paralysé', burn: 'est brûlé'}
@@ -14,14 +14,18 @@ function stageChange(change: number): string {
     return 'baisse'
 }
 
-function failure(reason: EffectFailure, actor: string, target: string): string {
-    switch (reason) {
+type EffectFailedEvent = Extract<BattleEvent, { type: 'effect_failed' }>
+
+function failure(event: EffectFailedEvent, actor: string, target: string): string {
+    switch (event.reason) {
         case 'already_has_status':
             return `${target} a déjà un statut : sans effet.`
         case 'immune':
             return `${target} n’est pas affecté.`
         case 'stat_limit':
-            return `Les statistiques de ${target} ne peuvent plus aller plus loin.`
+            // Les reçus enregistrés avant l'ajout de stat et stage gardent le message générique.
+            if (event.stat == null || event.stage == null) return `Les statistiques de ${target} ne peuvent plus aller plus loin.`
+            return `${statWithArticle[event.stat]} de ${target} ne peut plus ${event.stage > 0 ? 'monter' : 'baisser'}.`
         case 'consecutive_protection':
             return `${actor} ne peut pas se protéger deux tours de suite.`
     }
@@ -59,7 +63,7 @@ function describe(event: BattleEvent, battle: Battle): string {
         case 'protection_activated':
             return `${name(event.actor)} se protège.`
         case 'effect_failed':
-            return failure(event.reason, name(event.actor), name(event.target))
+            return failure(event, name(event.actor), name(event.target))
         case 'burn_damage':
             return `${name(event.fighter)} souffre de sa brûlure et perd ${event.damage} PV (${event.hp_remaining} restants).`
     }

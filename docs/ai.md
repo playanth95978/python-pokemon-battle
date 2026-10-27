@@ -66,10 +66,11 @@ décision ; la conversation distante peut continuer entre plusieurs tours du mê
 
 | Outil | Résultat |
 | --- | --- |
-| `inspect_battle` | Tour et vues visibles des deux combattants |
-| `list_legal_moves` | Slots jouables, PP, puissance, précision, catégorie et type |
+| `inspect_battle` | Tour et vues visibles des deux combattants, dont statut, crans, vitesse effective et protection du tour précédent |
+| `list_legal_moves` | Slots jouables, PP, puissance, précision, catégorie, type, priorité, cible et effets typés |
 | `evaluate_matchups` | Efficacité issue de la table métier, sans prédiction de dégâts |
 | `estimate_damage` | Dégâts minimum/maximum si touche, moyenne avec précision et probabilité de KO pour chaque emplacement d’attaque jouable |
+| `evaluate_status_moves` | Pour chaque attaque de statut jouable : cible, priorité, probabilité de toucher et, par effet, réussite ou raison d'échec prévisible (`already_has_status`, `immune`, `stat_limit`, `consecutive_protection`) |
 | `estimate_healing` | PV rendus par une potion, PV après soin et stock restant, ou raison de l'indisponibilité (KO, PV pleins, stock vide) |
 | `estimate_incoming_damage` | Risque réel : dégâts et probabilité de KO des attaques adverses déjà utilisées (PP entamés), sur les PV actuels et après une potion, et ordre d'action si les deux attaquent |
 | `select_attack` | Slot validé et commentaire facultatif de 160 caractères maximum |
@@ -104,10 +105,11 @@ outils déclarés à la création : cette restriction n'y a pas d'effet.
 
 `estimate_damage` accepte `{}` et retourne `estimates` ainsi qu'une hypothèse explicite.
 Les attaques de statut (sans puissance) n'y figurent pas, ni parmi les menaces de
-`estimate_incoming_damage` ; le secours local ne les choisit que si aucune attaque
-à dégâts n'est jouable. Leur intérêt tactique n'est pas encore évalué.
+`estimate_incoming_damage` : `evaluate_status_moves` les décrit, avec les mêmes contrôles
+d'échec que le moteur (`status_failure`, `stage_after`).
 Il utilise la même fonction pure `damage_for_roll` que le moteur : niveau, attaque/défense
-physiques ou spéciales, puissance, bonus de même type, efficacité et arrondis.
+physiques ou spéciales et leurs crans, brûlure de l'attaquant, puissance, bonus de même
+type, efficacité et arrondis.
 Les 16 tirages uniformes de 85 à 100 sont énumérés sans RNG et les dégâts sont bornés
 aux PV actuels de la cible. Les attaques sans PP sont exclues ; une immunité donne zéro.
 
@@ -115,6 +117,15 @@ aux PV actuels de la cible. Les attaques sans PP sont exclues ; une immunité do
 - `hit_probability` : précision divisée par 100 ;
 - `expected_damage` : moyenne des dégâts, échecs de précision compris ;
 - `ko_probability` : proportion des tirages provoquant le KO, multipliée par la précision.
+
+`estimate_incoming_damage` ordonne les combattants par vitesse effective (crans puis
+paralysie). Une attaque de l'agent dont la priorité dépasse toutes celles déjà révélées
+par l'adversaire passe d'abord. Un paralysé n'agit que trois fois sur quatre : les
+probabilités de KO avant riposte et les menaces adverses en tiennent compte.
+
+Le secours local paralyse ou brûle d'abord un adversaire sans statut à plus de la moitié
+de ses PV, si l'effet s'appliquerait vraiment ; sinon il garde l'heuristique de dégâts.
+Sans attaque à dégâts jouable, il choisit une attaque de statut utile, puis la première jouable.
 
 Ce calcul suppose que l'acteur peut agir sur la cible dans son état actuel : il ne
 prévoit ni le choix adverse, ni un KO de l'acteur avant son action, ni les tours suivants.

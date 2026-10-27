@@ -62,11 +62,27 @@ Ce complément explicite permet de montrer un effet électrique issu d'un vrai
 événement métier. Les instantanés des combats déjà créés restent inchangés.
 
 Les attaques sont sélectionnées parmi les apprentissages par niveau jusqu'au
-niveau 50 présents dans les CSV, avec dégâts directs uniquement (`effect_id=1`),
-au plus quatre, en privilégiant les références récentes. Ce n'est pas une
+niveau 50 présents dans les CSV, au plus quatre, en privilégiant les références
+récentes. Les attaques à dégâts n'ont que des dégâts directs (`effect_id=1`) :
+aucun effet secondaire probabiliste n'est simulé. Ce n'est pas une
 reconstitution des attaques légales d'une version sélectionnée : les filtres du
-catalogue ne modifient pas les règles du moteur. Aucun statut, talent ou effet
-secondaire supplémentaire n'est simulé.
+catalogue ne modifient pas les règles du moteur. Aucun talent n'est simulé.
+
+Un kit contient au plus une attaque de statut ; les autres emplacements restent
+des attaques à dégâts, pour qu'un combat puisse toujours se terminer. Une attaque
+de statut n'est importée que si tous ses effets sont appliqués par le moteur
+(`move_meta` et `move_meta_stat_changes`) :
+
+- paralysie ou brûlure garantie (`meta_category_id=1`, `meta_ailment_id` 1 ou 4) ;
+- crans d'attaque, de défense, d'attaque ou de défense spéciale, ou de vitesse
+  (`meta_category_id=2`, statistiques 2 à 6), sans précision ni esquive ;
+- protection (`effect_id=112` : Abri, Détection).
+
+La cible doit être le lanceur ou l'adversaire ; « tous les adversaires » désigne
+l'adversaire unique d'un duel. Une attaque visant son lanceur ne fait aucun test
+de précision. Sommeil, poison, gel, confusion, précision, esquive et effets
+combinés sont écartés. L'instantané du 27 octobre 2026 donne ainsi une attaque de
+statut à 939 espèces.
 
 Pour 214 espèces sans attaque admissible, le simulateur fournit explicitement
 Charge comme kit de repli. Le catalogue signale « Kit de combat simplifié » pour

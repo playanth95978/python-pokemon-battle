@@ -13,8 +13,18 @@ REVISION = "2bf639e5572812a67d2b94903fdcb9d095f5aeb2"
 BASE = f"https://raw.githubusercontent.com/PokeAPI/pokeapi/{REVISION}/data/v2/csv/"
 FILES = ["pokemon_species", "pokemon_species_names", "pokemon", "pokemon_stats", "pokemon_types",
          "types", "type_names", "version_groups", "versions", "version_names", "generation_names",
-         "pokedex_version_groups", "pokemon_dex_numbers", "pokemon_moves", "moves", "move_names"]
+         "pokedex_version_groups", "pokemon_dex_numbers", "pokemon_moves", "moves", "move_names",
+         "move_meta", "move_meta_stat_changes"]
 CACHE = ROOT / ".cache" / "pokeapi" / REVISION
+
+# Identifiants PokéAPI des seuls effets de statut appliqués par le moteur (docs/battle-rules.md).
+STATUS_CLASS = "1"
+META_AILMENT, META_STATS = "1", "2"
+PROTECT_EFFECT = "112"
+AILMENTS = {"1": "paralysis", "4": "burn"}
+STATS = {2: "attack", 3: "defense", 4: "special_attack", 5: "special_defense", 6: "speed"}
+# En duel, « tous les adversaires » désigne l'unique adversaire.
+TARGETS = {"7": "self", "10": "opponent", "11": "opponent"}
 
 # Première sortie d'un jeu, pas une date d'apparition individuelle de chaque espèce.
 # Sources et portée documentées dans docs/catalogue.md.
@@ -49,6 +59,34 @@ def rows(name):
 
 def localized(name, key):
     return {int(row[key]): row for row in rows(name) if row["local_language_id"] == "5"}
+
+
+def status_attack(move, meta, changes, types, names):
+    """Attaque de statut au format du catalogue, ou None si l'un de ses effets n'est pas géré."""
+    target = TARGETS.get(move["target_id"])
+    if move["damage_class_id"] != STATUS_CLASS or target is None or meta is None or int(move["type_id"]) not in types:
+        return None
+    effects = _status_effects(move, meta, changes)
+    if effects is None:
+        return None
+    return {"name": names.get(int(move["id"]), {}).get("name", move["identifier"]),
+            "type": types[int(move["type_id"])], "power": None,
+            # Une attaque visant son lanceur ne fait aucun test de précision.
+            "accuracy": None if target == "self" or not move["accuracy"] else int(move["accuracy"]),
+            "max_pp": int(move["pp"]), "category": "status", "target": target,
+            "priority": int(move["priority"]), "effects": effects}
+
+
+def _status_effects(move, meta, changes):
+    if move["effect_id"] == PROTECT_EFFECT:
+        return [{"effect_type": "protect"}] if TARGETS[move["target_id"]] == "self" and not changes else None
+    ailment = AILMENTS.get(meta["meta_ailment_id"])
+    if meta["meta_category_id"] == META_AILMENT and ailment and not changes and meta["ailment_chance"] == "0":
+        return [{"effect_type": "apply_status", "condition": ailment}]
+    if (meta["meta_category_id"] == META_STATS and changes and meta["meta_ailment_id"] == "0"
+            and meta["stat_chance"] == "0" and all(stat in STATS for stat, _ in changes)):
+        return [{"effect_type": "modify_stat", "stat": STATS[stat], "stages": change} for stat, change in changes]
+    return None
 
 
 def main():
@@ -87,24 +125,39 @@ def main():
     # N'utiliser que des attaques de dégâts directs, sans effet secondaire non implémenté.
     moves = {int(row["id"]): row for row in rows("moves") if row["power"] and row["effect_id"] == "1"
              and row["damage_class_id"] in ("2", "3") and int(row["power"]) > 0 and int(row["type_id"]) in types}
-    candidates = defaultdict(dict)
+    meta = {int(row["move_id"]): row for row in rows("move_meta")}
+    stat_changes = defaultdict(list)
+    for row in rows("move_meta_stat_changes"):
+        stat_changes[int(row["move_id"])].append((int(row["stat_id"]), int(row["change"])))
+    status_moves = {}
+    for row in rows("moves"):
+        attack = status_attack(row, meta.get(int(row["id"])), stat_changes.get(int(row["id"]), []), types, move_names)
+        if attack is not None:
+            status_moves[int(row["id"])] = attack
+    candidates, status_candidates = defaultdict(dict), defaultdict(dict)
     default_ids = set(defaults.values())
     for row in rows("pokemon_moves"):
         pid, mid = int(row["pokemon_id"]), int(row["move_id"])
-        if pid not in default_ids or mid not in moves or row["pokemon_move_method_id"] != "1" or int(row["level"]) > 50:
+        if pid not in default_ids or row["pokemon_move_method_id"] != "1" or int(row["level"]) > 50:
+            continue
+        pool = candidates if mid in moves else status_candidates if mid in status_moves else None
+        if pool is None:
             continue
         # Dernière occurrence connue d'une attaque apprise avant le niveau 50.
         score = (groups[int(row["version_group_id"])]["order"], int(row["level"]))
-        candidates[pid][mid] = max(candidates[pid].get(mid, (0, 0)), score)
+        pool[pid][mid] = max(pool[pid].get(mid, (0, 0)), score)
     species = []
     fallback_count = 0
     for row in rows("pokemon_species"):
         sid = int(row["id"])
         pid = defaults[sid]
         base = stats[pid]
+        # Au plus une attaque de statut : les autres emplacements gardent des dégâts pour finir le combat.
+        status = sorted(status_candidates[pid], key=lambda mid: (status_candidates[pid][mid], -mid), reverse=True)[:1]
         selected = sorted(candidates[pid], key=lambda mid: (candidates[pid][mid], moves[mid]["type_id"] in
                                                             [str(key) for key, value in types.items() if
-                                                             value in pokemon_types[pid]], -mid), reverse=True)[:4]
+                                                             value in pokemon_types[pid]], -mid),
+                          reverse=True)[:4 - len(status)]
         if not selected:
             selected = [33]  # Charge : repli explicite du simulateur pour les espèces sans attaque admissible.
             fallback_count += 1
@@ -112,7 +165,7 @@ def main():
                     "type": types[int(moves[mid]["type_id"])], "power": int(moves[mid]["power"]),
                     "accuracy": int(moves[mid]["accuracy"] or "100"), "max_pp": int(moves[mid]["pp"]),
                     "category": "physical" if moves[mid]["damage_class_id"] == "2" else "special"}
-                   for mid in selected]
+                   for mid in selected] + [status_moves[mid] for mid in status]
         species.append({"id": sid, "pokemon_id": pid, "key": row["identifier"], "name": names[sid]["name"],
                         "genus": names[sid]["genus"], "generation": int(row["generation_id"]),
                         "types": pokemon_types[pid], "legendary": row["is_legendary"] == "1",

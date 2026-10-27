@@ -58,7 +58,7 @@ export type BattleEvent =
     | { type: 'status_applied'; turn: number; actor: string; target: string; condition: StatusCondition }
     | { type: 'stat_changed'; turn: number; actor: string; target: string; stat: BattleStat; change: number; stage: number }
     | { type: 'protection_activated'; turn: number; actor: string }
-    | { type: 'effect_failed'; turn: number; actor: string; target: string; reason: EffectFailure }
+    | { type: 'effect_failed'; turn: number; actor: string; target: string; reason: EffectFailure; stat?: BattleStat | null; stage?: number | null }
     | { type: 'burn_damage'; turn: number; fighter: string; damage: number; hp_remaining: number }
 
 export interface TurnResponse {

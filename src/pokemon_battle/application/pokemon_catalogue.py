@@ -5,6 +5,7 @@ from functools import lru_cache
 from importlib.resources import files
 
 from pokemon_battle.domain import Attack, Category, Species, Stats
+from .effect_serialization import deserialize_effect
 from pokemon_battle.types import Type
 
 
@@ -16,7 +17,8 @@ def catalogue_data() -> dict:
 def species_definitions() -> dict[str, Species]:
     definitions = {}
     for item in catalogue_data()["species"]:
-        attacks = tuple(Attack(**{**attack, "type": Type(attack["type"]), "category": Category(attack["category"])})
+        attacks = tuple(Attack(**{**attack, "type": Type(attack["type"]), "category": Category(attack["category"]),
+                                  "effects": tuple(deserialize_effect(effect) for effect in attack.get("effects", []))})
                         for attack in item["attacks"])
         species = Species(item["name"], tuple(Type(kind) for kind in item["types"]), Stats(**item["stats"]), attacks)
         definitions[item["key"]] = species

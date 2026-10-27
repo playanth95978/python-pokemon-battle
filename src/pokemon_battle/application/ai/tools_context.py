@@ -1,10 +1,15 @@
 """Vue isolée du combat et mémoire temporaire d'une seule décision."""
 
 from dataclasses import dataclass, field
+from fractions import Fraction
 from typing import Any, Literal
 from uuid import UUID
 
-from pokemon_battle.domain import AttackAction, BattleAction, Category, Fighter, Stats, UsePotionAction, potion_unavailable_reason
+from pokemon_battle.domain import (
+    Attack, AttackAction, AttackEffect, BattleAction, Category, Fighter, Stats, StatStages, StatusCondition, Target,
+    UsePotionAction, effective_speed, potion_unavailable_reason,
+)
+from pokemon_battle.engine import FULL_PARALYSIS_CHANCE
 from pokemon_battle.types import Type
 from pokemon_battle.application.battle_repository import StoredBattle
 from pokemon_battle.application.battle_service import BattleFinishedError, InvalidMoveError, TurnConflictError
@@ -21,11 +26,27 @@ class FighterView:
     types: tuple[Type, ...]
     stats: Stats
     potions: int
+    status: StatusCondition | None = None
+    stat_stages: StatStages = StatStages()
+    # Une protection réussie au tour précédent fait échouer la suivante.
+    protected_last_turn: bool = False
+
+    @property
+    def effective_speed(self) -> int:
+        return effective_speed(self.stats.speed, self.stat_stages.speed, self.status)
+
+    @property
+    def act_chance(self) -> Fraction:
+        """Probabilité d'agir quand il le choisit : un paralysé perd un tour sur quatre."""
+        if self.status == StatusCondition.PARALYSIS:
+            return 1 - Fraction(FULL_PARALYSIS_CHANCE, 100)
+        return Fraction(1)
 
     @classmethod
     def from_fighter(cls, fighter: Fighter) -> "FighterView":
         return cls(fighter.id, fighter.species.name, fighter.level, fighter.hp,
-                   fighter.species.stats.hp, fighter.species.types, fighter.species.stats,fighter.potions)
+                   fighter.species.stats.hp, fighter.species.types, fighter.species.stats, fighter.potions,
+                   fighter.status, fighter.stat_stages, fighter.protected_last_turn)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +59,14 @@ class MoveView:
     accuracy: int | None
     pp: int
     max_pp: int
+    priority: int = 0
+    target: Target = Target.OPPONENT
+    effects: tuple[AttackEffect, ...] = ()
+
+    @classmethod
+    def from_attack(cls, slot: int, attack: Attack, pp: int) -> "MoveView":
+        return cls(slot, attack.name, attack.type, attack.category, attack.power, attack.accuracy, pp,
+                   attack.max_pp, attack.priority, attack.target, attack.effects)
 
     @property
     def deals_damage(self) -> bool:
@@ -110,11 +139,9 @@ class ToolsContext:
             raise InvalidMoveError("Le combattant IA n'appartient pas au combat")
         actor, opponent = fighters[fighter_id]
         # Les valeurs sont copiées ; aucun Fighter mutable ni choix du joueur n'entre dans le contexte.
-        moves = tuple(MoveView(index, attack.name, attack.type, attack.category, attack.power,
-                               attack.accuracy, actor.pp[index], attack.max_pp)
+        moves = tuple(MoveView.from_attack(index, attack, actor.pp[index])
                       for index, attack in enumerate(actor.species.attacks))
-        revealed = tuple(MoveView(index, attack.name, attack.type, attack.category, attack.power,
-                                  attack.accuracy, opponent.pp[index], attack.max_pp)
+        revealed = tuple(MoveView.from_attack(index, attack, opponent.pp[index])
                          for index, attack in enumerate(opponent.species.attacks) if opponent.pp[index] < attack.max_pp)
         context = cls(record.id, BattleView(battle.turn, FighterView.from_fighter(actor),
                                             FighterView.from_fighter(opponent), moves, revealed))

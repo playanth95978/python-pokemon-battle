@@ -175,7 +175,8 @@ def testUnCranBorneEstTronqueOuEchoue():
     events = play(battle, Rolls(), SWORDS_DANCE_SLOT, SWORDS_DANCE_SLOT)
     assert events[1] == StatChanged(1, "a", "a", BattleStat.ATTACK, 1, 6)
     events = play(battle, Rolls(), SWORDS_DANCE_SLOT, SWORDS_DANCE_SLOT)
-    assert events[1] == EffectFailed(2, "a", "a", "stat_limit")
+    # La statistique et le cran bloqués permettent d'afficher « ne peut plus monter ».
+    assert events[1] == EffectFailed(2, "a", "a", "stat_limit", BattleStat.ATTACK, 6)
     assert a.stat_stages.attack == 6
     assert a.species.stats.attack == 101
 

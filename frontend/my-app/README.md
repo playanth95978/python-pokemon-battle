@@ -28,6 +28,16 @@ Si le backend utilise un autre port, adapter la cible du proxy.
 
 ## Jouer
 
+L'application s'ouvre sur **Explorer**, un prototype de monde 2D jouable sans backend.
+Cliquer sur la carte, puis marcher avec les flèches, ZQSD ou WASD ; E permet de lire
+un panneau à proximité. Les boutons directionnels fonctionnent aussi au toucher.
+La mini-carte suit le joueur et les quatre lieux découverts. Les obstacles sont solides,
+le pont permet de traverser la rivière. Les rencontres et soins restent à brancher.
+La position est conservée pendant un passage dans l'onglet **Arène**, mais pas après
+rechargement. **Revenir au départ** recommence l'exploration.
+
+Pour les combats, ouvrir **Arène** (backend nécessaire), puis :
+
 1. Choisir les deux Pokémon, puis cliquer sur « Créer le combat ».
 2. Choisir une attaque pour chaque combattant, puis cliquer sur « Jouer le tour ».
 3. Consulter les PV, PP, le tour et le journal retournés par le serveur.

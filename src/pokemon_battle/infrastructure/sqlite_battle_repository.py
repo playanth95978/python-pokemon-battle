@@ -10,8 +10,8 @@ from pathlib import Path
 from uuid import UUID
 
 from pokemon_battle.application.battle_repository import StoredBattle, StoredTurn, TurnResult
-from pokemon_battle.domain import Attack, BattleStat, Category, Fighter, Species, Stats, StatusCondition, StatStages, \
-    AttackEffect, ApplyStatus, ModifyStat, Protect
+from pokemon_battle.application.effect_serialization import deserialize_effect, serialize_effect
+from pokemon_battle.domain import Attack, BattleStat, Category, Fighter, Species, Stats, StatusCondition, StatStages
 from pokemon_battle.engine import (
     Battle, AttackBlocked, AttackUsed, AttackMissed, BurnDamage, DamageDealt, EffectFailed, FailureReason,
     FullyParalyzed, KnockedOut, BattleEnded, PotionUsed, ProtectionActivated, StatChanged, StatusApplied,
@@ -38,28 +38,6 @@ def _serialize_action(action: BattleAction) -> dict:
     raise ValueError("Action de combat inconnue")
 
 
-def _serialize_effect(effect: AttackEffect) -> dict:
-    """Effet marqué par "effect_type" : asdict seul perdrait sa classe (Protect() deviendrait {})."""
-    if isinstance(effect, ApplyStatus):
-        return {"effect_type": "apply_status", "condition": effect.condition.value}
-    if isinstance(effect, ModifyStat):
-        return {"effect_type": "modify_stat", "stat": effect.stat.value, "stages": effect.stages}
-    if isinstance(effect, Protect):
-        return {"effect_type": "protect"}
-    raise ValueError("Effet d'attaque inconnu")
-
-
-def _deserialize_effect(data: dict) -> AttackEffect:
-    effect_type = data.get("effect_type")
-    if effect_type == "apply_status":
-        return ApplyStatus(StatusCondition(data["condition"]))
-    if effect_type == "modify_stat":
-        return ModifyStat(BattleStat(data["stat"]), data["stages"])
-    if effect_type == "protect":
-        return Protect()
-    raise ValueError("Effet d'attaque inconnu")
-
-
 def _battle_snapshot(battle: Battle) -> dict:
     """Instantané JSON du combat ; les effets gardent leur type pour pouvoir être relus."""
     # 1. Partir de asdict(battle).
@@ -70,7 +48,7 @@ def _battle_snapshot(battle: Battle) -> dict:
         # 3. Remplacer les effets abîmés par asdict par leur version typée.
         for i, attack in enumerate(fighter.species.attacks):
             data[key]["species"]["attacks"][i]["effects"] = [
-                _serialize_effect(effect) for effect in attack.effects
+                serialize_effect(effect) for effect in attack.effects
             ]
     # 4. Renvoyer le dictionnaire.
     return data
@@ -93,7 +71,7 @@ def _fighter(data: dict) -> Fighter:
     # Les instantanés antérieurs aux attaques de statut n'ont pas de clé "effects".
     attacks = tuple(Attack(**{**attack, "type": Type(attack["type"]),
                               "category": Category(attack["category"]),
-                              "effects": tuple(_deserialize_effect(effect)
+                              "effects": tuple(deserialize_effect(effect)
                                                for effect in attack.get("effects", []))})
                     for attack in definition["attacks"])
     species = Species(definition["name"], tuple(Type(t) for t in definition["types"]),
@@ -189,6 +167,8 @@ class _SqliteSession:
                 item["stat"] = BattleStat(item["stat"])
             if event_type == "EffectFailed":
                 item["reason"] = FailureReason(item["reason"])
+                if item.get("stat") is not None:
+                    item["stat"] = BattleStat(item["stat"])
             events.append(event_class(**item))
         result = TurnResult(_record(battle_id, data["battle"]), tuple(events))
         first_action = _deserialize_action(data["first_action"]) if "first_action" in data else AttackAction(row[1])

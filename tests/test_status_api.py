@@ -110,7 +110,11 @@ def testUnDoubleKOEstUnCombatTermineSansVainqueur(context):
      {"type": "stat_changed", "turn": 2, "actor": "a", "target": "a", "stat": "speed", "change": -1, "stage": -2}),
     (ProtectionActivated(2, "a"), {"type": "protection_activated", "turn": 2, "actor": "a"}),
     (EffectFailed(2, "a", "b", FailureReason.IMMUNE),
-     {"type": "effect_failed", "turn": 2, "actor": "a", "target": "b", "reason": "immune"}),
+     {"type": "effect_failed", "turn": 2, "actor": "a", "target": "b", "reason": "immune",
+      "stat": None, "stage": None}),
+    (EffectFailed(2, "a", "a", FailureReason.STAT_LIMIT, BattleStat.ATTACK, 6),
+     {"type": "effect_failed", "turn": 2, "actor": "a", "target": "a", "reason": "stat_limit",
+      "stat": "attack", "stage": 6}),
     (BurnDamage(2, "a", 7, 113), {"type": "burn_damage", "turn": 2, "fighter": "a", "damage": 7, "hp_remaining": 113}),
     (BattleEnded(2, None), {"type": "battle_ended", "turn": 2, "winner": None}),
 ])

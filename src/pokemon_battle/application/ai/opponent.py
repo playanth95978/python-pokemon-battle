@@ -13,7 +13,8 @@ from pokemon_battle.core.exceptions import MissingCredentials, MistralTimeout, M
 from pokemon_battle.types import effectiveness
 from .generation import Completion, Message, ToolCall
 from .tools import execute_tool, precompute_observations, selection_tool_schemas, tool_schemas
-from .tools_context import AttackDecision, ToolsContext
+from .status_evaluation import evaluate_status_moves
+from .tools_context import AttackDecision, MoveView, ToolsContext
 
 logger = logging.getLogger(__name__)
 
@@ -36,16 +37,30 @@ class LocalOpponent:
                 context.decision = AttackDecision(None, "local", action_type="potion")
                 return context.decision
             raise InvalidMoveError("Le combattant IA n'a plus d'action disponible")
-        # Heuristique stable : puissance, précision, efficacité et bonus du même type.
-        # Aucun tirage ni calcul réel de dégâts n'est effectué par cette stratégie.
-        # Une attaque de statut vaut 0 : elle n'est choisie que si rien ne fait de dégâts.
-        move = max(context.legal_moves, key=lambda move: (
-            move.power * move.hit_chance * effectiveness(move.type, context.view.opponent.types)
-            * (3 if move.type in context.view.fighter.types else 2) if move.deals_damage else 0,
-            -move.attack_slot,
-        ))
-        context.decision = AttackDecision(move.attack_slot, "local")
+        context.decision = AttackDecision(self._attack_slot(context), "local")
         return context.decision
+
+    def _attack_slot(self, context: ToolsContext) -> int:
+        status_moves = evaluate_status_moves(context)
+        opponent = context.view.opponent
+        # Statut d'abord sur un adversaire encore en forme, s'il s'appliquerait vraiment.
+        if opponent.status is None and opponent.hp * 2 > opponent.max_hp:
+            for move in status_moves:
+                if move["target"] == "opponent" and any(
+                        effect["effect_type"] == "apply_status" and effect["applies"] for effect in move["effects"]):
+                    return move["attack_slot"]
+        damaging = [move for move in context.legal_moves if move.deals_damage]
+        if damaging:
+            # Heuristique stable : puissance, précision, efficacité et bonus du même type.
+            # Aucun tirage ni calcul réel de dégâts n'est effectué par cette stratégie.
+            return max(damaging, key=lambda move: (self._damage_score(context, move), -move.attack_slot)).attack_slot
+        useful = [move["attack_slot"] for move in status_moves if move["would_have_effect"]]
+        return useful[0] if useful else context.legal_moves[0].attack_slot
+
+    @staticmethod
+    def _damage_score(context: ToolsContext, move: MoveView) -> float:
+        return (move.power * move.hit_chance * effectiveness(move.type, context.view.opponent.types)
+                * (3 if move.type in context.view.fighter.types else 2))
 
 
 class ToolCallingOpponent:
@@ -108,6 +123,9 @@ class ToolCallingOpponent:
             "estimate_incoming_damage : ordre d'action, probabilité de KO avant riposte et risque après soin. "
             "Privilégie une attaque qui termine le combat avant la riposte ; envisage une potion si elle "
             "améliore la survie. Le soin consomme le tour. Évite les attaques immunisées et les attaques sans PP. "
+            "Une attaque de statut ne fait aucun dégât : evaluate_status_moves indique si elle réussirait. "
+            "Paralyser ou brûler un adversaire en forme peut valoir mieux qu'une attaque faible ; "
+            "ne choisis jamais une attaque de statut qui échouerait. "
             "Choisis exactement une action avec select_attack (attack_slot jouable exact) ou select_potion "
             "(seulement si disponible). Toutes les lectures sont déjà calculées : aucun outil de lecture à appeler. "
             "Réponds directement par un unique appel de sélection, avec au plus une courte réplique, sans raisonnement."
@@ -121,6 +139,10 @@ class ToolCallingOpponent:
                                       "Consulte estimate_damage avant de sélectionner : il inclut les types, statistiques et arrondis du moteur. "
                                       "Consulte estimate_healing lorsque tes PV sont inférieurs au maximum et que tu disposes de potions. "
                                       "Consulte estimate_incoming_damage pour mesurer le risque de KO réel, maintenant et après une potion. "
+                                      "Consulte evaluate_status_moves avant une attaque de statut : elle ne fait aucun dégât "
+                                      "et échoue si la cible a déjà un statut, y est immunisée, si le cran est au maximum "
+                                      "ou si la protection a réussi au tour précédent. Paralyser ou brûler un adversaire "
+                                      "en forme peut valoir mieux qu'une attaque faible. "
                                       "Compare l'intérêt de te soigner avec celui d'attaquer, en tenant compte des PV actuels, "
                                       "des dégâts attendus, de la probabilité de KO adverse et du nombre de potions restantes. "
                                       "Privilégie une attaque si elle permet probablement de terminer le combat immédiatement. "

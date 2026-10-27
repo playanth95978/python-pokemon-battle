@@ -3,19 +3,24 @@
 from fractions import Fraction
 from typing import Any
 
-from pokemon_battle.damage import damage_for_roll
-from pokemon_battle.domain import Attack
+from pokemon_battle.damage import damage_for_roll, stage_stats
+from pokemon_battle.domain import Attack, StatusCondition
 from pokemon_battle.types import effectiveness
 from .tools_context import FighterView, MoveView, ToolsContext
 
 
 def damage_rolls(attacker: FighterView, defender: FighterView, move: MoveView, target_hp: int) -> list[int]:
-    """Dégâts réels des 16 tirages si l'attaque touche, bornés aux PV de la cible."""
+    """Dégâts réels des 16 tirages si l'attaque touche, bornés aux PV de la cible ; crans et brûlure compris."""
     attack = Attack(move.name, move.type, move.power, move.accuracy, move.max_pp, move.category)
     multiplier = effectiveness(move.type, defender.types)
+    offense, defense = stage_stats(move.category)
     # Énumérer les 16 tirages conserve les arrondis du moteur, sans toucher à son RNG.
     return [min(target_hp, damage_for_roll(attacker.level, attacker.stats, defender.stats, attack,
-                                           attacker.types, multiplier, roll)) for roll in range(85, 101)]
+                                           attacker.types, multiplier, roll,
+                                           attack_stage=attacker.stat_stages.of(offense),
+                                           defense_stage=defender.stat_stages.of(defense),
+                                           burned=attacker.status == StatusCondition.BURN))
+            for roll in range(85, 101)]
 
 
 def ko_probability(damages: list[int], target_hp: int, hit_chance: int) -> Fraction:
