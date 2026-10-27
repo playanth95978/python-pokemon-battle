@@ -1,5 +1,5 @@
 import type { PlayerState, Position, WorldMap } from './types'
-import { cameraPosition, TILE_COLORS } from './worldMap'
+import { BOAT_DOCK, cameraPosition, TILE_COLORS } from './worldMap'
 
 type Paint = CanvasRenderingContext2D
 function rect(ctx: Paint, color: string, x: number, y: number, w: number, h: number) {
@@ -20,9 +20,11 @@ function tree(ctx: Paint, x: number, y: number, variant: number) {
 }
 function playerSprite(ctx: Paint, player: PlayerState, x: number, y: number) {
   const feet = player.steps % 2 === 0 ? 0 : 2
-  shadow(ctx, x + 16, y + 29)
-  rect(ctx, '#344b68', x + 9, y + 21, 6, 8 - feet)
-  rect(ctx, '#344b68', x + 18, y + 21, 6, 6 + feet)
+  if (player.travelMode !== 'boat') {
+    shadow(ctx, x + 16, y + 29)
+    rect(ctx, '#344b68', x + 9, y + 21, 6, 8 - feet)
+    rect(ctx, '#344b68', x + 18, y + 21, 6, 6 + feet)
+  }
   rect(ctx, '#edf0da', x + 7, y + 13, 19, 11)
   rect(ctx, '#c65a4d', x + 10, y + 13, 13, 10)
   rect(ctx, '#f1c18c', x + 9, y + 1, 14, 13)
@@ -35,6 +37,26 @@ function playerSprite(ctx: Paint, player: PlayerState, x: number, y: number) {
     if (player.direction === 'down') rect(ctx, '#303e43', x + 20, y + 8, 2, 3)
   } else rect(ctx, '#614739', x + 9, y + 5, 14, 7)
   rect(ctx, '#819c89', x + 22, y + 14, 5, 9)
+}
+
+function boatSprite(ctx: Paint, x: number, y: number, vertical: boolean, occupied: boolean) {
+  ctx.save()
+  ctx.translate(x + 16, y + 22)
+  if (vertical) ctx.rotate(Math.PI / 2)
+  rect(ctx, '#d3ece1', -19, 3, 38, 2)
+  rect(ctx, '#3b6e8070', -18, 1, 36, 9)
+  rect(ctx, '#614632', -18, -5, 36, 10)
+  rect(ctx, '#8b5b38', -14, -8, 28, 17)
+  rect(ctx, '#bc8951', -10, -9, 20, 15)
+  rect(ctx, '#e1bc7e', -13, -8, 26, 3)
+  if (!occupied) {
+    rect(ctx, '#68492f', -7, -4, 3, 9)
+    rect(ctx, '#68492f', 6, -4, 3, 9)
+  }
+  rect(ctx, '#ddb475', -19, 8, 38, 3)
+  rect(ctx, '#f0cc8c', -20, 6, 7, 6)
+  rect(ctx, '#f0cc8c', 13, 6, 7, 6)
+  ctx.restore()
 }
 
 function pokemon(ctx: Paint, kind: 'pikachu' | 'charmander', p: Position, seconds: number, index: number, tile: number) {
@@ -125,10 +147,20 @@ export function renderWorld(ctx: Paint, map: WorldMap, player: PlayerState, widt
     rect(ctx, '#987a4d', item.x * size + 8, item.y * size + 7, 15, 2)
     rect(ctx, '#987a4d', item.x * size + 8, item.y * size + 12, 10, 2)
   }
+  const dockX = BOAT_DOCK.shore.x * size, dockY = BOAT_DOCK.shore.y * size
+  rect(ctx, '#705039', dockX, dockY + 3, size, 27)
+  for (let plank = 0; plank < 4; plank++) rect(ctx, '#c39760', dockX + 2, dockY + 4 + plank * 6, size - 4, 4)
+  rect(ctx, '#edcf94', dockX + 3, dockY, 4, 7)
+  rect(ctx, '#edcf94', dockX + 3, dockY + 25, 4, 7)
+  if (player.travelMode === 'walking') {
+    boatSprite(ctx, BOAT_DOCK.water.x * size, BOAT_DOCK.water.y * size, false, false)
+  }
   const time = reducedMotion ? 0 : seconds
   pokemon(ctx, 'pikachu', { x: 28, y: 29 }, time, 0, size)
   pokemon(ctx, 'charmander', { x: 35, y: 25 }, time, 1, size)
   playerSprite(ctx, player, player.position.x * size, player.position.y * size)
+  if (player.travelMode === 'boat') boatSprite(ctx, player.position.x * size, player.position.y * size,
+    player.direction === 'up' || player.direction === 'down', true)
   // Les cimes passent devant le personnage, les cases solides restent infranchissables.
   for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
     if (map.tiles[y * map.width + x] === 'tree') tree(ctx, x * size, y * size, (x + y) % 2)

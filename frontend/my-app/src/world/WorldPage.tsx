@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Direction, Zone } from './types'
-import { TILE_COLORS, nearbyLandmark, WORLD_MAP, zoneAt } from './worldMap'
+import { BOAT_DOCK, boatActionAtDock, TILE_COLORS, nearbyLandmark, WORLD_MAP, zoneAt } from './worldMap'
 import { useWorldMovement } from './useWorldMovement'
 import { WorldCanvas } from './WorldCanvas'
 import './world.css'
@@ -14,9 +14,11 @@ const CONTROLS: { direction: Direction; label: string; icon: string }[] = [
 ]
 
 export function WorldPage({ active }: { active: boolean }) {
-  const { player, surfaceRef, move, startMoving, stopMoving, reset } = useWorldMovement(WORLD_MAP, active)
+  const { player, surfaceRef, move, startMoving, stopMoving, reset, interactWithBoat } = useWorldMovement(WORLD_MAP, active)
   const [message, setMessage] = useState('Ton aventure commence à Clairbois. Clique sur la carte, puis suis les sentiers. Le panneau à ta droite te donnera quelques indications.')
   const landmark = nearbyLandmark(WORLD_MAP, player.position)
+  const boatAction = boatActionAtDock(player)
+  const interactionLabel = boatAction === 'board' ? 'Embarquer' : boatAction === 'disembark' ? 'Débarquer' : 'Interagir'
   const minimapPaths = useMemo(() => {
     const paths: Record<string, string> = {}
     WORLD_MAP.tiles.forEach((tile, index) => {
@@ -26,7 +28,20 @@ export function WorldPage({ active }: { active: boolean }) {
     return Object.entries(paths)
   }, [])
   function interact() {
+    if (!active) return
     stopMoving()
+    if (boatAction) {
+      interactWithBoat()
+      setMessage(boatAction === 'board'
+        ? 'À bord ! Utilise les mêmes commandes pour explorer la rivière et le lac. Pour débarquer, reviens à la case 42, 38 près du ponton et appuie sur E. Les ponts restent infranchissables en bateau.'
+        : 'Te voilà sur la rive. Le bateau reste amarré au ponton pour ta prochaine promenade.')
+      surfaceRef.current?.focus()
+      return
+    }
+    if (player.travelMode === 'boat') {
+      setMessage('Pour débarquer, rejoins l’embarcadère indiqué sur la mini-carte, case 42, 38, puis appuie sur E.')
+      return
+    }
     setMessage(landmark?.message ?? 'Approche-toi d’un panneau ou de la maison des soins pour interagir.')
   }
 
@@ -39,6 +54,7 @@ export function WorldPage({ active }: { active: boolean }) {
     <div className="world-layout">
       <section className="world-play-area" aria-label="Exploration">
         <div className="world-location"><span className="world-location-dot" />{zoneAt(player.position)}
+          {player.travelMode === 'boat' && <span className="world-boat-label">En bateau</span>}
           <span className="world-coordinates">Case {player.position.x}, {player.position.y}</span></div>
         <div className="world-canvas-wrap">
           <WorldCanvas map={WORLD_MAP} player={player} active={active} surfaceRef={surfaceRef} onInteract={interact} />
@@ -51,8 +67,8 @@ export function WorldPage({ active }: { active: boolean }) {
           </div>
         </div>
         <div className="world-interaction">
-          <span>{landmark ? landmark.name : 'Le chemin continue'}</span>
-          <button type="button" onClick={interact} aria-label="Interagir avec les alentours"><kbd>E</kbd> Interagir</button>
+          <span>{boatAction ? 'Embarcadère du lac' : player.travelMode === 'boat' ? 'Navigation sur le lac' : landmark ? landmark.name : 'Le chemin continue'}</span>
+          <button type="button" onClick={interact} aria-label={boatAction ? interactionLabel : 'Interagir avec les alentours'}><kbd>E</kbd> {interactionLabel}</button>
         </div>
         <p role="status" className="world-dialogue">{message}</p>
       </section>
@@ -61,8 +77,10 @@ export function WorldPage({ active }: { active: boolean }) {
           <h2>Ta carte</h2>
           <svg viewBox="0 0 64 64" className="world-minimap" role="img" aria-label={`Position sur la carte : ${zoneAt(player.position)}`}>
             {minimapPaths.map(([tile, path]) => <path key={tile} d={path} fill={TILE_COLORS[tile as keyof typeof TILE_COLORS]} />)}
+            <rect x={BOAT_DOCK.shore.x - .5} y={BOAT_DOCK.shore.y - .5} width="2" height="2" fill="#6d422b" stroke="#fff1ca" strokeWidth=".5" />
             <circle cx={player.position.x + .5} cy={player.position.y + .5} r="1.7" fill="#fff7dc" stroke="#9f3d45" strokeWidth=".9" />
           </svg>
+          <p className="world-dock-hint">Le carré brun indique l’embarcadère : rive en 41, 38.</p>
           <div className="world-progress"><strong>{player.visited.length} / 4</strong><span>lieux découverts</span></div>
           <ul className="world-zones">{ZONES.map((zone) => <li key={zone} className={player.visited.includes(zone) ? 'visited' : ''}>
             <span aria-hidden="true">{player.visited.includes(zone) ? '✓' : '○'}</span> {zone}
@@ -70,7 +88,7 @@ export function WorldPage({ active }: { active: boolean }) {
         </section>
         <section className="world-controls">
           <h2>Prends la route</h2>
-          <p id="world-controls-help">Clique sur la carte. Déplace-toi avec les flèches, ZQSD ou WASD. Appuie sur E près d’un panneau.</p>
+          <p id="world-controls-help">Clique sur la carte. Déplace-toi avec les flèches, ZQSD ou WASD. Appuie sur E près d’un panneau ou à l’embarcadère pour monter et descendre du bateau.</p>
           <button type="button" className="world-reset" onClick={() => {
             reset(); setMessage('Te voilà de retour à Clairbois. Une nouvelle promenade ?')
           }}>Revenir au départ</button>

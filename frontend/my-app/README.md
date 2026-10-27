@@ -36,6 +36,11 @@ le pont permet de traverser la rivière. Les rencontres et soins restent à bran
 La position est conservée pendant un passage dans l'onglet **Arène**, mais pas après
 rechargement. **Revenir au départ** recommence l'exploration.
 
+Pour naviguer, rejoindre le ponton marqué sur la mini-carte, case **41, 38**, puis
+appuyer sur **E** ou **Embarquer**. Le bateau ne se déplace que sur l'eau et ne passe
+pas sous les ponts. Revenir en **42, 38** et utiliser **E** ou **Débarquer** pour
+retourner sur la rive. Le bateau est visible au ponton quand le personnage est à pied.
+
 Pour les combats, ouvrir **Arène** (backend nécessaire), puis :
 
 1. Choisir les deux Pokémon, puis cliquer sur « Créer le combat ».

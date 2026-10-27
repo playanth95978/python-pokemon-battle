@@ -240,6 +240,14 @@ donner le focus, puis utiliser les flèches, ZQSD ou WASD. Maintenir une directi
 pour marcher ; les arbres, bâtiments et plans d'eau bloquent le passage.
 Les boutons directionnels permettent aussi de jouer sur écran tactile.
 
+Un bateau est amarré au ponton indiqué par un carré brun sur la mini-carte.
+Rejoindre la rive en **41, 38**, puis appuyer sur **E** ou **Embarquer** : le personnage
+monte dans le bateau en **42, 38**. Les mêmes commandes permettent de naviguer sur
+la rivière et le lac, uniquement sur l'eau ; les rives et les ponts bloquent le bateau.
+Pour débarquer, revenir en **42, 38** et utiliser **E** ou **Débarquer**.
+Le bateau reste au ponton une fois à pied. Le mode de transport est conservé pendant
+un passage dans l'arène ; **Revenir au départ** remet le personnage à pied au village.
+
 La caméra suit le personnage. La mini-carte indique sa position ; les quatre lieux
 se cochent lors de leur découverte. **E** ou **Interagir** permet de lire les panneaux
 proches. **Revenir au départ** réinitialise l'exploration. L'onglet **Arène** donne

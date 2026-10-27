@@ -1,6 +1,10 @@
-import type { Direction, Position, TileType, WorldMap, Zone } from './types'
+import type { Direction, PlayerState, Position, TileType, TravelMode, WorldMap, Zone } from './types'
 
 export const WORLD_SPAWN: Position = { x: 18, y: 36 }
+export const BOAT_DOCK = {
+  shore: { x: 41, y: 38 },
+  water: { x: 42, y: 38 },
+}
 export const TILE_COLORS: Record<TileType, string> = {
   grass: '#8ebc69', path: '#dec68b', tree: '#285c47', water: '#68b6c6', bridge: '#af794f', wall: '#62845a',
 }
@@ -37,7 +41,8 @@ function createMap(): WorldMap {
       { x: 20, y: 36, name: 'Panneau de Clairbois', message: 'Bienvenue à Clairbois ! Au nord, le bois des murmures. À l’est, traverse le pont pour rejoindre la rive.' },
       { x: 25, y: 32, name: 'Maison des soins', message: 'La maison des soins est encore fermée. Les soins et les rencontres seront reliés aux combats dans une prochaine étape.' },
       { x: 18, y: 15, name: 'Entrée du bois', message: 'Le bois des murmures. Suis le sentier : les arbres sont trop denses pour passer au travers.' },
-      { x: 40, y: 36, name: 'Passerelle du lac', message: 'Le pont est le seul passage sur la rivière. Le lac azur se trouve au sud, sur la rive est.' },
+      { x: 40, y: 36, name: 'Passerelle du lac', message: 'Le pont permet de traverser la rivière à pied. Un bateau t’attend au petit ponton juste au sud, sur la rive ouest.' },
+      { x: 40, y: 38, name: 'Embarcadère', message: 'Le bateau t’attend à droite du panneau, sur la case 41, 38. Appuie sur E pour embarquer. Reviens à cette même rive pour débarquer. Les ponts sont trop bas pour le bateau.' },
       { x: 50, y: 54, name: 'Rive du lac azur', message: 'Tu as trouvé le lac azur. Un bon endroit pour une future rencontre avec un Pokémon Eau.' },
     ],
   }
@@ -51,11 +56,35 @@ export function tileAt(map: WorldMap, position: Position): TileType | null {
   return map.tiles[position.y * map.width + position.x] ?? null
 }
 
-export function nextPosition(map: WorldMap, position: Position, direction: Direction): Position {
+export function nextPosition(
+  map: WorldMap,
+  position: Position,
+  direction: Direction,
+  mode: TravelMode = 'walking',
+): Position {
   const delta = DELTAS[direction]
-  const next = { x: position.x + delta.x, y: position.y + delta.y }
-  const tile = tileAt(map, next)
-  return tile === 'grass' || tile === 'path' || tile === 'bridge' ? next : position
+  const next = {
+    x: position.x + delta.x,
+    y: position.y + delta.y,
+  }
+
+  return canEnter(tileAt(map, next), mode) ? next : position
+}
+
+export function boatActionAtDock(player: Pick<PlayerState, 'position' | 'travelMode'>): 'board' | 'disembark' | null {
+  const departure = player.travelMode === 'walking' ? BOAT_DOCK.shore : BOAT_DOCK.water
+  if (player.position.x !== departure.x || player.position.y !== departure.y) return null
+  return player.travelMode === 'walking' ? 'board' : 'disembark'
+}
+
+export function toggleBoatAtDock(map: WorldMap, player: PlayerState): PlayerState {
+  const action = boatActionAtDock(player)
+  if (!action) return player
+  const travelMode = action === 'board' ? 'boat' : 'walking'
+  const position = action === 'board' ? BOAT_DOCK.water : BOAT_DOCK.shore
+  // Une évolution de la carte ne doit pas permettre d'embarquer dans un obstacle.
+  if (!canEnter(tileAt(map, position), travelMode)) return player
+  return { ...player, position: { ...position }, travelMode, direction: action === 'board' ? 'right' : 'left' }
 }
 
 export function zoneAt(position: Position): Zone {
@@ -74,4 +103,15 @@ export function cameraPosition(map: WorldMap, player: Position, width: number, h
     x: Math.max(0, Math.min(map.width * map.tileSize - width, (player.x + .5) * map.tileSize - width / 2)),
     y: Math.max(0, Math.min(map.height * map.tileSize - height, (player.y + .5) * map.tileSize - height / 2)),
   }
+}
+
+
+function canEnter(tile: TileType | null, mode: TravelMode): boolean {
+  if (mode === 'boat') {
+    return tile === 'water'
+  }
+
+  return tile === 'grass'
+    || tile === 'path'
+    || tile === 'bridge'
 }
