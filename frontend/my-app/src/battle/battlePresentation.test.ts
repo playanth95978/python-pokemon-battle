@@ -57,3 +57,34 @@ it('supporte les anciens reçus sans attack_slot et les échecs sans dégâts', 
   expect(before.first.hp).toBe(120)
   expect(before.second.attacks[0].pp).toBe(35)
 })
+
+it('rembobine statut, crans et brûlure puis n’annonce le match nul qu’à la fin', () => {
+  const drawEvents: BattleEvent[] = [
+    {type: 'attack_used', turn: 1, actor: 'first', target: 'second', attack: 'Cage-Éclair', pp_remaining: 19, attack_slot: 0},
+    {type: 'status_applied', turn: 1, actor: 'first', target: 'second', condition: 'paralysis'},
+    {type: 'attack_used', turn: 1, actor: 'second', target: 'second', attack: 'Danse Lames', pp_remaining: 19, attack_slot: 1},
+    {type: 'stat_changed', turn: 1, actor: 'second', target: 'second', stat: 'attack', change: 2, stage: 2},
+    {type: 'burn_damage', turn: 1, fighter: 'first', damage: 7, hp_remaining: 0},
+    {type: 'knocked_out', turn: 1, fighter: 'first'},
+    {type: 'burn_damage', turn: 1, fighter: 'second', damage: 7, hp_remaining: 0},
+    {type: 'knocked_out', turn: 1, fighter: 'second'},
+    {type: 'battle_ended', turn: 1, winner: null},
+  ]
+  const server = {...initialBattle, turn: 1, winner: null, is_over: true,
+    first: {...initialBattle.first, hp: 0, status: 'burn' as const},
+    second: {...initialBattle.second, hp: 0, status: 'paralysis' as const,
+      stat_stages: {...initialBattle.second.stat_stages, attack: 2}}}
+  const before = battlePresentation(server, drawEvents, 0)
+  expect(before.second.status).toBeNull()
+  expect(before.second.stat_stages.attack).toBe(0)
+  expect(before.first).toMatchObject({hp: 7, status: 'burn'})
+  expect(before.is_over).toBe(false)
+  const afterStatus = battlePresentation(server, drawEvents, 2)
+  expect(afterStatus.second.status).toBe('paralysis')
+  expect(afterStatus.second.stat_stages.attack).toBe(0)
+  expect(battlePresentation(server, drawEvents, 4).second.stat_stages.attack).toBe(2)
+  expect(battlePresentation(server, drawEvents, 5).first.hp).toBe(0)
+  expect(battlePresentation(server, drawEvents, 8).is_over).toBe(false)
+  expect(battlePresentation(server, drawEvents, 9)).toBe(server)
+  expect(server.second.stat_stages.attack).toBe(2)
+})

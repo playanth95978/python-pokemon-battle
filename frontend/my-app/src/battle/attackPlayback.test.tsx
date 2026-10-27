@@ -75,3 +75,19 @@ it('ignore les animations avec mouvements réduits et ne rejoue pas l’historiq
   rerender({ enabled: true })
   expect(result.current.active).toBeNull()
 })
+
+it('anime les attaques de statut et les blocages, mais pas une attaque sur soi-même', () => {
+  const statusEvents: BattleEvent[] = [
+    {type: 'attack_used', turn: 1, actor: 'a', target: 'b', attack: 'Cage-Éclair', pp_remaining: 19, attack_type: 'electric', attack_slot: 0},
+    {type: 'status_applied', turn: 1, actor: 'a', target: 'b', condition: 'paralysis'},
+    {type: 'attack_used', turn: 1, actor: 'b', target: 'b', attack: 'Abri', pp_remaining: 9, attack_type: 'normal', attack_slot: 1},
+    {type: 'protection_activated', turn: 1, actor: 'b'},
+    {type: 'attack_used', turn: 2, actor: 'a', target: 'b', attack: 'Charge', pp_remaining: 34, attack_type: 'normal', attack_slot: 1},
+    {type: 'attack_blocked', turn: 2, actor: 'a', target: 'b'},
+    {type: 'attack_used', turn: 2, actor: 'a', target: 'b', attack: 'Cage-Éclair', pp_remaining: 18, attack_type: 'electric', attack_slot: 0},
+    {type: 'effect_failed', turn: 2, actor: 'a', target: 'b', reason: 'already_has_status'},
+  ]
+  expect(attackClips(statusEvents).map((clip) => [clip.name, clip.kind, clip.outcome])).toEqual([
+    ['Cage-Éclair', 'electric', 'status'], ['Charge', 'charge', 'blocked'], ['Cage-Éclair', 'electric', 'immune'],
+  ])
+})

@@ -145,7 +145,7 @@ describe('useBattle', () => {
     })
 
     it('refuse un tour après la victoire et annule une requête au démontage', async () => {
-        vi.mocked(battleApi.create).mockResolvedValue({...initialBattle, winner: 'first'})
+        vi.mocked(battleApi.create).mockResolvedValue({...initialBattle, winner: 'first', is_over: true})
         const {result, unmount} = renderHook(() => useBattle())
         await act(async () => result.current.createBattle(choices))
         await act(async () => result.current.playTurn(moves))

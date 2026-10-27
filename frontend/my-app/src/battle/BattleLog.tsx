@@ -1,4 +1,31 @@
-import type { Battle, BattleEvent } from './types'
+import type { Battle, BattleEvent, BattleStat, EffectFailure, StatusCondition } from './types'
+import { signedStage } from './statusLabels'
+
+const appliedStatus: Record<StatusCondition, string> = {paralysis: 'est paralysé', burn: 'est brûlé'}
+const statWithArticle: Record<BattleStat, string> = {
+    attack: 'L’attaque', defense: 'La défense', special_attack: 'L’attaque spéciale',
+    special_defense: 'La défense spéciale', speed: 'La vitesse',
+}
+
+function stageChange(change: number): string {
+    if (change >= 2) return 'augmente fortement'
+    if (change > 0) return 'augmente'
+    if (change <= -2) return 'baisse fortement'
+    return 'baisse'
+}
+
+function failure(reason: EffectFailure, actor: string, target: string): string {
+    switch (reason) {
+        case 'already_has_status':
+            return `${target} a déjà un statut : sans effet.`
+        case 'immune':
+            return `${target} n’est pas affecté.`
+        case 'stat_limit':
+            return `Les statistiques de ${target} ne peuvent plus aller plus loin.`
+        case 'consecutive_protection':
+            return `${actor} ne peut pas se protéger deux tours de suite.`
+    }
+}
 
 function describe(event: BattleEvent, battle: Battle): string {
     const name = (id: string) => id === battle.first.id
@@ -19,7 +46,22 @@ function describe(event: BattleEvent, battle: Battle): string {
         case 'knocked_out':
             return `${name(event.fighter)} est K.O.`
         case 'battle_ended':
+            if (event.winner === null) return 'Match nul : les deux combattants sont K.O.'
             return `${name(event.winner)} remporte le combat.`
+        case 'fully_paralyzed':
+            return `${name(event.actor)} est paralysé et ne peut pas agir.`
+        case 'attack_blocked':
+            return `${name(event.target)} bloque l’attaque.`
+        case 'status_applied':
+            return `${name(event.target)} ${appliedStatus[event.condition]}.`
+        case 'stat_changed':
+            return `${statWithArticle[event.stat]} de ${name(event.target)} ${stageChange(event.change)} (cran ${signedStage(event.stage)}).`
+        case 'protection_activated':
+            return `${name(event.actor)} se protège.`
+        case 'effect_failed':
+            return failure(event.reason, name(event.actor), name(event.target))
+        case 'burn_damage':
+            return `${name(event.fighter)} souffre de sa brûlure et perd ${event.damage} PV (${event.hp_remaining} restants).`
     }
 }
 

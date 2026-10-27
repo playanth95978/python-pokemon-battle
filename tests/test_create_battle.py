@@ -25,13 +25,20 @@ def testLePostCreeUnCombatPersistant(database):
     data = response.json()
     assert data["turn"] == 0
     assert data["winner"] is None
+    assert data["is_over"] is False
     assert data["first"]["species"] == "Bulbizarre"
     assert data["first"]["hp"] == data["first"]["max_hp"] == 120
     assert data["second"]["hp"] == 114
     assert data["first"]["attacks"] == [
-        {"attack_slot": 0, "name": "Charge", "pp": 35, "max_pp": 35},
-        {"attack_slot": 1, "name": "Fouet Lianes", "pp": 25, "max_pp": 25},
+        {"attack_slot": 0, "name": "Charge", "pp": 35, "max_pp": 35,
+         "category": "physical", "priority": 0, "target": "opponent"},
+        {"attack_slot": 1, "name": "Fouet Lianes", "pp": 25, "max_pp": 25,
+         "category": "physical", "priority": 0, "target": "opponent"},
     ]
+    assert data["first"]["status"] is None
+    assert data["first"]["stat_stages"] == {
+        "attack": 0, "defense": 0, "special_attack": 0, "special_defense": 0, "speed": 0,
+    }
     record = SqliteBattleRepository(database).get(UUID(data["id"]))
     assert record is not None
     assert record.battle.first.id == data["first"]["id"]

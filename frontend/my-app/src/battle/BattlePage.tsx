@@ -18,6 +18,12 @@ const species = [{id: 'pikachu', name: 'Pikachu'}, {id: 'bulbasaur', name: 'Bulb
     name: 'Carapuce'
 }]
 
+function battleStatus(battle: Battle, winnerSpecies: string | undefined): string {
+    if (winnerSpecies) return `Victoire de ${winnerSpecies}`
+    if (battle.is_over) return 'Match nul'
+    return `Tour ${battle.turn}`
+}
+
 function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: {
     battle: Battle;
     events: BattleEvent[];
@@ -39,7 +45,7 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
     const {active, isPlaying, reducedMotion, revealedCount, impact} = useAttackPlayback(events, animations)
     const audio = useBattleAudio(active)
     const displayed = battlePresentation(battle, events, revealedCount)
-    const finished = displayed.winner !== null
+    const finished = displayed.is_over
     const blocked = busy || needsSync || isPlaying
     const potionAvailable = (fighter: Battle['first']) => fighter.potions > 0 && fighter.hp > 0 && fighter.hp < fighter.max_hp
     const firstValid = firstPotion ? potionAvailable(battle.first) : battle.first.attacks.some((attack) => attack.attack_slot === firstMove && attack.pp > 0)
@@ -54,7 +60,7 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
                 <label className="motion-toggle"><input type="checkbox" checked={animations}
                                                         onChange={(event) => setAnimations(event.target.checked)}/> Animations
                     d’attaque</label>
-                <p className="pill" role="status">{winner ? `Victoire de ${winner.species}` : `Tour ${battle.turn}`}</p>
+                <p className="pill" role="status">{battleStatus(displayed, winner?.species)}</p>
             </div>
             {audio.error && <p role="status" className="muted">{audio.error}</p>}
             <BattleArena battle={displayed} firstArtwork={firstArtwork} secondArtwork={secondArtwork} active={active} impact={impact} motion={animations && !reducedMotion}/>
@@ -62,12 +68,12 @@ function BattleSession({battle, events, busy, needsSync, playTurn, playAiTurn}: 
         <section className="card battle-commands" aria-labelledby="attacks-heading">
             <h2 id="attacks-heading">{finished ? 'Combat terminé' : 'Choisis les actions'}</h2>
             {finished ?
-                <p className="muted">{winner?.species} remporte le duel. Lance un nouveau combat pour rejouer.</p> : <>
+                <p className="muted">{winner ? `${winner.species} remporte le duel.` : 'Match nul : les deux combattants sont K.O.'} Lance un nouveau combat pour rejouer.</p> : <>
                     <label className="motion-toggle"><input type="checkbox" checked={aiOpponent}
                         disabled={blocked || battle.turn > 0} onChange={(event) => setAiOpponent(event.target.checked)}/>
                         Adversaire IA Mistral</label>
                     <p className="muted text-sm mb-4">{aiOpponent ? 'Choisis une attaque ou une potion. L’IA choisit sans connaître ton action.' : 'Une attaque ou une potion par combattant, puis le serveur résout le tour.'}</p>
-                    <p className="muted text-sm mb-4">Les potions passent avant les attaques. Entre deux attaques, le Pokémon le plus rapide agit en premier ; à vitesse égale, le hasard décide.</p>
+                    <p className="muted text-sm mb-4">Les potions passent avant les attaques. Entre deux attaques, la priorité passe d’abord, puis la vitesse (modifiée par les crans et la paralysie) ; à égalité, le hasard décide.</p>
                     <div className="grid gap-5">
                         <AttackPanel fighter={displayed.first} label="Attaque 1" selected={firstMove} disabled={blocked}
                                      onSelect={(attackSlot) => {setFirstMove(attackSlot); setFirstPotion(false)}}

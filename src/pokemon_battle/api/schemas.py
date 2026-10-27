@@ -7,9 +7,15 @@ from typing import Annotated, Literal
 
 from pokemon_battle.application.battle_repository import StoredBattle
 from pokemon_battle.application.battle_service import TurnResult
-from pokemon_battle.domain import Fighter, AttackAction, UsePotionAction
+from pokemon_battle.domain import (
+    AttackAction, BattleStat, Category, Fighter, StatusCondition, Target, UsePotionAction,
+)
 from pokemon_battle.types import Type
-from pokemon_battle.engine import AttackUsed, AttackMissed, DamageDealt, KnockedOut, BattleEnded, DomainEvent, PotionUsed
+from pokemon_battle.engine import (
+    AttackBlocked, AttackMissed, AttackUsed, BattleEnded, BurnDamage, DamageDealt, DomainEvent,
+    EffectFailed, FailureReason, FullyParalyzed, KnockedOut, PotionUsed, ProtectionActivated,
+    StatChanged, StatusApplied,
+)
 
 
 class CreateBattleRequest(BaseModel):
@@ -75,6 +81,18 @@ class AttackResponse(BaseModel):
     name: str
     pp: int
     max_pp: int
+    # Descriptifs seulement : puissance et précision restent côté serveur.
+    category: Category = Category.PHYSICAL
+    priority: int = 0
+    target: Target = Target.OPPONENT
+
+
+class StatStagesResponse(BaseModel):
+    attack: int = 0
+    defense: int = 0
+    special_attack: int = 0
+    special_defense: int = 0
+    speed: int = 0
 
 
 class FighterResponse(BaseModel):
@@ -85,14 +103,19 @@ class FighterResponse(BaseModel):
     max_hp: int
     potions: int
     attacks: list[AttackResponse]
+    status: StatusCondition | None = None
+    stat_stages: StatStagesResponse = Field(default_factory=StatStagesResponse)
 
     @classmethod
     def from_fighter(cls, fighter: Fighter) -> "FighterResponse":
         return cls(id=fighter.id, species=fighter.species.name, level=fighter.level,
                    hp=fighter.hp, max_hp=fighter.species.stats.hp, potions=fighter.potions,
                    attacks=[AttackResponse(attack_slot=i, name=attack.name, pp=fighter.pp[i],
-                                           max_pp=attack.max_pp)
-                            for i, attack in enumerate(fighter.species.attacks)])
+                                           max_pp=attack.max_pp, category=attack.category,
+                                           priority=attack.priority, target=attack.target)
+                            for i, attack in enumerate(fighter.species.attacks)],
+                   status=fighter.status,
+                   stat_stages=StatStagesResponse(**asdict(fighter.stat_stages)))
 
 
 class BattleResponse(BaseModel):
@@ -100,14 +123,16 @@ class BattleResponse(BaseModel):
     turn: int
     first: FighterResponse
     second: FighterResponse
+    # winner à null ne suffit pas : un double KO termine le combat sans vainqueur.
     winner: str | None
+    is_over: bool
 
     @classmethod
     def from_record(cls, record: StoredBattle) -> "BattleResponse":
         return cls(id=record.id, turn=record.battle.turn,
                    first=FighterResponse.from_fighter(record.battle.first),
                    second=FighterResponse.from_fighter(record.battle.second),
-                   winner=record.battle.winner)
+                   winner=record.battle.winner, is_over=record.battle.is_over)
 
 
 class AttackUsedResponse(BaseModel):
@@ -147,7 +172,61 @@ class KnockedOutResponse(BaseModel):
 class BattleEndedResponse(BaseModel):
     type: Literal["battle_ended"] = "battle_ended"
     turn: int
-    winner: str
+    # None : match nul après un double KO.
+    winner: str | None
+
+
+class FullyParalyzedResponse(BaseModel):
+    type: Literal["fully_paralyzed"] = "fully_paralyzed"
+    turn: int
+    actor: str
+
+
+class AttackBlockedResponse(BaseModel):
+    type: Literal["attack_blocked"] = "attack_blocked"
+    turn: int
+    actor: str
+    target: str
+
+
+class StatusAppliedResponse(BaseModel):
+    type: Literal["status_applied"] = "status_applied"
+    turn: int
+    actor: str
+    target: str
+    condition: StatusCondition
+
+
+class StatChangedResponse(BaseModel):
+    type: Literal["stat_changed"] = "stat_changed"
+    turn: int
+    actor: str
+    target: str
+    stat: BattleStat
+    change: int
+    stage: int
+
+
+class ProtectionActivatedResponse(BaseModel):
+    type: Literal["protection_activated"] = "protection_activated"
+    turn: int
+    actor: str
+
+
+class EffectFailedResponse(BaseModel):
+    type: Literal["effect_failed"] = "effect_failed"
+    turn: int
+    actor: str
+    target: str
+    reason: FailureReason
+
+
+class BurnDamageResponse(BaseModel):
+    type: Literal["burn_damage"] = "burn_damage"
+    turn: int
+    fighter: str
+    damage: int
+    hp_remaining: int
 
 
 class PotionUsedResponse(BaseModel):
@@ -160,7 +239,9 @@ class PotionUsedResponse(BaseModel):
 
 
 EventResponse = Annotated[
-    AttackUsedResponse | AttackMissedResponse | DamageDealtResponse | KnockedOutResponse | BattleEndedResponse | PotionUsedResponse,
+    AttackUsedResponse | AttackMissedResponse | DamageDealtResponse | KnockedOutResponse | BattleEndedResponse
+    | PotionUsedResponse | FullyParalyzedResponse | AttackBlockedResponse | StatusAppliedResponse
+    | StatChangedResponse | ProtectionActivatedResponse | EffectFailedResponse | BurnDamageResponse,
     Field(discriminator="type"),
 ]
 
@@ -176,6 +257,13 @@ def event_response(event: DomainEvent) -> EventResponse:
         KnockedOut: KnockedOutResponse,
         BattleEnded: BattleEndedResponse,
         PotionUsed: PotionUsedResponse,
+        FullyParalyzed: FullyParalyzedResponse,
+        AttackBlocked: AttackBlockedResponse,
+        StatusApplied: StatusAppliedResponse,
+        StatChanged: StatChangedResponse,
+        ProtectionActivated: ProtectionActivatedResponse,
+        EffectFailed: EffectFailedResponse,
+        BurnDamage: BurnDamageResponse,
     }
     return models[type(event)](**data)
 

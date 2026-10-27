@@ -1,4 +1,4 @@
-import type { Fighter } from './types'
+import type { Attack, Fighter } from './types'
 import { effectKind } from './attackPlayback'
 
 interface Props {
@@ -13,6 +13,13 @@ interface Props {
 
 const icons = {fire: '🔥', water: '💧', vine: '🌿', charge: '✦', electric: '⚡'}
 
+/** Indications utiles au choix ; la puissance reste côté serveur. */
+function attackTags(attack: Attack): string {
+    const tags = attack.category === 'status' ? ['Statut'] : []
+    if (attack.priority !== 0) tags.push(`Priorité ${attack.priority > 0 ? '+' : ''}${attack.priority}`)
+    return tags.map((tag) => `${tag} · `).join('')
+}
+
 export function AttackPanel({fighter, label, selected, disabled, onSelect, potionSelected = false, onPotion}: Props) {
     return <fieldset disabled={disabled} className="attack-panel">
         <legend>{label} : {fighter.species}</legend>
@@ -22,7 +29,7 @@ export function AttackPanel({fighter, label, selected, disabled, onSelect, potio
                 <input type="radio" name={`attack-${fighter.id}`} value={attack.attack_slot} checked={selected === attack.attack_slot}
                        disabled={attack.pp === 0} onChange={() => onSelect(attack.attack_slot)}/>
                 <span><span aria-hidden="true">{icons[effectKind(attack.name)]} </span>{attack.name}
-                    <small>{attack.pp} / {attack.max_pp} PP</small></span>
+                    <small>{attackTags(attack)}{attack.pp} / {attack.max_pp} PP</small></span>
             </label>)}
         </div>
         {onPotion && <button type="button" className="potion-button" aria-pressed={potionSelected}

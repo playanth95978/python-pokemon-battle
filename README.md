@@ -131,7 +131,10 @@ SQLite utilise uniquement la bibliothèque standard Python.
 
 Le catalogue de démonstration propose `bulbizarre`, `salameche` et `carapuce`.
 La réponse **201** contient l'UUID, le tour initial (0), les deux combattants avec
-leurs PV et PP, et `winner: null`. Les identités des combattants sont distinctes,
+leurs PV et PP, et `winner: null` avec `is_over: false`. Chaque combattant expose
+aussi `status` (`paralysis`, `burn` ou `null`) et `stat_stages` (crans de -6 à +6) ;
+chaque attaque, sa `category`, sa `priority` et sa `target` (`opponent` ou `self`).
+Un match nul après un double KO donne `winner: null` et `is_over: true`. Les identités des combattants sont distinctes,
 y compris pour deux exemplaires de la même espèce. Une espèce inconnue donne
 **400**, un corps invalide **422** ; aucune écriture n'a lieu dans ces cas.
 
@@ -180,8 +183,12 @@ Une réponse répétée contient l'état du tour initial : un GET donne l'état 
 
 La réponse **200** contient `battle` (même structure que le GET) et `events` dans
 l'ordre d'exécution. Chaque événement porte `type` : `attack_used`, `attack_missed`,
-`damage_dealt`, `knocked_out` ou `battle_ended`. Le multiplicateur `effectiveness`
-des dégâts est un nombre JSON (0, 0.25, 0.5, 1, 2 ou 4).
+`damage_dealt`, `knocked_out`, `battle_ended`, `potion_used`, ou l'un des événements
+de statut décrits dans [docs/battle-rules.md](docs/battle-rules.md) : `fully_paralyzed`,
+`attack_blocked`, `status_applied`, `stat_changed`, `protection_activated`,
+`effect_failed` (avec `reason`) et `burn_damage`. `battle_ended.winner` vaut `null`
+pour un match nul. Le multiplicateur `effectiveness` des dégâts est un nombre JSON
+(0, 0.25, 0.5, 1, 2 ou 4).
 
 `attack_used` fournit aussi `attack_type` et `attack_slot` pour identifier le type
 élémentaire et le choix d'attaque sans dépendre du libellé traduit. Ces champs sont

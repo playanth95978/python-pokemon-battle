@@ -1,9 +1,20 @@
+export type AttackCategory = 'physical' | 'special' | 'status'
+export type AttackTarget = 'opponent' | 'self'
+export type StatusCondition = 'paralysis' | 'burn'
+export type BattleStat = 'attack' | 'defense' | 'special_attack' | 'special_defense' | 'speed'
+export type EffectFailure = 'already_has_status' | 'immune' | 'stat_limit' | 'consecutive_protection'
+
 export interface Attack {
     attack_slot: number;
     name: string;
     pp: number;
     max_pp: number
+    category: AttackCategory
+    priority: number
+    target: AttackTarget
 }
+
+export type StatStages = Record<BattleStat, number>
 
 export interface Fighter {
     id: string
@@ -13,6 +24,8 @@ export interface Fighter {
     max_hp: number
     potions: number
     attacks: Attack[]
+    status: StatusCondition | null
+    stat_stages: StatStages
 }
 
 export interface Battle {
@@ -20,7 +33,9 @@ export interface Battle {
     turn: number
     first: Fighter
     second: Fighter
+    /** null pendant le combat, et aussi après un match nul : se fier à is_over. */
     winner: string | null
+    is_over: boolean
 }
 
 export type BattleEvent =
@@ -37,7 +52,14 @@ export type BattleEvent =
     effectiveness: number
 }
     | { type: 'knocked_out'; turn: number; fighter: string }
-    | { type: 'battle_ended'; turn: number; winner: string }
+    | { type: 'battle_ended'; turn: number; winner: string | null }
+    | { type: 'fully_paralyzed'; turn: number; actor: string }
+    | { type: 'attack_blocked'; turn: number; actor: string; target: string }
+    | { type: 'status_applied'; turn: number; actor: string; target: string; condition: StatusCondition }
+    | { type: 'stat_changed'; turn: number; actor: string; target: string; stat: BattleStat; change: number; stage: number }
+    | { type: 'protection_activated'; turn: number; actor: string }
+    | { type: 'effect_failed'; turn: number; actor: string; target: string; reason: EffectFailure }
+    | { type: 'burn_damage'; turn: number; fighter: string; damage: number; hp_remaining: number }
 
 export interface TurnResponse {
     battle: Battle;

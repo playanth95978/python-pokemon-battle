@@ -97,7 +97,7 @@ it('joue contre Mistral sans demander au joueur de choisir l’attaque adverse',
 it('crée, joue jusqu’au KO puis redémarre avec les valeurs du serveur', async () => {
     const finished = {
         battle: {
-            ...resolvedTurn.battle, turn: 2, winner: 'second',
+            ...resolvedTurn.battle, turn: 2, winner: 'second', is_over: true,
             first: {...resolvedTurn.battle.first, hp: 0}
         }, events: [
             {type: 'knocked_out', turn: 2, fighter: 'first'},

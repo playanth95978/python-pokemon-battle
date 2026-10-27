@@ -17,5 +17,11 @@ it('distingue le KO affiché puis la victoire sans inventer un vainqueur', () =>
   const knockedOut = {...initialBattle, second: {...initialBattle.second, hp: 0}}
   expect(crowdReaction(knockedOut, active, false)).toBe('anticipation')
   expect(crowdReaction(knockedOut, active, true)).toBe('knockout')
-  expect(crowdReaction({...knockedOut, winner: 'first'}, null, false)).toBe('victory')
+  expect(crowdReaction({...knockedOut, winner: 'first', is_over: true}, null, false)).toBe('victory')
+})
+
+it('réagit à un match nul et à une attaque bloquée', () => {
+  const draw = {...initialBattle, is_over: true, first: {...initialBattle.first, hp: 0}, second: {...initialBattle.second, hp: 0}}
+  expect(crowdReaction(draw, null, false)).toBe('draw')
+  expect(crowdReaction(initialBattle, {...active, outcome: 'blocked'}, true)).toBe('immune')
 })

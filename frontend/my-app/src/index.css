@@ -824,3 +824,7 @@
 .ai-thinking-dots span:nth-child(2) { animation-delay: .2s; }
 .ai-thinking-dots span:nth-child(3) { animation-delay: .4s; }
 @keyframes ai-thinking-pulse { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
+.fighter-conditions { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; padding: 0; list-style: none; }
+.condition { padding: 1px 7px; border-radius: 999px; background: #1e3a5f; color: #d9e8f4; font-size: 11px; }
+.condition-paralysis { background: #a16207; color: #fef9c3; }
+.condition-burn { background: #b91c1c; color: #fee2e2; }

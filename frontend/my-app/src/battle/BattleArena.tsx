@@ -1,13 +1,17 @@
 import { useCallback, useState } from 'react'
 import type { Battle } from './types'
 import type { PokemonArtwork } from './pokemonArtwork'
-import type { AttackClip } from './attackPlayback'
+import type { AttackClip, AttackOutcome } from './attackPlayback'
 import { PokemonCard } from './PokemonCard'
 import { AttackEffects } from './AttackEffects'
 import { BattleScene3D } from './BattleScene3D'
 import { pocModelPath } from './pocModels'
 import { SpectatorStand } from './SpectatorStand'
 import { crowdReaction } from './crowdReaction'
+
+const outcomeCaptions: Record<AttackOutcome, string> = {
+    hit: ' !', status: ' !', miss: ' : raté !', immune: ' : aucun effet !', blocked: ' : bloqué !',
+}
 
 interface Props {
     battle: Battle
@@ -45,7 +49,7 @@ export function BattleArena({battle, firstArtwork, secondArtwork, active, motion
                 <AttackEffects key={active.id} clip={active} fromPlayer={active.actor === battle.first.id}/>}
             <SpectatorStand reaction={crowdReaction(battle, active, impact)} motion={motion} flat={!show3D}/>
             <div className="attack-caption" aria-live="polite">
-                {active ? `${active.actor === battle.first.id ? battle.first.species : battle.second.species} utilise ${active.name}${active.outcome === 'miss' ? ' : raté !' : active.outcome === 'immune' ? ' : aucun effet !' : ' !'}` : ''}
+                {active ? `${active.actor === battle.first.id ? battle.first.species : battle.second.species} utilise ${active.name}${outcomeCaptions[active.outcome]}` : ''}
             </div>
         </section>
     </>

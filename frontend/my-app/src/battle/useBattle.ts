@@ -65,7 +65,7 @@ export function useBattle() {
     }
 
     async function playTurn(moves: MoveChoices | ActionChoices) {
-        if (!session || session.battle.winner !== null || needsSync) return
+        if (!session || session.battle.is_over || needsSync) return
         await run('turn', async (signal) => {
             const command = {...moves, expected_turn: session.battle.turn, idempotency_key: crypto.randomUUID()}
             uncertainTurn.current = {battleId: session.battle.id, command}
@@ -74,7 +74,7 @@ export function useBattle() {
     }
 
     async function playAiTurn(playerMove: number | BattleAction) {
-        if (!session || session.battle.winner !== null || needsSync) return
+        if (!session || session.battle.is_over || needsSync) return
         await run('turn', async (signal) => {
             const action = typeof playerMove === 'number' ? {player_move: playerMove} : {player_action: playerMove}
             const command = {...action, expected_turn: session.battle.turn, idempotency_key: crypto.randomUUID()}
