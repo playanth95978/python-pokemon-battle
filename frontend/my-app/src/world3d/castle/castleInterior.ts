@@ -5,7 +5,7 @@
  * et la caméra peut reculer derrière un mur sans le voir.
  */
 import * as THREE from 'three'
-import type { CastleDoor, CastleItem, CastleRoom, Tile } from './castleLayout'
+import type { CastleDoor, CastleItem, CastleRoom, RoomStyle, Tile } from './castleLayout'
 import { BOSS, DOORS, EXIT, FLOOR_DEPTH, FLOOR_WIDTH, ITEMS, PROPS, roomAt, ROOMS, STAIRS, tileAt } from './castleLayout'
 import type { CastleMaterials, WallKind } from './castleMaterials'
 import { TEXTURE_SIZE, texturedBox } from './castleMaterials'
@@ -237,7 +237,10 @@ function lockedDoor(door: CastleDoor, materials: CastleMaterials) {
     return pivot
 }
 
-function buildFloor(floor: number, materials: CastleMaterials, lockedDoors: Map<string, THREE.Object3D>): CastleFloor {
+/** Matériau de sol propre au château (reflets) : il remplace celui d'origine, partagé avec murs et meubles. */
+export type FloorMaterial = (base: THREE.MeshStandardMaterial, style: RoomStyle) => THREE.Material
+
+function buildFloor(floor: number, materials: CastleMaterials, lockedDoors: Map<string, THREE.Object3D>, floorMaterial?: FloorMaterial): CastleFloor {
     const group = new THREE.Group()
     group.name = `étage ${floor}`
     const floors: Record<string, Quads> = {stone: new Quads(), wood: new Quads(), marble: new Quads()}
@@ -285,7 +288,11 @@ function buildFloor(floor: number, materials: CastleMaterials, lockedDoors: Map<
         }
     }
 
-    for (const [style, quads] of Object.entries(floors)) if (quads.positions.length) add(quads.mesh(materials[style === 'stone' ? 'stoneFloor' : style as 'wood' | 'marble']))
+    for (const [style, quads] of Object.entries(floors) as [RoomStyle, Quads][]) {
+        if (!quads.positions.length) continue
+        const base = materials[style === 'stone' ? 'stoneFloor' : style]
+        add(quads.mesh(floorMaterial ? floorMaterial(base, style) : base))
+    }
     for (const [roomId, quads] of walls) {
         const theme = ROOM_THEMES[roomId] ?? DEFAULT_THEME
         add(quads.mesh(materials.wall(theme.walls, theme.tint)))
@@ -518,9 +525,9 @@ function portraitFrame(materials: CastleMaterials, seed: number) {
     return group
 }
 
-export function buildCastleInterior(materials: CastleMaterials): CastleInterior {
+export function buildCastleInterior(materials: CastleMaterials, floorMaterial?: FloorMaterial): CastleInterior {
     const lockedDoors = new Map<string, THREE.Object3D>()
-    const floors = [0, 1, 2].map((floor) => buildFloor(floor, materials, lockedDoors))
+    const floors = [0, 1, 2].map((floor) => buildFloor(floor, materials, lockedDoors, floorMaterial))
     const items = new Map<string, THREE.Object3D>()
     for (const item of ITEMS) {
         const mesh = itemMesh(item, materials)

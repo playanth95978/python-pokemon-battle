@@ -21,7 +21,8 @@ export function createAtmosphere(renderer: THREE.WebGLRenderer, scene: THREE.Sce
     scene.environment = pmrem.fromScene(skyScene).texture
     scene.environmentIntensity = 0.35
 
-    scene.add(new THREE.HemisphereLight(0xcfe6ff, 0x4a6a3a, 0.6))
+    const hemisphere = new THREE.HemisphereLight(0xcfe6ff, 0x4a6a3a, 0.6)
+    scene.add(hemisphere)
     const sun = new THREE.DirectionalLight(0xffe2b8, 3.4)
     sun.castShadow = true
     sun.shadow.mapSize.set(shadowMapSize, shadowMapSize)
@@ -31,7 +32,7 @@ export function createAtmosphere(renderer: THREE.WebGLRenderer, scene: THREE.Sce
     sun.shadow.bias = -0.0004
     sun.shadow.normalBias = 0.03
     scene.add(sun, sun.target)
-    return {sun, sunDirection}
+    return {sun, sunDirection, sky, hemisphere}
 }
 
 const forward = new THREE.Vector3(), axisX = new THREE.Vector3(), axisY = new THREE.Vector3(), focus = new THREE.Vector3()

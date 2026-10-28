@@ -192,6 +192,18 @@ function surfaceGeometry({width, depth, segments, focused}: WaterOptions) {
     return geometry
 }
 
+function hideAll(objects: THREE.Object3D[]) {
+    return objects.map((object) => {
+        const shown = object.visible
+        object.visible = false
+        return shown
+    })
+}
+
+function showAll(objects: THREE.Object3D[], shown: boolean[]) {
+    objects.forEach((object, index) => { object.visible = shown[index] })
+}
+
 export function createWater(renderer: THREE.WebGLRenderer, scene: THREE.Scene, sunDirection: THREE.Vector3, options: WaterOptions) {
     const buffer = renderer.getDrawingBufferSize(new THREE.Vector2())
     // Reflet et réfraction en demi-résolution : déformés par les vagues, leur flou ne se voit pas.
@@ -238,14 +250,27 @@ export function createWater(renderer: THREE.WebGLRenderer, scene: THREE.Scene, s
     reflector.material = material
     reflector.rotation.x = -Math.PI / 2
     scene.add(reflector)
+    // Objets que le miroir peut sauter (voir prepare) : masqués le temps de son rendu.
+    let unreflected: THREE.Object3D[] = []
+    const reflect = reflector.onBeforeRender.bind(reflector)
+    reflector.onBeforeRender = (...args) => {
+        const shown = hideAll(unreflected)
+        reflect(...args)
+        showAll(unreflected, shown)
+    }
 
     return {
         mesh: reflector,
         /**
          * À appeler avant le rendu de l'image : rend la scène sans l'eau (couleur et profondeur du fond).
-         * Les ombres sont calculées ici, une fois par image ; le reflet et le rendu principal les réutilisent.
+         * `skip.reflection` : objets dont le reflet ne se verrait pas (petits, loin de l'eau) ;
+         * `skip.refraction` : objets jamais vus à travers l'eau (loin de toute rive).
+         * Sans objets à sauter, les ombres sont calculées ici, une fois par image, et réutilisées par le reflet et
+         * le rendu principal ; sinon c'est le rendu principal qui les calcule, avec tous les objets.
          */
-        prepare(camera: THREE.PerspectiveCamera, seconds: number) {
+        prepare(camera: THREE.PerspectiveCamera, seconds: number, skip: { reflection?: THREE.Object3D[]; refraction?: THREE.Object3D[] } = {}) {
+            unreflected = skip.reflection ?? []
+            const unrefracted = skip.refraction ?? []
             renderer.getDrawingBufferSize(buffer)
             const width = Math.max(1, Math.floor(buffer.x / 2)), height = Math.max(1, Math.floor(buffer.y / 2))
             if (prepass.width !== width || prepass.height !== height) {
@@ -257,11 +282,14 @@ export function createWater(renderer: THREE.WebGLRenderer, scene: THREE.Scene, s
             material.uniforms.cameraFar.value = camera.far
             material.uniforms.time.value = seconds
             reflector.visible = false
-            renderer.shadowMap.autoUpdate = true
+            const shown = hideAll(unrefracted)
+            renderer.shadowMap.autoUpdate = !unrefracted.length
             renderer.setRenderTarget(prepass)
             renderer.render(scene, camera)
             renderer.setRenderTarget(null)
             renderer.shadowMap.autoUpdate = false
+            renderer.shadowMap.needsUpdate = unrefracted.length > 0
+            showAll(unrefracted, shown)
             reflector.visible = true
         },
     }

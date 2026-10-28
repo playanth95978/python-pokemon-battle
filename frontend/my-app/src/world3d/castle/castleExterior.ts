@@ -8,19 +8,16 @@ import type { Direction, Position } from '../../world/types'
 import type { CastleMaterials } from './castleMaterials'
 import { TEXTURE_SIZE, texturedBox, texturedCylinder } from './castleMaterials'
 import { banner, wallTorch } from './castleProps'
+import { CASTLE_AREA, castleBlocks } from './castleArea'
 
-/** Emprise du château en cases de Clairbois ; la porte occupe les cases (23, 50) et (23, 51) du rempart ouest. */
-export const CASTLE_AREA = {x: 23, y: 45, width: 12, depth: 12}
+export { CASTLE_AREA, castleBlocks }
+
 const GATE_ROWS = [50, 51]
 /** Case devant la porte, où l'on ressort du château. */
 export const CASTLE_DOORSTEP: Position = {x: 22, y: 50}
 /** Chemin pavé depuis la grande route (x = 17 à 19) jusqu'à la porte. */
 const PATH = {fromX: 20, toX: 22}
 const WALL_HEIGHT = 5, WALL_THICKNESS = 0.9
-
-export function castleBlocks({x, y}: Position) {
-    return x >= CASTLE_AREA.x && x < CASTLE_AREA.x + CASTLE_AREA.width && y >= CASTLE_AREA.y && y < CASTLE_AREA.y + CASTLE_AREA.depth
-}
 
 /** Pousser vers l'est contre la porte fait entrer dans le château. */
 export function entersCastle(target: Position, direction: Direction) {

@@ -5,6 +5,9 @@ export type Zone = 'Clairbois' | 'Prairie des lucioles' | 'Bois des murmures' | 
 export type TravelMode = 'walking' | 'boat'
 export interface Building extends Position { width: number; height: number; name: string; roof: string }
 export interface Landmark extends Position { name: string; message: string }
+/** Mobilier du village : seules les cultures se traversent, le reste occupe sa case. */
+export type PropKind = 'fountain' | 'well' | 'stall' | 'lantern' | 'bench' | 'barrels' | 'crates' | 'anvil' | 'hay' | 'fence' | 'crops' | 'cart'
+export interface Prop extends Position { kind: PropKind; facing?: Direction }
 export interface WorldMap {
   width: number
   height: number
@@ -12,7 +15,7 @@ export interface WorldMap {
   tiles: readonly TileType[]
   buildings: readonly Building[]
   landmarks: readonly Landmark[]
-
+  props: readonly Prop[]
 }
 export interface PlayerState {
   travelMode: TravelMode

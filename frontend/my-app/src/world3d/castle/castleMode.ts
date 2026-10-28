@@ -14,6 +14,7 @@ import type { Point } from './castleWalk'
 import { walk, WALK_SPEED } from './castleWalk'
 import { buildCastleInterior, ROOM_THEMES, roomLightPosition } from './castleInterior'
 import type { CastleMaterials } from './castleMaterials'
+import { createFloorReflection } from './floorReflection'
 
 const LIGHT_POOL = 6
 /** Multiplicateur des sources proches (torches, âtre…) et force de l'éclairage d'ambiance d'une pièce de 70 cases. */
@@ -35,7 +36,9 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
     // Lumière de fond : on distingue toujours les murs, les sols et le mobilier, même loin des torches.
     scene.add(new THREE.AmbientLight(0xa39486, 0.55), new THREE.HemisphereLight(0xd8d0c4, 0x4a3828, 0.6))
 
-    const interior = buildCastleInterior(materials)
+    // Sols qui reflètent la pièce (marbre surtout) : un miroir plan rendu une fois par image.
+    const reflection = createFloorReflection(renderer, scene)
+    const interior = buildCastleInterior(materials, (base, style) => reflection.floorMaterial(base, style))
     interior.floors.forEach(({group}) => scene.add(group))
 
     // Éclairage d'ambiance de chaque pièce de l'étage (lustre ou jour des fenêtres), à la couleur de son thème.
@@ -294,7 +297,10 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
         },
         /** Part du recul de caméra possible avant un mur ou un grand meuble (voir cameraRig.ts). */
         cameraReach: (target: THREE.Vector3, offset: THREE.Vector3) => state ? cameraDistance(target, offset) : 1,
-        render: () => post.render(),
+        render() {
+            reflection.update(camera)
+            post.render()
+        },
         setSize: (width: number, height: number) => post.setSize(width, height),
         setPixelRatio: (ratio: number) => post.setPixelRatio(ratio),
         /** Texte du HUD : pièce, étage, dernier évènement, sac et actions possibles. */

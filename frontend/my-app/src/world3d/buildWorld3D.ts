@@ -11,6 +11,7 @@ import type { TreeKind } from './realTrees'
 import { animateTrees, treeInstances } from './realTrees'
 import { createGrassBlade } from './grassBlade'
 import type { VillageModels } from './villageModels'
+import type { VillageProps } from './villageProps'
 
 export const WATER_LEVEL = -0.12
 const LAKE_DEPTH = -0.55
@@ -239,7 +240,7 @@ function addTrees(group: THREE.Group, tiles: Position[]) {
 }
 
 /** Arbres et maisons d'un chunk : visibles de loin, construits dans le rayon de chargement. */
-export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: VillageModels) {
+export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: VillageModels, props: VillageProps) {
     const group = chunkGroup(`decor ${chunk.cx},${chunk.cy}`)
     const tiles = chunkTiles(map, chunk)
     addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree' && !isExitGap(tile)))
@@ -247,6 +248,7 @@ export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: Village
     const inChunk = new Set(tiles.map(({x, y}) => `${x},${y}`))
     map.buildings.filter((building) => inChunk.has(`${building.x},${building.y}`))
         .forEach((building) => group.add(village.house(building)))
+    props.addTo(group, map.props.filter((prop) => inChunk.has(`${prop.x},${prop.y}`)))
     return group.children.length ? freeze(group) : null
 }
 
@@ -283,6 +285,8 @@ export function disposeChunk(group: THREE.Object3D) {
     group.traverse((object) => {
         // Les géométries (arbres, herbe, maisons) sont partagées entre chunks : seules les instances sont libérées.
         if (object instanceof THREE.InstancedMesh) object.dispose()
+        // Sauf le mobilier du village, fusionné par chunk.
+        else if (object instanceof THREE.Mesh && object.userData.ownGeometry) object.geometry.dispose()
     })
     group.removeFromParent()
 }

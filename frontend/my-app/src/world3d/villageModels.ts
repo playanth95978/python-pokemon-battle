@@ -13,6 +13,10 @@ const HOUSE_FOR: Record<string, string> = {
     'Maison du départ': 'fantasy_house_a',
     'Maison des soins': 'fantasy_inn',
     'Atelier du village': 'fantasy_house_b',
+    'Chapelle': 'timber_house',
+    'Forge': 'fantasy_house_b',
+    'Ferme': 'fantasy_house_a',
+    'Maison du garde': 'timber_house',
 }
 const HOUSES = ['fantasy_house_a', 'fantasy_inn', 'fantasy_house_b', 'timber_house']
 

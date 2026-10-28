@@ -1,12 +1,14 @@
 /** POC : Clairbois en 3D, page séparée de la carte 2D. */
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import type { Direction, PlayerState } from '../world/types'
+import type { Direction, PlayerState, Position } from '../world/types'
 import type { WorldPokemon } from './worldPokemon'
 import {
     boatActionAtDock,
+    canEnter,
     nearbyLandmark,
     nextPosition,
+    tileAt,
     toggleBoatAtDock,
     WORLD_MAP,
     WORLD_SPAWN,
@@ -14,7 +16,7 @@ import {
 } from '../world/worldMap'
 import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter, WATER_LEVEL, waterBounds } from './buildWorld3D'
 import { createWater } from './water'
-import { GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
+import { CHUNK_SIZE, GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
 import { createWorldMaterials } from './worldMaterials'
 import { leadsToOpenWorld, nearExit, OPEN_WORLD_URL } from './worldExit'
 import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from './scenery'
@@ -24,6 +26,7 @@ import { createCameraRig } from './cameraRig'
 import { prepareTrees } from './realTrees'
 import type { VillageModels } from './villageModels'
 import { loadVillageModels } from './villageModels'
+import { createVillageProps } from './villageProps'
 import { createPostProcessing } from './postProcessing'
 import { WorldStreamer } from './worldStreamer'
 import { createEncounterOverlay } from './encounterOverlay'
@@ -38,6 +41,14 @@ import { battleBonus, capturesBoss, describeBonus, ghostEncounter } from './cast
 import type { CastleEvent } from './castle/castleLayout'
 import { playBattleTransition } from './battleTransition'
 import { clearGame, loadGame, saveGame } from './saveGame'
+import { castleBlocks as insideCastleWalls } from './castle/castleArea'
+import { createVillagers, talkTo, updateVillagers, VILLAGERS, villagerAt } from './village/villagers'
+import { createVillagerView } from './village/villagerView'
+import { createVillagePokemon, pokemonAt, pokemonNear, updateVillagePokemon, VILLAGE_POKEMON } from './village/villagePokemon'
+import { createVillagePokemonView } from './village/villagePokemonView'
+import { advanceHour, formatHour, START_HOUR } from './village/villageClock'
+import { applyDaylight, daylight } from './village/dayCycle'
+import { lanternGlass } from './villageProps'
 
 const STEP_DURATION = 170
 /** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
@@ -73,13 +84,18 @@ scene.fog = new THREE.FogExp2(0xa9c4d4, 0.034)
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1200)
 
 // Carte d'ombre plus large et plus fine, centrée devant la caméra (voir followShadow).
-const {sun, sunDirection} = createAtmosphere(renderer, scene, 20, 3072)
+const {sun, sunDirection, sky, hemisphere} = createAtmosphere(renderer, scene, 20, 3072)
 const firstPerson = createFirstPersonView(renderer.domElement, camera)
 const rig = createCameraRig(camera, renderer.domElement, firstPerson)
 const post = createPostProcessing(renderer, scene, camera)
 // En développement, la scène est exposée pour mesurer le coût du rendu depuis la console.
 if (import.meta.env.DEV) Object.assign(window, {world3d: {
-    renderer, scene, camera, post, water: () => water, castle: () => castle,
+    renderer, scene, camera, post, water: () => water, castle: () => castle, villagers: () => villagers,
+    setHour: (value: number) => { hour = value },
+    teleport: (x: number, y: number) => {
+        player = {...player, position: {x, y}}
+        from = to = tileCenter(x, y)
+    },
     enterCastle: () => enterCastle(performance.now()),
 }})
 
@@ -90,6 +106,7 @@ let village: VillageModels | null = null
 void Promise.all([prepareTrees(renderer, scene, ['oak', 'aspen', 'pine']), loadVillageModels(renderer)]).then(([, models]) => {
     village = models
 })
+const villageProps = createVillageProps(materials)
 const base = buildWorldBase(scene, WORLD_MAP, materials)
 // Lac et rivière : eau peu profonde, claire au bord et vert sombre au milieu, petites vagues.
 const lake = waterBounds(WORLD_MAP)
@@ -103,7 +120,7 @@ const streamer = new WorldStreamer(WORLD_MAP, scene, [
         name: 'decor',
         loadRadius: LOAD_RADIUS,
         unloadRadius: UNLOAD_RADIUS,
-        build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, village!),
+        build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, village!, villageProps),
         dispose: disposeChunk
     },
     {
@@ -194,6 +211,51 @@ let zoom = 1
 /** Pas faits dans le château depuis le dernier spectre (ou l'entrée). */
 let stepsSinceGhost = 0
 
+// Habitants de Clairbois : leur journée suit l'horloge du village (douze minutes pour vingt-quatre heures).
+let hour = START_HOUR
+const villagers = createVillagers(VILLAGERS, hour)
+const villagerView = createVillagerView(scene, villagers)
+// Pokémon du village : au travail, au pré, sur les lanternes, dans le lac… et deux sauvages (Évoli, Fantominus la nuit).
+const villagePokemon = createVillagePokemon(VILLAGE_POKEMON, Math.random)
+const villagePokemonView = createVillagePokemonView(scene, villagePokemon)
+/** Cases à moins de `reach` cases d'une eau. */
+function aroundWater(reach: number) {
+    const near = new Set<string>()
+    for (let y = 0; y < WORLD_MAP.height; y++) for (let x = 0; x < WORLD_MAP.width; x++) {
+        if (tileAt(WORLD_MAP, {x, y}) !== 'water') continue
+        for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) near.add(`${x + dx},${y + dy}`)
+    }
+    return near
+}
+/** Près d'une rive, on peut se voir à travers l'eau ; à moins d'un chunk, son reflet reste visible (arbres de l'autre rive). */
+const SHORE = aroundWater(4), MIRRORED = aroundWater(CHUNK_SIZE + 2)
+const tileKey = (x: number, z: number) => `${Math.floor(x)},${Math.floor(z)}`
+const chunkReach = new WeakMap<THREE.Object3D, { shore: boolean; mirrored: boolean }>()
+
+/** Ce que les passes de l'eau peuvent ignorer : objets ni vus à travers l'eau (`refraction`) ni reflétés (`reflection`). */
+function dryObjects() {
+    const actors = [...villagerView.roots(), ...villagePokemonView.roots()].filter((root) => !SHORE.has(tileKey(root.position.x, root.position.z)))
+    const chunks = scene.children.filter((object) => object.name.startsWith('decor') || object.name.startsWith('grass'))
+    const reach = (chunk: THREE.Object3D) => {
+        if (!chunkReach.has(chunk)) {
+            const [cx, cy] = chunk.name.split(' ')[1].split(',').map(Number)
+            const tiles = Array.from({length: CHUNK_SIZE * CHUNK_SIZE}, (_, index) => tileKey(cx * CHUNK_SIZE + index % CHUNK_SIZE, cy * CHUNK_SIZE + Math.floor(index / CHUNK_SIZE)))
+            chunkReach.set(chunk, {shore: tiles.some((tile) => SHORE.has(tile)), mirrored: tiles.some((tile) => MIRRORED.has(tile))})
+        }
+        return chunkReach.get(chunk)!
+    }
+    return {
+        reflection: [...actors, ...chunks.filter((chunk) => !reach(chunk).mirrored || chunk.name.startsWith('grass'))],
+        refraction: [...actors, ...chunks.filter((chunk) => !reach(chunk).shore)],
+    }
+}
+const frustum = new THREE.Frustum(), viewProjection = new THREE.Matrix4()
+const walkable = (tile: Position) => canEnter(tileAt(WORLD_MAP, tile), 'walking') && !insideCastleWalls(tile)
+/** Répliques déjà entendues, par habitant : la conversation avance à chaque visite. */
+const said = new Map<string, number>()
+let dialogue: { name: string; job: string; text: string; until: number } | null = null
+const DAY = {scene, sun, sunDirection, sky, hemisphere, lanterns: lanternGlass}
+
 let pikachu: Companion | null = null
 const wildCharmander: WorldPokemon = {
     id: 'charmander-prairie-01',
@@ -223,6 +285,11 @@ function step(now: number) {
     const previous = player.position
     const position = nextPosition(WORLD_MAP, previous, direction, player.travelMode)
     // Le château n'est pas sur la carte 2D : ses murs bloquent, sa grande porte fait entrer.
+    // Un habitant sur la case : le dresseur se tourne vers lui sans avancer.
+    if (player.travelMode === 'walking' && (villagerAt(villagers, position) || pokemonAt(villagePokemon, position))) {
+        player = {...player, direction}
+        return
+    }
     if (castleBlocks(position)) {
         player = {...player, direction}
         if (player.travelMode === 'walking' && entersCastle(position, direction)) enterCastle(now)
@@ -372,6 +439,23 @@ addEventListener('keydown', (event) => {
             encounterOverlay.open(wildCharmander)
             return
         }
+        const near = player.travelMode === 'walking' ? pokemonNear(villagePokemon, player.position) : undefined
+        if (near?.profile.wild) {
+            encounterOverlay.open({id: `${near.profile.id}-${Date.now()}`, speciesKey: near.profile.speciesKey, position: {...player.position}})
+            return
+        }
+        if (near) {
+            dialogue = {name: near.profile.name, job: 'Pokémon', text: near.profile.lore, until: performance.now() + 6000}
+            lastHud = ''
+            return
+        }
+        const talk = player.travelMode === 'walking' ? talkTo(villagers, player.position, hour, {bossDefeated: castle.bossDefeated}, said) : null
+        if (talk) {
+            const {name, job} = talk.villager.profile
+            dialogue = {name, job, text: talk.text, until: performance.now() + 6000}
+            lastHud = ''
+            return
+        }
 
         // Conserver ici le code actuel d'embarquement.
         player = toggleBoatAtDock(WORLD_MAP, player)
@@ -468,10 +552,18 @@ function updateHud(now: number) {
     const boatAction = boatActionAtDock(player)
     const exit = nearExit(player.position)
     const nearCharmander = player.travelMode === 'walking' && canInteractWithPokemon(player.position, wildCharmander)
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}`
+    if (dialogue && now > dialogue.until) dialogue = null
+    const neighbour = player.travelMode === 'walking' ? villagers.find((villager) => !villager.inside && !villager.next
+        && Math.abs(villager.tile.x - player.position.x) + Math.abs(villager.tile.y - player.position.y) === 1) : undefined
+    const beast = player.travelMode === 'walking' ? pokemonNear(villagePokemon, player.position) : undefined
+    const time = formatHour(Math.floor(hour * 4) / 4)
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}`
     if (text === lastHud) return
     lastHud = text
-    hud.innerHTML = `<strong>${zoneAt(player.position)}</strong>`
+    hud.innerHTML = `<strong>${zoneAt(player.position)} · ${time}</strong>`
+        + (dialogue ? `<p class="world3d-dialogue"><b>${dialogue.name}</b> <i>(${dialogue.job})</i> — ${dialogue.text}</p>` : '')
+        + (!dialogue && neighbour ? `<p>E : parler à ${neighbour.profile.name} <i>(${neighbour.profile.job})</i></p>` : '')
+        + (!dialogue && beast ? `<p>E : ${beast.profile.wild ? `combattre ${beast.profile.name} <i>(sauvage)</i>` : `observer ${beast.profile.name}`}</p>` : '')
         + (landmark ? `<p><b>${landmark.name}</b> — ${landmark.message}</p>` : '')
         + (loading < 100 ? `<p>Chargement du monde… ${loading} %</p>` : '')
         + (exit ? '<p><b>Sortie est</b> — continue vers l’est pour rejoindre le monde ouvert.</p>' : '')
@@ -517,6 +609,10 @@ function animate(now: number) {
     const frameSeconds = clock.getDelta()
     const delta = Math.min(frameSeconds, 0.05)
     step(now)
+    // Le village continue de vivre pendant qu'on explore le château.
+    hour = advanceHour(hour, delta)
+    updateVillagers(villagers, hour, delta, player.position, walkable, (tile) => pokemonAt(villagePokemon, tile) !== undefined)
+    updateVillagePokemon(villagePokemon, hour, delta, {player: player.position, passable: walkable, villagers, random: Math.random})
     if (castle.active) {
         // À l'intérieur : seul le château est animé et dessiné ; Clairbois attend dehors.
         walkInCastle(delta, now)
@@ -554,16 +650,22 @@ function animate(now: number) {
     }
     companions.forEach(({mixer}) => mixer.update(delta))
     base.update(now / 1000)
+    applyDaylight(DAY, daylight(hour))
 
     // En vue FPS le dresseur disparaît : la caméra est sa tête.
     trainer.visible = rig.mode !== 'fps'
     rig.update(delta, trainer.position, player.direction, held !== null, outdoorFraming())
+    // Passants et Pokémon après la caméra : seuls ceux qu'elle voit sont dessinés et animés.
+    camera.updateMatrixWorld()
+    frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
+    villagerView.update(delta, trainer.position, true, frustum)
+    villagePokemonView.update(now / 1000, delta, trainer.position, true)
     // La carte d'ombre suit le regard : l'avant de la scène a ses ombres avant qu'on s'en approche.
     followShadow(sun, sunDirection, camera, trainer.position, 10, 40)
     castleOutside.update(now / 1000)
 
     updateHud(now)
-    water.prepare(camera, now / 1000)
+    water.prepare(camera, now / 1000, dryObjects())
     post.render()
     resolution.update(now, frameSeconds)
 }
