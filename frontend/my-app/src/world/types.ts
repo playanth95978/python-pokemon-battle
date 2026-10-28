@@ -3,7 +3,9 @@ export type Direction = 'up' | 'down' | 'left' | 'right'
 export type TileType = 'grass' | 'path' | 'tree' | 'water' | 'bridge' | 'wall'
 export type Zone = 'Clairbois' | 'Prairie des lucioles' | 'Bois des murmures' | 'Lac azur'
 export type TravelMode = 'walking' | 'boat'
-export interface Building extends Position { width: number; height: number; name: string; roof: string }
+/** Modèles 3D de maison ; chacun a son emprise en cases (HOUSE_SIZE), à l'échelle des habitants. */
+export type HouseModel = 'fantasy_house_a' | 'fantasy_house_b' | 'fantasy_inn'
+export interface Building extends Position { width: number; height: number; name: string; roof: string; model: HouseModel }
 export interface Landmark extends Position { name: string; message: string }
 /** Mobilier du village : seules les cultures se traversent, le reste occupe sa case. */
 export type PropKind = 'fountain' | 'well' | 'stall' | 'lantern' | 'bench' | 'barrels' | 'crates' | 'anvil' | 'hay' | 'fence' | 'crops' | 'cart'

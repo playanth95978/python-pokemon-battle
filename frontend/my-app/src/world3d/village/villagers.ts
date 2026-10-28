@@ -32,8 +32,8 @@ export interface Profile {
 
 const spot = (x: number, y: number, facing: Direction): Spot => ({x, y, facing})
 const DOORS = {
-    depart: spot(12, 32, 'down'), soins: spot(24, 32, 'down'), atelier: spot(12, 43, 'down'), chapelle: spot(5, 32, 'down'),
-    forge: spot(5, 40, 'down'), ferme: spot(5, 46, 'down'), garde: spot(22, 24, 'down'),
+    depart: spot(12, 32, 'down'), soins: spot(28, 33, 'down'), atelier: spot(12, 43, 'down'), chapelle: spot(5, 32, 'down'),
+    forge: spot(5, 42, 'down'), ferme: spot(5, 49, 'down'), garde: spot(22, 23, 'down'),
 }
 const sleep = (from: number): Shift => ({from, activity: 'sleep', spots: []})
 
@@ -79,9 +79,9 @@ export const VILLAGERS: Profile[] = [
         outfit: {shirt: 0x7a8a3a, pants: 0x4a3a2a, hair: 0xd8b060, skin: 0xe8be96, accent: 0xf0e6d0},
         schedule: [
             {from: 5, activity: 'work', spots: [spot(10, 46, 'down'), spot(13, 48, 'down'), spot(15, 46, 'left')]},
-            {from: 12, activity: 'idle', spots: [spot(12, 38, 'up')]},
+            {from: 12, activity: 'idle', spots: [spot(12, 36, 'down')]},
             {from: 13, activity: 'work', spots: [spot(14, 48, 'down'), spot(11, 46, 'down')]},
-            {from: 18, activity: 'work', spots: [spot(5, 50, 'down')]},
+            {from: 18, activity: 'work', spots: [spot(5, 52, 'down')]},
             sleep(20),
         ],
         lines: ['Le blé pousse bien cette année. Merci la pluie !', 'Mes Wattouat ne sortent pas de l’enclos… en principe.', 'Lève-toi avec le soleil et tu verras les Pokémon de la prairie.'],
@@ -119,9 +119,9 @@ export const VILLAGERS: Profile[] = [
         id: 'rose', name: 'Rose', job: 'porteuse d’eau', home: DOORS.depart,
         outfit: {shirt: 0x4a8a8a, pants: 0x6a4a3a, hair: 0x6a2a1a, skin: 0xe8c0a0, accent: 0xf0f0e0},
         schedule: [
-            {from: 7, activity: 'work', spots: [spot(12, 36, 'down'), spot(21, 38, 'left'), spot(9, 38, 'left')]},
+            {from: 7, activity: 'work', spots: [spot(16, 42, 'up'), spot(21, 38, 'left'), spot(9, 38, 'left')]},
             {from: 12, activity: 'idle', spots: [spot(23, 40, 'up')]},
-            {from: 13, activity: 'work', spots: [spot(12, 36, 'down'), spot(9, 38, 'left')]},
+            {from: 13, activity: 'work', spots: [spot(16, 42, 'up'), spot(9, 38, 'left')]},
             {from: 18, activity: 'chat', spots: [spot(26, 36, 'left')]},
             sleep(21),
         ],

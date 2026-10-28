@@ -31,7 +31,7 @@ describe('Relief du grand Clairbois', () => {
         const map = plainMap()
         const tiles = [...map.tiles]
         tiles[90 * map.width + 80] = 'water'
-        const terrain = createTerrain({...map, tiles, buildings: [{x: 83, y: 90, width: 4, height: 5, name: 'Maison des vergers', roof: '#635b56'}]})
+        const terrain = createTerrain({...map, tiles, buildings: [{x: 83, y: 90, width: 4, height: 5, name: 'Maison des vergers', roof: '#635b56', model: 'fantasy_house_a'}]})
         expect(terrain.height(84, 92)).toBeCloseTo(0)
         expect(terrain.height(82, 90)).toBeCloseTo(-0.225)
         expect(terrain.height(81, 90)).toBe(-0.45)

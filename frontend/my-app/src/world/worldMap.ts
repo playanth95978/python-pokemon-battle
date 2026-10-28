@@ -1,4 +1,4 @@
-import type { Direction, PlayerState, Position, Prop, PropKind, TileType, TravelMode, WorldMap, Zone } from './types'
+import type { Building, Direction, HouseModel, PlayerState, Position, Prop, PropKind, TileType, TravelMode, WorldMap, Zone } from './types'
 
 export const WORLD_SPAWN: Position = { x: 18, y: 36 }
 export const BOAT_DOCK = {
@@ -8,21 +8,39 @@ export const BOAT_DOCK = {
 export const TILE_COLORS: Record<TileType, string> = {
   grass: '#8ebc69', path: '#dec68b', tree: '#285c47', water: '#68b6c6', bridge: '#af794f', wall: '#62845a',
 }
+/** Lanternes et puits du vieux bourg : Roucool s'y perche, Rose y puise l'eau. */
+export const BOURG_LANTERNS = [[27, 36], [16, 30], [20, 32], [16, 38], [8, 32], [16, 44], [21, 25]] as const
+export const BOURG_WELL: Position = { x: 16, y: 41 }
+/**
+ * Emprise de chaque modèle de maison (largeur, profondeur), à l'échelle des habitants : une porte d'environ 1,7 m
+ * pour des personnages de 1,5 m. La parcelle suit le modèle, jamais l'inverse (voir villageModels.ts).
+ */
+export const HOUSE_SIZE: Record<HouseModel, [number, number]> = {
+  fantasy_house_a: [5, 6], fantasy_house_b: [5, 8], fantasy_inn: [10, 10],
+}
+const house = (x: number, y: number, model: HouseModel, name: string, roof: string): Building => {
+  const [width, height] = HOUSE_SIZE[model]
+  return { x, y, width, height, name, roof, model }
+}
 /** Cases occupées par un mobilier plus grand qu'une case (largeur, profondeur). */
 export const PROP_SIZE: Partial<Record<PropKind, [number, number]>> = { fountain: [2, 2] }
 const DELTAS: Record<Direction, Position> = {
   up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
 }
 
-/** Le noyau historique reste en place : bateau, château et sauvegardes gardent leurs coordonnées. */
+/**
+ * Le noyau historique reste en place : bateau, château et sauvegardes gardent leurs coordonnées.
+ * `farm` : première rangée (par rapport à la place) des champs, du pré et de la pâture du quartier ; au sud en
+ * général, au nord pour la rive dont le sud plonge dans le lac.
+ */
 export const CLAIRBOIS_DISTRICTS = [
-  { id: 'artisans', name: 'Quartier des artisans', x: 80, y: 34, roof: '#697e97',
+  { id: 'artisans', name: 'Quartier des artisans', x: 80, y: 34, roof: '#697e97', farm: 19,
     houses: ['Forge des Aulnes', 'Maison du potier', 'Atelier des tissus', 'Maison du menuisier', 'Auberge des compagnons', 'Maison des apprentis', 'Halle des artisans'] },
-  { id: 'port', name: 'Quartier de la rive', x: 128, y: 34, roof: '#538c92',
+  { id: 'port', name: 'Quartier de la rive', x: 128, y: 34, roof: '#538c92', farm: -24,
     houses: ['Maison des pêcheurs', 'Atelier des filets', 'Comptoir de la rive', 'Auberge du héron', 'Maison des passeurs', 'Entrepôt du port', 'Maison du veilleur'] },
-  { id: 'fermes', name: 'Hameau des moissons', x: 18, y: 88, roof: '#a87746',
+  { id: 'fermes', name: 'Hameau des moissons', x: 18, y: 88, roof: '#a87746', farm: 19,
     houses: ['Grange des moissons', 'Maison du meunier', 'Ferme des prés', 'Maison des bergers', 'Auberge du vieux chêne', 'Grenier communal', 'Maison du maraîcher'] },
-  { id: 'vergers', name: 'Quartier des vergers', x: 84, y: 90, roof: '#8d5976',
+  { id: 'vergers', name: 'Quartier des vergers', x: 84, y: 90, roof: '#8d5976', farm: 19,
     houses: ['Maison du verger', 'Atelier des confitures', 'Maison des baies', 'Auberge du pommier', 'Maison des jardiniers', 'Maison des cueilleurs', 'Petite chapelle des prés'] },
 ] as const
 
@@ -51,14 +69,15 @@ function createMap(): WorldMap {
     return 'grass'
   })
   // Bourg de Clairbois : maisons, chapelle, forge et ferme autour du carrefour ; la place du marché est pavée à l'est.
-  const buildings = [
-    { x: 10, y: 27, width: 5, height: 5, name: 'Maison du départ', roof: '#c86c4d' },
-    { x: 22, y: 27, width: 6, height: 5, name: 'Maison des soins', roof: '#c2505e' },
-    { x: 10, y: 39, width: 5, height: 4, name: 'Atelier du village', roof: '#637c99' },
-    { x: 3, y: 27, width: 4, height: 5, name: 'Chapelle', roof: '#7b6f8f' },
-    { x: 3, y: 36, width: 5, height: 4, name: 'Forge', roof: '#5b4a42' },
-    { x: 3, y: 42, width: 5, height: 4, name: 'Ferme', roof: '#a8743c' },
-    { x: 20, y: 20, width: 4, height: 4, name: 'Maison du garde', roof: '#4f6b8a' },
+  // Toutes les portes donnent au sud, sur la case sous le milieu de la façade.
+  const buildings: Building[] = [
+    house(10, 26, 'fantasy_house_a', 'Maison du départ', '#c86c4d'),
+    house(23, 23, 'fantasy_inn', 'Maison des soins', '#c2505e'),
+    house(10, 37, 'fantasy_house_a', 'Atelier du village', '#637c99'),
+    house(3, 26, 'fantasy_house_a', 'Chapelle', '#7b6f8f'),
+    house(3, 36, 'fantasy_house_a', 'Forge', '#5b4a42'),
+    house(3, 43, 'fantasy_house_a', 'Ferme', '#a8743c'),
+    house(20, 15, 'fantasy_house_b', 'Maison du garde', '#4f6b8a'),
   ]
   const paint = (left: number, top: number, right: number, bottom: number, tile: TileType) => {
     for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) tiles[y * width + x] = tile
@@ -76,18 +95,23 @@ function createMap(): WorldMap {
   road(79, 34, 81, 110)
   road(127, 34, 129, 109)
 
-  // Chaque quartier a sept maisons et une place, avec des métiers et des façades différents.
-  const housePlots = [
-    [-13, -12, 5, 5], [-5, -12, 4, 5], [5, -12, 5, 5],
-    [-13, 7, 5, 4], [5, 7, 5, 4], [13, 7, 5, 4], [13, -8, 4, 4],
-  ] as const
+  // Chaque quartier a sept maisons et une place, avec des métiers et des façades différents. Au nord, les portes
+  // donnent sur la rue qui longe la place ; au sud, chacune a son allée jusqu'à la rue centrale. L'auberge (5e) est
+  // la grande maison du quartier.
+  const housePlots: [number, number, HouseModel][] = [
+    [-13, -13, 'fantasy_house_a'], [-6, -15, 'fantasy_house_b'], [3, -13, 'fantasy_house_a'],
+    [-7, 8, 'fantasy_house_a'], [3, 8, 'fantasy_inn'], [-13, 8, 'fantasy_house_b'], [10, -13, 'fantasy_house_a'],
+  ]
   for (const district of CLAIRBOIS_DISTRICTS) {
     paint(district.x - 7, district.y - 6, district.x + 7, district.y + 6, 'path')
-    road(district.x - 1, district.y - 8, district.x + 1, district.y + 12)
+    road(district.x - 1, district.y - 8, district.x + 1, district.y + 18)
     road(district.x - 15, district.y - 1, district.x + 18, district.y + 1)
-    housePlots.forEach(([dx, dy, houseWidth, houseHeight], index) => {
-      const building = {x: district.x + dx, y: district.y + dy, width: houseWidth, height: houseHeight,
-        name: district.houses[index], roof: district.roof}
+    // Champs, pré d'Évoli et pâture du quartier : on dégage les arbres de la lisière (les routes restent).
+    for (let y = district.y + district.farm; y <= district.y + district.farm + 6; y++) for (let x = district.x - 13; x <= district.x + 19; x++) {
+      if (tiles[y * width + x] === 'tree') tiles[y * width + x] = 'grass'
+    }
+    housePlots.forEach(([dx, dy, model], index) => {
+      const building = house(district.x + dx, district.y + dy, model, district.houses[index], district.roof)
       buildings.push(building)
       // Les portes orientées au sud rejoignent la rue sans traverser leur maison.
       const doorX = building.x + Math.floor(building.width / 2), doorY = building.y + building.height
@@ -106,16 +130,15 @@ function createMap(): WorldMap {
     { x: 27, y: 38, kind: 'stall', facing: 'left' }, { x: 27, y: 40, kind: 'stall', facing: 'left' },
     { x: 22, y: 42, kind: 'bench', facing: 'up' }, { x: 25, y: 42, kind: 'bench', facing: 'up' },
     { x: 20, y: 42, kind: 'crates' }, { x: 27, y: 42, kind: 'barrels' },
-    ...[[27, 36], [16, 30], [20, 32], [16, 38], [8, 32], [16, 44], [24, 25]]
-      .map(([x, y]) => ({ x, y, kind: 'lantern' as const })),
-    { x: 12, y: 37, kind: 'well' },
+    ...BOURG_LANTERNS.map(([x, y]) => ({ x, y, kind: 'lantern' as const })),
+    { ...BOURG_WELL, kind: 'well' },
     { x: 8, y: 37, kind: 'anvil', facing: 'right' }, { x: 8, y: 39, kind: 'barrels' },
     { x: 8, y: 43, kind: 'hay' }, { x: 9, y: 43, kind: 'cart', facing: 'down' },
     ...[45, 47, 49].flatMap((y) => [9, 10, 11, 12, 13, 14, 15].map((x) => ({ x, y, kind: 'crops' as const }))),
   ]
   // Enclos de la ferme : barrière tout autour, ouverte face à la porte.
-  for (let x = 2; x <= 8; x++) for (const y of [48, 53]) if (x !== 5 || y !== 48) props.push({ x, y, kind: 'fence' })
-  for (let y = 49; y <= 52; y++) for (const x of [2, 8]) props.push({ x, y, kind: 'fence', facing: 'right' })
+  for (let x = 2; x <= 8; x++) for (const y of [50, 55]) if (x !== 5 || y !== 50) props.push({ x, y, kind: 'fence' })
+  for (let y = 51; y <= 54; y++) for (const x of [2, 8]) props.push({ x, y, kind: 'fence', facing: 'right' })
   for (const district of CLAIRBOIS_DISTRICTS) {
     const add = (dx: number, dy: number, kind: PropKind, facing?: Direction) =>
       props.push({x: district.x + dx, y: district.y + dy, kind, ...(facing ? {facing} : {})})
@@ -128,14 +151,17 @@ function createMap(): WorldMap {
     add(8, 3, 'barrels')
     add(-9, 3, 'crates')
     add(-10, -5, district.id === 'artisans' ? 'anvil' : 'well')
-    add(11, 12, 'cart', 'down')
-    add(13, 12, 'hay')
+    add(-9, 18, 'cart', 'down')
+    add(-8, 18, 'hay')
     // Petites cultures et pâtures gardent une vie agricole dans les nouveaux quartiers.
-    for (const dy of [14, 16, 18]) for (let dx = 5; dx <= 11; dx++) add(dx, dy, 'crops')
-    for (let dx = 13; dx <= 19; dx++) for (const dy of [13, 18]) {
-      if (dx !== 15 || dy !== 13) add(dx, dy, 'fence')
+    const farm = district.farm
+    for (const dy of [2, 4, 6]) for (let dx = 3; dx <= 9; dx++) add(dx, farm + dy, 'crops')
+    // La barrière s'ouvre du côté de la place.
+    const gate = farm > 0 ? farm : farm + 5
+    for (let dx = 13; dx <= 19; dx++) for (const dy of [farm, farm + 5]) {
+      if (dx !== 15 || dy !== gate) add(dx, dy, 'fence')
     }
-    for (let dy = 14; dy < 18; dy++) for (const dx of [13, 19]) add(dx, dy, 'fence', 'right')
+    for (let dy = farm + 1; dy < farm + 5; dy++) for (const dx of [13, 19]) add(dx, dy, 'fence', 'right')
   }
   for (const prop of props) {
     if (prop.kind === 'crops') continue
@@ -146,7 +172,7 @@ function createMap(): WorldMap {
     width, height, tileSize: 32, tiles, buildings, props,
     landmarks: [
       { x: 20, y: 36, name: 'Panneau de Clairbois', message: 'Bienvenue à Clairbois ! Au nord, le bois des murmures. À l’est, traverse le pont pour rejoindre la rive.' },
-      { x: 25, y: 32, name: 'Maison des soins', message: 'La maison des soins est encore fermée. Les soins et les rencontres seront reliés aux combats dans une prochaine étape.' },
+      { x: 22, y: 32, name: 'Maison des soins', message: 'La maison des soins est encore fermée. Les soins et les rencontres seront reliés aux combats dans une prochaine étape.' },
       { x: 18, y: 15, name: 'Entrée du bois', message: 'Le bois des murmures. Suis le sentier : les arbres sont trop denses pour passer au travers.' },
       { x: 40, y: 36, name: 'Passerelle du lac', message: 'Le pont permet de traverser la rivière à pied. Un bateau t’attend au petit ponton juste au sud, sur la rive ouest.' },
       { x: 40, y: 38, name: 'Embarcadère', message: 'Le bateau t’attend à droite du panneau, sur la case 41, 38. Appuie sur E pour embarquer. Reviens à cette même rive pour débarquer. Les ponts sont trop bas pour le bateau.' },

@@ -24,6 +24,7 @@ import { createAtmosphere, createResolutionScaler, createTrainer, followShadow }
 import { createFirstPersonView } from './firstPerson'
 import type { CameraFraming } from './cameraRig'
 import { createCameraRig } from './cameraRig'
+import { createCameraObstacles } from './cameraObstacles'
 import { prepareTrees } from './realTrees'
 import type { VillageModels } from './villageModels'
 import { loadVillageModels } from './villageModels'
@@ -31,6 +32,7 @@ import { createVillageProps } from './villageProps'
 import { createPostProcessing } from './postProcessing'
 import { WorldStreamer } from './worldStreamer'
 import { createEncounterOverlay } from './encounterOverlay'
+import { createVillageMap } from './villageMapOverlay'
 import './world3d.css'
 import { canInteractWithPokemon } from './pokemonInteraction'
 import { createCastleMaterials } from './castle/castleMaterials'
@@ -481,7 +483,7 @@ function interactInCastle(now: number) {
 }
 
 addEventListener('keydown', (event) => {
-    if (encounterOverlay.isOpen || challenging || event.ctrlKey || event.metaKey || event.altKey) return
+    if (encounterOverlay.isOpen || villageMap.isOpen || challenging || event.ctrlKey || event.metaKey || event.altKey) return
     const key = event.key.toLowerCase()
     castleAudio.resume()
     if (key === 'm' && !event.repeat && castle.active) {
@@ -581,7 +583,7 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') persist()
 })
 addEventListener('wheel', (event) => {
-    if (encounterOverlay.isOpen) return
+    if (encounterOverlay.isOpen || villageMap.isOpen) return
     zoom = THREE.MathUtils.clamp(zoom + event.deltaY * 0.001, 0.45, 1.8)
 }, {passive: true})
 
@@ -589,9 +591,11 @@ const hud = document.createElement('div')
 hud.className = 'world3d-hud'
 document.body.appendChild(hud)
 hud.addEventListener('click', (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest('.world3d-map-button')) villageMap.open()
     if (event.target instanceof HTMLElement && event.target.closest('.world3d-new-game')) newGame()
 })
 const NEW_GAME = '<p><button type="button" class="world3d-new-game">Nouvelle partie</button></p>'
+const MAP_BUTTON = '<p><button type="button" class="world3d-map-button" aria-haspopup="dialog" aria-keyshortcuts="C">Afficher la carte <kbd>C</kbd></button></p>'
 let lastHud = ''
 const encounterOverlay = createEncounterOverlay({
     background: [host, hud],
@@ -603,6 +607,27 @@ const encounterOverlay = createEncounterOverlay({
     onResume: () => {
         held = null
         rig.setActive(true)
+        clock.getDelta()
+        renderer.setAnimationLoop(animate)
+    },
+})
+
+const villageMap = createVillageMap({
+    map: WORLD_MAP,
+    extraPoints: [{id: wildCharmander.id, name: 'Salamèche sauvage', description: 'Approche Salamèche et appuie sur E pour ouvrir un combat.',
+        ...wildCharmander.position, category: 'rencontre'}],
+    location: () => ({position: {...player.position}, direction: player.direction, insideCastle: castle.active}),
+    canOpen: () => !encounterOverlay.isOpen && !challenging,
+    onPause: () => {
+        stopWalking()
+        rig.setActive(false)
+        castleAudio.setHidden(true)
+        renderer.setAnimationLoop(null)
+    },
+    onResume: () => {
+        stopWalking()
+        rig.setActive(true)
+        castleAudio.setHidden(document.hidden)
         clock.getDelta()
         renderer.setAnimationLoop(animate)
     },
@@ -627,7 +652,7 @@ function updateHud(now: number) {
         const text = castle.hud(now, `${viewHelp()} · M : ${castleAudio.muted ? 'remettre' : 'couper'} le son`) + performanceLine()
         if (text === lastHud) return
         lastHud = text
-        hud.innerHTML = text + NEW_GAME
+        hud.innerHTML = text + MAP_BUTTON + NEW_GAME
         return
     }
     const loading = Math.round(Math.min(materials.progress(), village ? streamer.progress(player.position) : 0) * 100)
@@ -658,7 +683,7 @@ function updateHud(now: number) {
         + (captured.includes('mewtwo') ? '<p>Équipe : Pikachu, Mewtwo</p>' : '')
         + performanceLine()
         + `<p class="world3d-help">Flèches / ZQSD pour marcher · ${viewHelp()} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
-        + NEW_GAME
+        + MAP_BUTTON + NEW_GAME
 }
 
 addEventListener('resize', () => {
@@ -688,6 +713,8 @@ function outdoorFraming() {
 }
 
 CASTLE_FRAMING.reach = castle.cameraReach
+// Dehors, la caméra s'arrête devant les maisons et les remparts au lieu de les traverser.
+OUTDOOR_FRAMING.reach = createCameraObstacles(WORLD_MAP)
 
 const clock = new THREE.Clock()
 let floodViewTime = 0

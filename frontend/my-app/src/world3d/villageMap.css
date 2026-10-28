@@ -1,0 +1,47 @@
+.world3d-map-button { padding: 7px 12px; border: 1px solid #cbb681; border-radius: 7px; background: #dfc992; color: #252b24; font: inherit; cursor: pointer; }
+.world3d-map-button:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+.world3d-map-button kbd { margin-left: 8px; }
+.village-map-dialog { width: min(1140px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0; overflow: auto; border: 1px solid #b19a6f; border-radius: 14px; background: #eee3ca; color: #2b332c; box-shadow: 0 24px 80px #0008; font: 15px/1.5 system-ui, sans-serif; }
+.village-map-dialog::backdrop { background: #07121cbd; }
+.village-map-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 24px; border-bottom: 1px solid #cdbf9f; }
+.village-map-header h1 { margin: 0; font: 600 28px/1.2 Georgia, serif; }
+.village-map-header p { margin: 6px 0 0; font-size: 13px; color: #59614f; }
+.village-map-header button { padding: 9px 12px; border: 1px solid #9d8e6b; background: transparent; color: inherit; border-radius: 6px; font: inherit; cursor: pointer; }
+.village-map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 270px; }
+.village-map-drawing { padding: 20px; min-width: 0; }
+.village-map-drawing svg { display: block; width: 100%; max-height: 52dvh; border: 1px solid #c4b48e; border-radius: 5px; }
+.village-map-north { font: 600 3px system-ui, sans-serif; fill: #344b3a; text-anchor: end; }
+.village-map-pin { cursor: pointer; outline: none; }
+.village-map-pin circle { fill: #f4d282; stroke: #3c382d; stroke-width: .5; }
+.village-map-pin.nature circle { fill: #91cfdb; }
+.village-map-pin.rencontre circle { fill: #c49fe3; }
+.village-map-pin:focus circle, .village-map-pin:hover circle { stroke: white; stroke-width: 1; }
+.village-map-pin .village-map-selected { fill: none; stroke: white; stroke-width: .8; }
+.village-map-player circle { fill: #b14740; stroke: #fff9e9; stroke-width: .7; }
+.village-map-player path { fill: white; }
+.village-map-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 12px 0; font-size: 12px; }
+.village-map-legend span:first-child { color: #9c3933; }
+.village-map-legend span:nth-child(3) { color: #326875; }
+.village-map-legend span:nth-child(4) { color: #6c4586; }
+.village-map-detail { padding: 12px 16px; background: #e1d3b1; border-radius: 5px; min-height: 58px; }
+.village-map-detail p { margin: 3px 0 0; font-size: 13px; }
+.village-map-places { border-left: 1px solid #cdbf9f; padding: 20px 16px; display: flex; flex-direction: column; min-height: 0; }
+.village-map-places label { font-weight: 600; font-size: 13px; }
+.village-map-places input { box-sizing: border-box; width: 100%; margin: 8px 0 0; padding: 9px 10px; border: 1px solid #aa9a76; border-radius: 5px; background: #faf5e8; color: #2b332c; font: inherit; }
+.village-map-places > p { margin: 9px 0; font-size: 12px; }
+.village-map-places ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; max-height: 55dvh; }
+.village-map-places li + li { border-top: 1px solid #d6c9a9; }
+.village-map-places li button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 8px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.village-map-places li button:hover, .village-map-places li button[aria-pressed=true] { background: #d8c79d; }
+.village-map-places small { flex-shrink: 0; color: #5d634d; font-size: 11px; }
+.village-map-dialog button:focus-visible, .village-map-places input:focus-visible { outline: 2px solid #326875; outline-offset: 2px; }
+.village-map-footer { padding: 10px 24px; border-top: 1px solid #cdbf9f; color: #59614f; font-size: 12px; }
+@media (max-width: 650px) {
+  .village-map-header { padding: 16px; align-items: flex-start; }
+  .village-map-header h1 { font-size: 23px; }
+  .village-map-header button { font-size: 12px; }
+  .village-map-layout { grid-template-columns: 1fr; }
+  .village-map-drawing { padding: 12px; }
+  .village-map-places { border-left: 0; border-top: 1px solid #cdbf9f; padding: 12px; }
+  .village-map-places ul { max-height: 200px; }
+}

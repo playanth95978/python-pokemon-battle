@@ -4,7 +4,7 @@ import { CLAIRBOIS_DISTRICTS } from '../../world/worldMap'
 import type { Profile, Spot } from './villagers'
 import type { Perch, PokemonProfile } from './villagePokemon'
 
-export const LIFE_DISTRICTS = CLAIRBOIS_DISTRICTS.map(({id, name, x, y}) => ({id, name: name.toLocaleLowerCase('fr-FR'), x, y}))
+export const LIFE_DISTRICTS = CLAIRBOIS_DISTRICTS.map(({id, name, x, y, farm}) => ({id, name: name.toLocaleLowerCase('fr-FR'), x, y, farm}))
 
 const NAMES = [
     ['Hector', 'Agathe', 'Lucien', 'Jeanne', 'Armand', 'Solange', 'Émile', 'Alice', 'Bastien', 'Jules', 'Zoé'],
@@ -13,7 +13,8 @@ const NAMES = [
     ['Antonin', 'Camille', 'Oscar', 'Lucie', 'Gabin', 'Hélène', 'Louis', 'Violette', 'Arthur', 'Léon', 'Mia'],
 ]
 const JOBS = ['artisan', 'marchande', 'tisserand', 'fermière', 'garde', 'herboriste', 'ancien', 'porteuse d’eau', 'menuisier', 'enfant', 'enfant']
-const HOMES = [[-11, -7], [-3, -7], [7, -7], [-11, 11], [7, 11], [15, 11], [15, -4]]
+/** Portes des sept maisons du quartier (voir housePlots dans worldMap.ts). */
+const HOMES = [[-11, -7], [-4, -7], [5, -7], [-5, 14], [8, 18], [-11, 16], [12, -7]]
 const POSTS = [[-3, -2], [-1, -2], [1, -2], [3, -2], [-3, 2], [-1, 2], [1, 2], [-3, 4], [-1, 4], [1, 4], [3, 4]]
 const SHIRTS = [0x795b42, 0xa14b59, 0x426686, 0x708344, 0x697785, 0x77704e, 0x71675e, 0x428587, 0x947448, 0xc99c48, 0xa66c95]
 
@@ -57,14 +58,14 @@ export const DISTRICT_POKEMON: PokemonProfile[] = LIFE_DISTRICTS.flatMap((distri
     })
     return [
         {...animal('machoc', 'machop', 'Machoc', 'worker'), spots: [at(-5, -4), at(-4, -4), at(-10, -6)]},
-        ...[1, 2, 3].map((index) => ({...animal('wattouat', 'mareep', 'Wattouat', 'graze', index), area: {...at(14, 14), width: 5, height: 4}})),
+        ...[1, 2, 3].map((index) => ({...animal('wattouat', 'mareep', 'Wattouat', 'graze', index), area: {...at(14, district.farm + 1), width: 5, height: 4}})),
         {...animal('caninos', 'growlithe', 'Caninos', 'follower'), follows: `${district.id}-4`},
-        {...animal('evoli', 'eevee', 'Évoli', 'timid'), area: {...at(-8, 15), width: 7, height: 5}, wild: true as const},
+        {...animal('evoli', 'eevee', 'Évoli', 'timid'), area: {...at(-13, district.farm + 1), width: 7, height: 5}, wild: true as const},
         {...animal('ronflex', 'snorlax', 'Ronflex', 'sleeper'), spots: [at(-8, 4)]},
         ...[1, 2, 3].map((index) => ({...animal('roucool', 'pidgey', 'Roucool', 'perch', index), perches})),
         ...[1, 2].map((index) => district.id === 'port'
             ? {...animal('magicarpe', 'magikarp', 'Magicarpe', 'swim', index), area: {x: 120, y: 55, width: 6, height: 5}}
-            : {...animal('wattouat', 'mareep', 'Wattouat', 'graze', index + 3), area: {...at(14, 14), width: 5, height: 4}}),
+            : {...animal('wattouat', 'mareep', 'Wattouat', 'graze', index + 3), area: {...at(14, district.farm + 1), width: 5, height: 4}}),
         {...animal('fantominus', 'gastly', 'Fantominus', 'haunt'), spots: [at(-5, -5), at(5, -5), at(5, 5), at(-5, 5)], wild: true as const},
     ]
 })

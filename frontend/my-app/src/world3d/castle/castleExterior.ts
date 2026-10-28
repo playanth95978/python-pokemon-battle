@@ -14,7 +14,7 @@ export { CASTLE_AREA, castleBlocks }
 
 const GATE_ROWS = [50, 51]
 /** Case devant la porte, où l'on ressort du château. */
-export const CASTLE_DOORSTEP: Position = {x: 22, y: 50}
+export { CASTLE_DOORSTEP } from './castleArea'
 /** Chemin pavé depuis la grande route (x = 17 à 19) jusqu'à la porte. */
 const PATH = {fromX: 20, toX: 22}
 const WALL_HEIGHT = 7.5, WALL_THICKNESS = 0.9

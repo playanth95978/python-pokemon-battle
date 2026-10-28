@@ -4,21 +4,18 @@
  */
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import type { Building } from '../world/types'
+import type { Building, HouseModel } from '../world/types'
+import { HOUSE_SIZE } from '../world/worldMap'
 
 const MODELS = '/models/village'
 const TEXTURES = '/textures/polyhaven'
-/** Modèle par bâtiment de la carte ; un bâtiment inconnu prend le suivant dans la liste. */
-const HOUSE_FOR: Record<string, string> = {
-    'Maison du départ': 'fantasy_house_a',
-    'Maison des soins': 'fantasy_inn',
-    'Atelier du village': 'fantasy_house_b',
-    'Chapelle': 'timber_house',
-    'Forge': 'fantasy_house_b',
-    'Ferme': 'fantasy_house_a',
-    'Maison du garde': 'timber_house',
-}
-const HOUSES = ['fantasy_house_a', 'fantasy_inn', 'fantasy_house_b', 'timber_house']
+const HOUSES = Object.keys(HOUSE_SIZE) as HouseModel[]
+/**
+ * Même agrandissement pour tous les modèles (ils viennent du même jeu de Quaternius) : le premier étage commence
+ * vers 0,9 unité, soit environ 2,1 m, et la porte arrive à 1,7 m pour des habitants de 1,5 m.
+ * Les parcelles de la carte (HOUSE_SIZE) sont taillées pour ces dimensions.
+ */
+const HOUSE_SCALE = 2.33
 
 /** Texture de détail d'après le nom du matériau du modèle, et sa taille de répétition en unités du monde. */
 const DETAIL: [RegExp, string, number][] = [
@@ -28,7 +25,7 @@ const DETAIL: [RegExp, string, number][] = [
 ]
 
 export interface VillageModels {
-    /** Maison posée sur l'emprise du bâtiment, porte vers le sud (+z). */
+    /** Maison posée au centre de sa parcelle, porte vers le sud (+z), toit à la couleur du bâtiment. */
     house(building: Building): THREE.Object3D
 }
 
@@ -101,18 +98,35 @@ export async function loadVillageModels(renderer: THREE.WebGLRenderer): Promise<
         const pivot = new THREE.Group()
         scene.position.set(-center.x, -box.min.y, -center.z)
         pivot.add(scene)
-        return [name, {pivot, size: box.getSize(new THREE.Vector3())}] as const
+        return [name, {pivot}] as const
     })))
+
+    // Une teinte de toit par couleur de bâtiment, partagée par toutes les maisons de cette couleur.
+    const roofs = new Map<string, THREE.Material>()
+    const roofFor = (material: THREE.MeshStandardMaterial, color: string) => {
+        const key = `${material.uuid}:${color}`
+        if (!roofs.has(key)) {
+            const tinted = material.clone()
+            tinted.color.set(color).lerp(new THREE.Color(0xffffff), 0.35)
+            // clone() ne recopie pas le grain des tuiles (voir withDetail).
+            tinted.onBeforeCompile = material.onBeforeCompile
+            tinted.customProgramCacheKey = material.customProgramCacheKey
+            roofs.set(key, tinted)
+        }
+        return roofs.get(key)!
+    }
 
     return {
         house(building) {
-            const name = HOUSE_FOR[building.name] ?? HOUSES[(building.x + building.y) % HOUSES.length]
-            const {pivot, size} = models.get(name)!
+            const {pivot} = models.get(building.model)!
             const house = pivot.clone()
-            // Même échelle sur les trois axes : la maison remplit l'emprise sans être déformée.
-            const scale = Math.min((building.width - 0.2) / size.x, (building.height - 0.2) / size.z)
-            house.scale.setScalar(scale)
+            house.scale.setScalar(HOUSE_SCALE)
             house.position.set(building.x + building.width / 2, 0, building.y + building.height / 2)
+            house.traverse((object) => {
+                if (object instanceof THREE.Mesh && !Array.isArray(object.material) && /roof/i.test(object.material.name)) {
+                    object.material = roofFor(object.material as THREE.MeshStandardMaterial, building.roof)
+                }
+            })
             return house
         },
     }

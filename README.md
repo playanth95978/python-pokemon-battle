@@ -234,6 +234,15 @@ configuration de logging n'est déjà en place.
 
 ### Monde ouvert 3D et mini-carte
 
+Dans `/world3d.html`, le bouton **Afficher la carte** ou la touche **C** ouvre le
+plan complet de Clairbois : position et direction du joueur, quartiers, bâtiments,
+château, bateau, Salamèche et sortie vers le monde ouvert. Une recherche permet
+de trouver un lieu ; sélectionner un repère affiche sa description et ses
+coordonnées. L'exploration et la caméra sont suspendues pendant la consultation.
+**C**, **Échap** ou **Fermer la carte** reprend le jeu. Dans le château, le plan
+du village indique son entrée et précise que le joueur est à l'intérieur.
+La carte est calculée à l'ouverture, sans requête réseau ni rendu continu.
+
 Clairbois couvre **160 × 128 cases**, soit **20 480 cases et cinq fois la surface
 initiale**. Le vieux bourg conserve ses coordonnées, son château, Salamèche et son
 embarcadère. Quatre nouveaux quartiers sont reliés par des routes et des ponts :

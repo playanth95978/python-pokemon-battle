@@ -58,15 +58,16 @@ describe('Pokémon du village', () => {
             }
         })
         expect(find(world.pokemon, 'ronflex')).toMatchObject({tile: {x: 15, y: 29}, pose: 'sleep'})
-        expect(find(world.pokemon, 'machoc')).toMatchObject({tile: {x: 6, y: 41}, pose: 'sleep'})
-    })
+        expect(find(world.pokemon, 'machoc')).toMatchObject({tile: {x: 6, y: 42}, pose: 'sleep'})
+        // Dix-huit heures de 55 habitants et 65 Pokémon, pas à pas : plus long que le délai par défaut en suite complète.
+    }, 20000)
 
     it('fait travailler Machoc entre la forge et le puits pendant la journée', () => {
         const world = village(9)
         const visited = new Set<string>()
         live(world, 9, 10, WORLD_SPAWN, () => visited.add(key(find(world.pokemon, 'machoc').tile)))
-        expect(visited).toContain('10,36')
-        expect(visited).toContain('10,38')
+        expect(visited).toContain('9,36')
+        expect(visited).toContain('15,41')
     })
 
     it('fait suivre Bertrand par Caninos, et le fait rentrer avec lui', () => {

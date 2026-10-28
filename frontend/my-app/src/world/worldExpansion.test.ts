@@ -40,7 +40,7 @@ describe('Agrandissement de Clairbois', () => {
     expect(tileAt(WORLD_MAP, BOAT_DOCK.water)).toBe('water')
     expect(tileAt(WORLD_MAP, {x: 42, y: 34})).toBe('bridge')
     expect(tileAt(WORLD_MAP, {x: 22, y: 50})).toBe('grass')
-    expect(WORLD_MAP.buildings[0]).toEqual({x: 10, y: 27, width: 5, height: 5, name: 'Maison du départ', roof: '#c86c4d'})
+    expect(WORLD_MAP.buildings[0]).toEqual({x: 10, y: 26, width: 5, height: 6, name: 'Maison du départ', roof: '#c86c4d', model: 'fantasy_house_a'})
   })
 
   it('relie les places et toutes les portes au vieux bourg sans traverser un bâtiment', () => {
@@ -64,10 +64,10 @@ describe('Agrandissement de Clairbois', () => {
       for (const [dx, dy] of posts) for (const shift of [0, 1]) {
         expect(seen.has(`${district.x + dx},${district.y + dy + shift}`), `${district.name} : ${dx},${dy + shift}`).toBe(true)
       }
-      for (let dy = 14; dy < 18; dy++) for (let dx = 14; dx < 19; dx++) {
+      for (let dy = district.farm + 1; dy < district.farm + 5; dy++) for (let dx = 14; dx < 19; dx++) {
         expect(canEnter(tileAt(WORLD_MAP, {x: district.x + dx, y: district.y + dy}), 'walking')).toBe(true)
       }
-      for (let dy = 15; dy < 20; dy++) for (let dx = -8; dx < -1; dx++) {
+      for (let dy = district.farm + 1; dy < district.farm + 6; dy++) for (let dx = -13; dx < -6; dx++) {
         expect(canEnter(tileAt(WORLD_MAP, {x: district.x + dx, y: district.y + dy}), 'walking')).toBe(true)
       }
     }

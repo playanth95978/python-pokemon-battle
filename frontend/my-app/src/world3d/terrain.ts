@@ -20,7 +20,7 @@ interface Rect { x: number; y: number; width: number; height: number }
 /** Cuvettes : terre labourée des champs, fond de l'enclos, creux du pré au nord. */
 const BASINS: (Rect & { depth: number })[] = [
     {x: 9, y: 45, width: 7, height: 5, depth: 0.3},
-    {x: 3, y: 49, width: 5, height: 4, depth: 0.28},
+    {x: 3, y: 51, width: 5, height: 4, depth: 0.28},
     {x: 10, y: 20, width: 6, height: 4, depth: 0.25},
 ]
 /** Pente des cuvettes et talus autour des constructions, en cases. */

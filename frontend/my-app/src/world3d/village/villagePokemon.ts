@@ -5,6 +5,7 @@
  * poissons et les spectres se déplacent librement.
  */
 import type { Position } from '../../world/types'
+import { BOURG_LANTERNS, BOURG_WELL } from '../../world/worldMap'
 import { distance, findPath } from './pathfinding'
 import type { Villager } from './villagers'
 import { DISTRICT_POKEMON } from './districtLife'
@@ -36,11 +37,11 @@ export interface PokemonProfile {
 
 const lantern = (x: number, y: number): Perch => ({x, y: y + 0.3, height: 1.98})
 export const PERCHES: Perch[] = [
-    ...[[27, 36], [16, 30], [20, 32], [16, 38], [8, 32], [16, 44], [24, 25]].map(([x, y]) => lantern(x, y)),
-    {x: 23.5, y: 38.5, height: 1.62}, {x: 12, y: 37, height: 1.85},
-    {x: 4, y: 48, height: 0.68}, {x: 7, y: 53, height: 0.68}, {x: 2, y: 50, height: 0.68},
+    ...BOURG_LANTERNS.map(([x, y]) => lantern(x, y)),
+    {x: 23.5, y: 38.5, height: 1.62}, {...BOURG_WELL, height: 1.85},
+    {x: 4, y: 50, height: 0.68}, {x: 7, y: 55, height: 0.68}, {x: 2, y: 52, height: 0.68},
 ]
-const PASTURE: Area = {x: 3, y: 49, width: 5, height: 4}
+const PASTURE: Area = {x: 3, y: 51, width: 5, height: 4}
 const LAKE: Area = {x: 38, y: 45, width: 12, height: 7}
 const MEADOW: Area = {x: 9, y: 20, width: 8, height: 6}
 
@@ -60,7 +61,7 @@ const fish = (index: number): PokemonProfile => ({
 export const VILLAGE_POKEMON: PokemonProfile[] = [
     {
         id: 'machoc', species: 'machoc', speciesKey: 'machop', name: 'Machoc', behaviour: 'worker',
-        spots: [{x: 10, y: 36}, {x: 10, y: 38}, {x: 6, y: 41}],
+        spots: [{x: 9, y: 36}, {x: 15, y: 41}, {x: 6, y: 42}],
         lore: 'Machoc transporte des caisses de minerai pour Aldric. Il ne se fatigue jamais.',
     },
     sheep(1), sheep(2), sheep(3),
