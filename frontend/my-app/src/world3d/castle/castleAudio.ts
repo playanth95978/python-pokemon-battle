@@ -1,25 +1,12 @@
 /**
- * Ambiance sonore du château, entièrement synthétisée (Web Audio) : aucun fichier ni extrait des jeux.
- * Une nappe grave et dissonante, du vent dans les couloirs et des bruits lointains (cloche, craquements, gouttes)
- * dont la tension monte d'étage en étage jusqu'au battement de cœur devant Mewtwo ; pas, escaliers, portes et objets
- * passent par une réverbération de grande salle.
+ * Son du château, entièrement synthétisé (Web Audio) : aucun fichier ni extrait des jeux.
+ * Le thème chiptune (castleMusic.ts) change d'arrangement à chaque étage ; dessous, un léger vent et de rares bruits
+ * lointains (cloche, craquement, gouttes). Pas, escaliers, portes et objets passent par une réverbération de grande salle.
  */
 import type { CastleEvent, CastleState, ItemKind, RoomStyle, Tile } from './castleLayout'
-import { BOSS, roomAt } from './castleLayout'
-
-/** Tension de 0 à 1 : calme inquiet au rez-de-chaussée, oppressante au sommet, maximale tout près de Mewtwo. */
-export function tensionAt(tile: Tile) {
-    if (tile.floor === 0) return 0.2
-    if (tile.floor === 1) return 0.45
-    if (roomAt(tile)?.id !== 'throne') return 0.7
-    const distance = Math.hypot(tile.x - (BOSS.x + (BOSS.width - 1) / 2), tile.z - BOSS.z)
-    return 0.8 + 0.2 * (1 - Math.min(1, distance / 12))
-}
-
-/** Écart entre deux battements de cœur, en secondes ; aucun battement tant que la tension reste modérée. */
-export function heartbeatInterval(tension: number) {
-    return tension < 0.6 ? null : 1.3 - (tension - 0.6) * 1.5
-}
+import { roomAt } from './castleLayout'
+import type { Arrangement, MusicEvent } from './castleMusic'
+import { arrangementFor, PHRASE_LENGTH, renderSection } from './castleMusic'
 
 export function surfaceAt(tile: Tile): RoomStyle {
     return roomAt(tile)?.style ?? 'stone'
@@ -60,32 +47,31 @@ function createEngine() {
     effects.connect(reverb)
     const noise = noiseBuffer(context, 4)
 
-    // Nappe : deux scies graves légèrement désaccordées et un triton, sous un filtre qui respire lentement.
+    // Fond : vent léger et bruits lointains, sous la musique.
     const ambience = context.createGain()
     ambience.gain.value = 0
     ambience.connect(master)
     const ambienceEcho = context.createGain()
     ambienceEcho.gain.value = 0.3
     ambience.connect(ambienceEcho).connect(reverb)
-    const droneFilter = context.createBiquadFilter()
-    droneFilter.type = 'lowpass'
-    droneFilter.Q.value = 5
-    droneFilter.frequency.value = 180
-    const droneGain = context.createGain()
-    droneGain.gain.value = 0.2
-    droneFilter.connect(droneGain).connect(ambience)
-    for (const [type, frequency] of [['sawtooth', 55], ['sawtooth', 55.4], ['triangle', 77.8]] as const) {
-        const oscillator = context.createOscillator()
-        oscillator.type = type
-        oscillator.frequency.value = frequency
-        oscillator.connect(droneFilter)
-        oscillator.start()
-    }
-    const breath = context.createOscillator(), breathDepth = context.createGain()
-    breath.frequency.value = 0.07
-    breathDepth.gain.value = 70
-    breath.connect(breathDepth).connect(droneFilter.frequency)
-    breath.start()
+
+    // Musique : un peu d'écho de salle, et un écho rythmique (à la croche pointée) sur la mélodie.
+    const music = context.createGain()
+    music.gain.value = 0
+    music.connect(master)
+    const musicRoom = context.createGain()
+    musicRoom.gain.value = 0.18
+    music.connect(musicRoom).connect(reverb)
+    const lead = context.createBiquadFilter()
+    lead.type = 'lowpass'
+    lead.frequency.value = 2600
+    lead.connect(music)
+    const echo = context.createDelay(1)
+    const feedback = context.createGain(), echoLevel = context.createGain()
+    feedback.gain.value = 0.3
+    echoLevel.gain.value = 0.28
+    lead.connect(echo).connect(echoLevel).connect(music)
+    echo.connect(feedback).connect(echo)
 
     // Vent : souffle filtré dont la hauteur et le volume ondulent.
     const wind = context.createBufferSource()
@@ -96,7 +82,7 @@ function createEngine() {
     windFilter.frequency.value = 500
     windFilter.Q.value = 0.9
     const windGain = context.createGain()
-    windGain.gain.value = 0.07
+    windGain.gain.value = 0.035
     wind.connect(windFilter).connect(windGain).connect(ambience)
     const gust = context.createOscillator(), gustDepth = context.createGain()
     gust.frequency.value = 0.11
@@ -104,17 +90,6 @@ function createEngine() {
     gust.connect(gustDepth).connect(windFilter.frequency)
     wind.start()
     gust.start()
-
-    // Accord dissonant aigu (si bémol, si, fa) : absent en bas, il s'installe vers le sommet.
-    const pad = context.createGain()
-    pad.gain.value = 0
-    pad.connect(ambience)
-    for (const frequency of [233.1, 246.9, 349.2]) {
-        const oscillator = context.createOscillator()
-        oscillator.frequency.value = frequency
-        oscillator.connect(pad)
-        oscillator.start()
-    }
 
     function tone(type: OscillatorType, frequency: number, end: number, at: number, duration: number, volume: number, output: AudioNode = effects) {
         const source = context.createOscillator(), gain = context.createGain()
@@ -160,7 +135,38 @@ function createEngine() {
         source.stop(at + duration + 0.05)
     }
 
-    return {context, master, ambience, droneFilter, pad, tone, hiss, creak}
+    /** Note de musique : attaque nette, tenue, petite chute ; jouée un peu plus courte que sa valeur (piqué). */
+    function note(type: OscillatorType, frequency: number, at: number, duration: number, volume: number, output: AudioNode) {
+        const source = context.createOscillator(), gain = context.createGain()
+        source.type = type
+        source.frequency.value = frequency
+        const end = at + duration * 0.85
+        gain.gain.setValueAtTime(0.0001, at)
+        gain.gain.exponentialRampToValueAtTime(volume, at + 0.005)
+        gain.gain.setValueAtTime(volume * 0.7, end - 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.0001, end + 0.03)
+        source.connect(gain).connect(output)
+        source.start(at)
+        source.stop(end + 0.05)
+    }
+
+    /** Batterie 8 bits : grosse caisse en sinus qui chute, caisse claire et charleston en souffle filtré. */
+    function drum(voice: 'kick' | 'snare' | 'hat', at: number) {
+        if (voice === 'kick') return tone('sine', 140, 45, at, 0.12, 0.45, music)
+        const source = context.createBufferSource(), filter = context.createBiquadFilter(), gain = context.createGain()
+        source.buffer = noise
+        filter.type = voice === 'hat' ? 'highpass' : 'bandpass'
+        filter.frequency.value = voice === 'hat' ? 7000 : 1800
+        const volume = voice === 'hat' ? 0.05 : 0.18, duration = voice === 'hat' ? 0.03 : 0.1
+        gain.gain.setValueAtTime(volume, at)
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + duration)
+        source.connect(filter).connect(gain).connect(music)
+        source.start(at, Math.random() * 3)
+        source.stop(at + duration + 0.02)
+        if (voice === 'snare') tone('triangle', 190, 140, at, 0.06, 0.12, music)
+    }
+
+    return {context, master, ambience, music, lead, echo, tone, hiss, creak, note, drum}
 }
 
 type Engine = ReturnType<typeof createEngine>
@@ -177,7 +183,10 @@ const PICKUP_NOTES: Record<ItemKind, number[]> = {
 export function createCastleAudio() {
     let engine: Engine | null = null
     let active = false, paused = false, muted = false
-    let nextAmbient = 0, nextBeat = 0
+    let nextAmbient = 0
+    // Séquenceur : arrangement en cours, phrase suivante, passages déjà joués, heure de début de la prochaine phrase.
+    let arrangement: Arrangement | null = null
+    let section = 0, pass = 0, nextSection = 0
 
     /** Le contexte audio naît au premier geste du joueur (règle des navigateurs sur la lecture automatique). */
     function ready() {
@@ -190,6 +199,40 @@ export function createCastleAudio() {
         if (!engine) return
         const target = active && !paused ? 1 : 0
         engine.ambience.gain.setTargetAtTime(target, engine.context.currentTime, target ? 1.2 : 0.4)
+        engine.music.gain.setTargetAtTime(target * 0.55, engine.context.currentTime, target ? 0.6 : 0.25)
+        // Au retour (entrée, fin de combat), le morceau reprend au début de l'arrangement.
+        if (target) {
+            arrangement = null
+            nextSection = engine.context.currentTime + 0.4
+        }
+    }
+
+    /** Programme la phrase suivante dès qu'elle approche ; l'arrangement suit l'étage, au début d'une phrase. */
+    function schedule(sound: Engine, tile: Tile) {
+        const now = sound.context.currentTime
+        if (nextSection < now) nextSection = now + 0.05
+        if (nextSection > now + 0.3) return
+        const wanted = arrangementFor(tile)
+        if (wanted !== arrangement) {
+            arrangement = wanted
+            section = 0
+            pass = 0
+        }
+        const sixteenth = 60 / arrangement.tempo / 4
+        sound.echo.delayTime.setValueAtTime(sixteenth * 3, nextSection)
+        renderSection(arrangement, pass, section).forEach((event) => play(sound, event, nextSection, sixteenth))
+        nextSection += PHRASE_LENGTH * sixteenth
+        section = (section + 1) % arrangement.sections.length
+        if (section === 0) pass++
+    }
+
+    function play(sound: Engine, event: MusicEvent, start: number, sixteenth: number) {
+        const at = start + event.at * sixteenth
+        if (event.voice === 'kick' || event.voice === 'snare' || event.voice === 'hat') return sound.drum(event.voice, at)
+        if (event.pitch === null) return
+        const frequency = 440 * Math.pow(2, (event.pitch - 69) / 12)
+        if (event.voice === 'lead') sound.note('square', frequency, at, event.length * sixteenth, 0.07, sound.lead)
+        else sound.note('triangle', frequency, at, event.length * sixteenth, 0.3, sound.music)
     }
 
     function step(sound: Engine, surface: RoomStyle, at: number, pitch = 1) {
@@ -198,23 +241,21 @@ export function createCastleAudio() {
         sound.tone('sine', thump * pitch, thump * pitch * 0.5, at, 0.12, volume * 1.4)
     }
 
-    /** Bruit lointain au hasard : cloche fêlée, plancher qui craque, goutte d'eau ou chuchotement. */
-    function ambientEvent(sound: Engine, tension: number) {
+    /** Bruit lointain au hasard, discret sous la musique : cloche, plancher qui craque ou gouttes d'eau. */
+    function ambientEvent(sound: Engine) {
         const at = sound.context.currentTime + 0.05
         const roll = Math.random()
-        if (roll < 0.3) {
+        if (roll < 0.35) {
             const base = 90 + Math.random() * 40
-            for (const [ratio, volume] of [[1, 0.05], [2.76, 0.03], [5.4, 0.015]]) sound.tone('sine', base * ratio, base * ratio * 0.98, at, 4.5, volume)
-        } else if (roll < 0.55) sound.creak(at, 0.8 + Math.random() * 0.8, 0.05)
-        else if (roll < 0.8) {
-            for (let drop = 0; drop < 3; drop++) sound.tone('sine', 1900, 1100, at + drop * (0.6 + Math.random()), 0.06, 0.035)
-        } else sound.hiss(1800 + Math.random() * 800, 12, at, 2.2, 0.04 + tension * 0.04, 1)
+            for (const [ratio, volume] of [[1, 0.03], [2.76, 0.018], [5.4, 0.008]]) sound.tone('sine', base * ratio, base * ratio * 0.98, at, 4.5, volume)
+        } else if (roll < 0.65) sound.creak(at, 0.8 + Math.random() * 0.8, 0.035)
+        else for (let drop = 0; drop < 3; drop++) sound.tone('sine', 1900, 1100, at + drop * (0.6 + Math.random()), 0.06, 0.03)
     }
 
     return {
         /** Sous un geste du joueur (touche) : débloque le son si le navigateur l'avait suspendu. */
         resume: () => { if (active) ready() },
-        /** Entrée par la grande porte : le lourd battant se referme, la nappe monte. */
+        /** Entrée par la grande porte : le lourd battant se referme, la musique démarre. */
         enter() {
             active = true
             const sound = ready()
@@ -291,35 +332,27 @@ export function createCastleAudio() {
                     PICKUP_NOTES.key.forEach((note, index) => sound.tone('triangle', note, note, at + 0.7 + index * 0.08, 0.5, 0.12))
             }
         },
-        /** Le défi de Mewtwo : coup sourd et accord strident, sous la transition manga. */
+        /** Début de combat (spectre ou Mewtwo) : coup sourd et arpège montant 8 bits, sous la transition manga. */
         challenge() {
             const sound = ready()
             if (!sound) return
             const at = sound.context.currentTime + 0.01
-            sound.tone('sine', 65, 25, at, 1.4, 0.8)
-            for (const frequency of [466, 494, 698, 740]) sound.tone('sawtooth', frequency, frequency * 0.97, at, 1.5, 0.05)
-            sound.hiss(900, 0.6, at, 1.2, 0.25)
+            sound.tone('sine', 90, 40, at, 0.5, 0.6)
+            ;[62, 65, 69, 74, 77, 81].forEach((pitch, index) =>
+                sound.note('square', 440 * Math.pow(2, (pitch - 69) / 12), at + index * 0.07, 0.12, 0.08, sound.lead))
         },
-        /** À chaque image : tension de la pièce, bruits lointains, battement de cœur ; coupé pendant un combat. */
+        /** À chaque image : la musique de l'étage et de rares bruits lointains ; coupés pendant un combat. */
         update(state: CastleState | null, battling: boolean) {
             if (paused !== battling) {
                 paused = battling
                 fadeAmbience()
             }
             if (!engine || !state || !active || paused || engine.context.state !== 'running') return
-            const sound = engine, now = sound.context.currentTime
-            const tension = tensionAt(state)
-            sound.droneFilter.frequency.setTargetAtTime(140 + tension * 300, now, 1.5)
-            sound.pad.gain.setTargetAtTime(Math.max(0, tension - 0.4) * 0.05, now, 2)
+            schedule(engine, state)
+            const now = engine.context.currentTime
             if (now >= nextAmbient) {
-                ambientEvent(sound, tension)
-                nextAmbient = now + (9 - tension * 4) + Math.random() * 8
-            }
-            const beat = heartbeatInterval(tension)
-            if (beat !== null && now >= nextBeat) {
-                sound.tone('sine', 58, 38, now + 0.02, 0.18, 0.35 + tension * 0.2)
-                sound.tone('sine', 52, 34, now + 0.24, 0.16, 0.25 + tension * 0.15)
-                nextBeat = now + beat
+                ambientEvent(engine)
+                nextAmbient = now + 14 + Math.random() * 12
             }
         },
         /** Onglet masqué : silence total ; il reprend au retour. */
