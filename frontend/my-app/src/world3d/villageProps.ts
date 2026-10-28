@@ -99,8 +99,8 @@ const SHAPES: Record<PropKind, () => Part[]> = {
 }
 
 export interface VillageProps {
-    /** Mobilier de ces cases, ajouté au groupe du chunk. */
-    addTo(group: THREE.Group, props: readonly Prop[]): void
+    /** Mobilier de ces cases, ajouté au groupe du chunk ; `ground` donne la hauteur du sol sous chaque meuble. */
+    addTo(group: THREE.Group, props: readonly Prop[], ground?: (x: number, z: number) => number): void
 }
 
 /** Couleurs unies, fondues dans un seul matériau à couleurs de sommets ; les autres gardent leurs textures. */
@@ -132,13 +132,14 @@ export function createVillageProps(materials: WorldMaterials): VillageProps {
 
     const matrix = new THREE.Matrix4(), rotation = new THREE.Quaternion(), position = new THREE.Vector3(), unit = new THREE.Vector3(1, 1, 1)
     return {
-        addTo(group, props) {
+        addTo(group, props, ground = () => 0) {
             // Tout le mobilier du chunk est fondu en un maillage par matériau (les cultures à part, sans ombre portée).
             const buckets = new Map<string, THREE.BufferGeometry[]>()
             for (const prop of props) {
                 const [width, depth] = PROP_SIZE[prop.kind] ?? [1, 1]
                 rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, ANGLES[prop.facing ?? 'down'])
-                matrix.compose(position.set(prop.x + width / 2, 0, prop.y + depth / 2), rotation, unit)
+                const x = prop.x + width / 2, z = prop.y + depth / 2
+                matrix.compose(position.set(x, ground(x, z), z), rotation, unit)
                 for (const [geometry, material] of shape(prop.kind)) {
                     const key = `${material}:${prop.kind === 'crops' ? 'flat' : 'shadow'}`
                     buckets.set(key, [...buckets.get(key) ?? [], geometry.clone().applyMatrix4(matrix)])

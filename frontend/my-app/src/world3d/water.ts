@@ -21,6 +21,11 @@ export interface WaterOptions {
     /** Absorption par unité d'épaisseur : plus elle est forte, plus l'eau est opaque. */
     absorption: number
     foamWidth: number
+    /**
+     * Surface variable (crue) : texture par case, R = hauteur de l'eau dans le monde, G = part d'eau boueuse ;
+     * `rect` = origine x, z et taille de la zone couverte. Sans elle, la surface est plane.
+     */
+    surface?: { map: THREE.Texture; rect: THREE.Vector4; muddyColor: THREE.ColorRepresentation }
 }
 
 /** Direction (x, z), longueur relative à `wavelength` et part de `waveHeight` de chaque vague. */
@@ -85,10 +90,24 @@ const vertexShader = `
     varying vec3 vWorld;
     varying vec3 vWaveNormal;
     varying float vViewDepth;
+    varying float vMuddy;
+    #ifdef USE_SURFACE
+        uniform sampler2D surfaceMap;
+        uniform vec4 surfaceRect;
+    #endif
     #include <fog_pars_vertex>
     void main() {
-        vReflectCoord = textureMatrix * vec4(position, 1.0);
-        vec4 world = modelMatrix * vec4(position, 1.0);
+        vec3 local = position;
+        vMuddy = 0.0;
+        #ifdef USE_SURFACE
+            // Le plan est couché (son z local est la hauteur) : chaque sommet monte au niveau de l'eau de sa case.
+            vec2 planar = (modelMatrix * vec4(position, 1.0)).xz;
+            vec4 surface = textureLod(surfaceMap, (planar - surfaceRect.xy) / surfaceRect.zw, 0.0);
+            local.z += surface.r - modelMatrix[3].y;
+            vMuddy = surface.g;
+        #endif
+        vReflectCoord = textureMatrix * vec4(local, 1.0);
+        vec4 world = modelMatrix * vec4(local, 1.0);
         float height = 0.0;
         vec2 slope = vec2(0.0);
         for (int index = 0; index < 4; index++) {
@@ -123,10 +142,13 @@ const fragmentShader = `
     uniform vec3 deepColor;
     uniform float absorption;
     uniform float foamWidth;
+    uniform vec3 muddyColor;
+    uniform float rain;
     varying vec4 vReflectCoord;
     varying vec3 vWorld;
     varying vec3 vWaveNormal;
     varying float vViewDepth;
+    varying float vMuddy;
     #include <packing>
     #include <fog_pars_fragment>
 
@@ -139,6 +161,12 @@ const fragmentShader = `
         vec4 rippleA = texture2D(ripples, vWorld.xz / 6.0 + vec2(time * 0.031, time * 0.017));
         vec4 rippleB = texture2D(ripples, vWorld.xz / 2.3 - vec2(time * 0.022, -time * 0.027));
         vec2 detail = (rippleA.xy * 2.0 - 1.0) + (rippleB.xy * 2.0 - 1.0) * 0.6;
+        // Pluie : un clapotis fin et rapide, qui change de motif plusieurs fois par seconde.
+        if (rain > 0.0) {
+            vec4 dropsA = texture2D(ripples, vWorld.xz * 1.7 + vec2(floor(time * 6.0) * 0.37, floor(time * 6.0) * 0.61));
+            vec4 dropsB = texture2D(ripples, vWorld.xz * 2.3 - vec2(floor(time * 5.0 + 0.5) * 0.53, floor(time * 5.0 + 0.5) * 0.29));
+            detail += ((dropsA.xy + dropsB.xy) - 1.0) * rain * 1.2;
+        }
         vec3 viewVector = cameraPosition - vWorld;
         vec3 viewDirection = normalize(viewVector);
         // Au loin les rides s'effacent : elles scintilleraient.
@@ -156,8 +184,9 @@ const fragmentShader = `
         }
         vec3 refracted = texture2D(sceneColor, refractedUv).rgb;
         // La lumière est absorbée avec l'épaisseur traversée : clair et teinté au bord, sombre au large.
-        float opacity = 1.0 - exp(-refractedThickness * absorption);
-        vec3 body = mix(refracted * shallowColor, deepColor, opacity);
+        // L'eau de crue charrie de la terre : brune et vite opaque.
+        float opacity = 1.0 - exp(-refractedThickness * absorption * (1.0 + vMuddy * 5.0));
+        vec3 body = mix(refracted * mix(shallowColor, muddyColor, vMuddy * 0.7), mix(deepColor, muddyColor * 0.55, vMuddy), opacity);
 
         // Reflet miroir, déformé par la surface ; Fresnel de Schlick (eau : 2 % de face, tout en rasant).
         vec2 reflectedUv = vReflectCoord.xy / vReflectCoord.w + normal.xz * 0.05;
@@ -167,13 +196,14 @@ const fragmentShader = `
 
         // Reflet du soleil sur les crêtes.
         vec3 halfVector = normalize(sunDirection + viewDirection);
-        color += vec3(1.0, 0.86, 0.62) * pow(max(dot(normal, halfVector), 0.0), 700.0) * 8.0;
+        color += vec3(1.0, 0.86, 0.62) * pow(max(dot(normal, halfVector), 0.0), 700.0) * 8.0 * (1.0 - rain);
 
         // Écume : là où l'eau est mince (rives, objets qui sortent de l'eau), découpée par le motif des rides.
         // Le motif domine : une frange irrégulière, pas un liseré blanc tout autour de la rive.
         float shore = 1.0 - smoothstep(0.0, foamWidth, thickness);
         float pattern = smoothstep(0.55, 0.85, rippleA.a * 0.6 + rippleB.a * 0.4 + shore * 0.2);
-        color = mix(color, vec3(0.92, 0.95, 0.95), shore * pattern * 0.6);
+        // Sur l'eau boueuse, une mousse jaunâtre et plus rare.
+        color = mix(color, mix(vec3(0.92, 0.95, 0.95), vec3(0.7, 0.62, 0.5), vMuddy), shore * pattern * 0.6 * (1.0 - vMuddy * 0.6));
 
         gl_FragColor = vec4(color, 1.0);
         #include <fog_fragment>
@@ -236,7 +266,10 @@ export function createWater(renderer: THREE.WebGLRenderer, scene: THREE.Scene, s
             deepColor: {value: new THREE.Color(options.deepColor)},
             absorption: {value: options.absorption},
             foamWidth: {value: options.foamWidth},
+            muddyColor: {value: new THREE.Color(options.surface?.muddyColor ?? options.deepColor)},
+            rain: {value: 0},
         }]),
+        defines: options.surface ? {USE_SURFACE: ''} : {},
     })
     // Le Reflector garde sa caméra miroir et sa cible ; seul le matériau change. Ses matrices sont partagées par référence.
     Object.assign(material.uniforms, {
@@ -245,6 +278,9 @@ export function createWater(renderer: THREE.WebGLRenderer, scene: THREE.Scene, s
         sceneColor: {value: prepass.texture},
         sceneDepth: {value: prepass.depthTexture},
         ripples: {value: rippleTexture()},
+        // Après la fusion, qui copierait la texture : la crue la met à jour à chaque image.
+        surfaceMap: {value: options.surface?.map ?? null},
+        surfaceRect: {value: options.surface?.rect ?? new THREE.Vector4()},
     })
     reflectorMaterial.dispose()
     reflector.material = material
@@ -261,6 +297,10 @@ export function createWater(renderer: THREE.WebGLRenderer, scene: THREE.Scene, s
 
     return {
         mesh: reflector,
+        /** Intensité de la pluie sur l'eau, de 0 à 1. */
+        setRain(value: number) {
+            material.uniforms.rain.value = value
+        },
         /**
          * À appeler avant le rendu de l'image : rend la scène sans l'eau (couleur et profondeur du fond).
          * `skip.reflection` : objets dont le reflet ne se verrait pas (petits, loin de l'eau) ;

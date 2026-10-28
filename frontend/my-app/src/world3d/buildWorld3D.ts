@@ -12,9 +12,9 @@ import { animateTrees, treeInstances } from './realTrees'
 import { createGrassBlade } from './grassBlade'
 import type { VillageModels } from './villageModels'
 import type { VillageProps } from './villageProps'
+import type { Terrain } from './terrain'
+import { BED_DEPTH, RIVER_LEVEL } from './terrain'
 
-export const WATER_LEVEL = -0.12
-const LAKE_DEPTH = -0.55
 const GRASS_PER_TILE = 16
 
 /** Centre d'une case de la grille en coordonnées 3D (1 case = 1 unité). */
@@ -52,7 +52,7 @@ function waterAmount(map: WorldMap, x: number, z: number) {
 
 // --- Socle permanent : sol, eau, horizon, pont et panneaux (peu de triangles, toujours visibles) ---
 
-function addGround(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials) {
+function addGround(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials, terrain: Terrain) {
     const geometry = new THREE.PlaneGeometry(map.width, map.height, map.width * 2, map.height * 2)
     geometry.rotateX(-Math.PI / 2)
     geometry.translate(map.width / 2, 0, map.height / 2)
@@ -61,7 +61,7 @@ function addGround(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials)
         const x = positions.getX(index), z = positions.getZ(index)
         const water = waterAmount(map, x, z)
         const relief = (hash(Math.round(x * 2), Math.round(z * 2), 4) - 0.5) * 0.05
-        positions.setY(index, water > 0 ? WATER_LEVEL - 0.08 + (LAKE_DEPTH - WATER_LEVEL) * water : relief)
+        positions.setY(index, water > 0 ? RIVER_LEVEL - 0.08 - BED_DEPTH * water : terrain.height(x, z) + relief)
         // UV en coordonnées du monde : le shader du sol en déduit la case sous chaque pixel.
         uvs.setXY(index, x / GROUND_TILE, z / GROUND_TILE)
     }
@@ -76,21 +76,7 @@ function addGround(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials)
     scene.add(hills)
 }
 
-/** Rectangle couvrant toutes les cases d'eau (lac et rivière), avec une case de marge : seul plan d'eau à refléter. */
-export function waterBounds(map: WorldMap) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-    for (let y = 0; y < map.height; y++) {
-        for (let x = 0; x < map.width; x++) {
-            if (tileAt(map, {x, y}) !== 'water') continue
-            minX = Math.min(minX, x)
-            minY = Math.min(minY, y)
-            maxX = Math.max(maxX, x + 1)
-            maxY = Math.max(maxY, y + 1)
-        }
-    }
-    return {x: (minX + maxX) / 2, z: (minY + maxY) / 2, width: maxX - minX + 2, depth: maxY - minY + 2}
-}
-function addBridge(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials) {
+function addBridge(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials, terrain: Terrain) {
     const planks: Position[] = []
     for (let y = 0; y < map.height; y++) {
         for (let x = 0; x < map.width; x++) if (tileAt(map, {x, y}) === 'bridge') planks.push({x, y})
@@ -98,10 +84,12 @@ function addBridge(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials)
     if (!planks.length) return
     const plank = instanced(new THREE.BoxGeometry(0.95, 0.1, 0.22), materials.wood, planks.length * 4)
     const matrix = new THREE.Matrix4()
+    // Le pont enjambe la rivière au fond de la vallée : il est le premier noyé quand elle déborde.
+    const deck = terrain.tile(planks[0])
     planks.forEach(({x, y}, tile) => {
         for (let index = 0; index < 4; index++) {
             // Planches orientées le long de la rivière, comme sur un vrai pont.
-            matrix.compose(new THREE.Vector3(x + 0.12 + index * 0.25, 0.04, y + 0.5),
+            matrix.compose(new THREE.Vector3(x + 0.12 + index * 0.25, deck + 0.04, y + 0.5),
                 new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2 + (hash(x, y, index) - 0.5) * 0.06, 0)),
                 new THREE.Vector3(1.05, 1, 1))
             plank.setMatrixAt(tile * 4 + index, matrix)
@@ -115,22 +103,22 @@ function addBridge(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials)
     let post = 0
     for (const z of [Math.min(...ys) + 0.05, Math.max(...ys) + 0.95]) {
         const rail = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, 0.08, 0.08), materials.wood)
-        rail.position.set((minX + maxX) / 2, 0.6, z)
+        rail.position.set((minX + maxX) / 2, deck + 0.6, z)
         rail.castShadow = true
         scene.add(rail)
-        for (let x = minX; x <= maxX; x++) posts.setMatrixAt(post++, matrix.makeTranslation(x, 0.3, z))
+        for (let x = minX; x <= maxX; x++) posts.setMatrixAt(post++, matrix.makeTranslation(x, deck + 0.3, z))
     }
     scene.add(posts)
 }
 
-function addSigns(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials) {
+function addSigns(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials, terrain: Terrain) {
     const posts = instanced(new THREE.CylinderGeometry(0.05, 0.06, 0.9, 6), materials.wood, map.landmarks.length)
     const boards = instanced(new THREE.BoxGeometry(0.7, 0.42, 0.06), materials.wood, map.landmarks.length)
     const matrix = new THREE.Matrix4()
     map.landmarks.forEach((landmark, index) => {
-        const center = tileCenter(landmark.x, landmark.y)
-        posts.setMatrixAt(index, matrix.makeTranslation(center.x, 0.45, center.z))
-        boards.setMatrixAt(index, matrix.makeTranslation(center.x, 0.85, center.z))
+        const center = tileCenter(landmark.x, landmark.y), ground = terrain.tile(landmark)
+        posts.setMatrixAt(index, matrix.makeTranslation(center.x, ground + 0.45, center.z))
+        boards.setMatrixAt(index, matrix.makeTranslation(center.x, ground + 0.85, center.z))
     })
     scene.add(posts, boards)
 }
@@ -178,11 +166,11 @@ export interface WorldBase {
     update: (time: number) => void
 }
 
-export function buildWorldBase(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials): WorldBase {
-    // L'eau est créée à part (voir water.ts et waterBounds) : elle a besoin du renderer pour ses reflets.
-    addGround(scene, map, materials)
-    addBridge(scene, map, materials)
-    addSigns(scene, map, materials)
+export function buildWorldBase(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials, terrain: Terrain): WorldBase {
+    // L'eau est créée à part (voir water.ts) : elle a besoin du renderer pour ses reflets.
+    addGround(scene, map, materials, terrain)
+    addBridge(scene, map, materials, terrain)
+    addSigns(scene, map, materials, terrain)
     addExitGate(scene, materials)
     return {
         update(time) {
@@ -219,7 +207,7 @@ function treeKind(x: number, y: number): TreeKind {
     return roll < 0.55 ? 'oak' : roll < 0.82 ? 'aspen' : 'pine'
 }
 
-function addTrees(group: THREE.Group, tiles: Position[]) {
+function addTrees(group: THREE.Group, tiles: Position[], terrain: Terrain) {
     const byKind = new Map<TreeKind, Position[]>()
     for (const tile of tiles) {
         const kind = treeKind(tile.x, tile.y)
@@ -230,6 +218,7 @@ function addTrees(group: THREE.Group, tiles: Position[]) {
         const matrices = new Float32Array(positions.length * 16), colors = new Float32Array(positions.length * 3)
         positions.forEach(({x, y}, index) => {
             const center = tileCenter(x + (hash(x, y, 1) - 0.5) * 0.4, y + (hash(x, y, 2) - 0.5) * 0.4)
+            center.y = terrain.height(center.x, center.z)
             rotation.setFromEuler(euler.set(0, hash(x, y, 3) * Math.PI * 2, 0))
             matrix.compose(center, rotation, scale.setScalar(0.8 + hash(x, y) * 0.45)).toArray(matrices, index * 16)
             const shade = 0.85 + hash(x, y, 5) * 0.3
@@ -240,20 +229,21 @@ function addTrees(group: THREE.Group, tiles: Position[]) {
 }
 
 /** Arbres et maisons d'un chunk : visibles de loin, construits dans le rayon de chargement. */
-export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: VillageModels, props: VillageProps) {
+export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: VillageModels, props: VillageProps, terrain: Terrain) {
     const group = chunkGroup(`decor ${chunk.cx},${chunk.cy}`)
     const tiles = chunkTiles(map, chunk)
-    addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree' && !isExitGap(tile)))
+    addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree' && !isExitGap(tile)), terrain)
     // Une maison appartient au chunk de son coin nord-ouest.
     const inChunk = new Set(tiles.map(({x, y}) => `${x},${y}`))
     map.buildings.filter((building) => inChunk.has(`${building.x},${building.y}`))
         .forEach((building) => group.add(village.house(building)))
-    props.addTo(group, map.props.filter((prop) => inChunk.has(`${prop.x},${prop.y}`)))
+    props.addTo(group, map.props.filter((prop) => inChunk.has(`${prop.x},${prop.y}`)), terrain.height)
     return group.children.length ? freeze(group) : null
 }
 
 /** Brins d'herbe et fleurs d'un chunk : seulement près du joueur, c'est la couche la plus dense. */
-export function buildGrassChunk(map: WorldMap, chunk: ChunkKey, materials: WorldMaterials, bare: (tile: Position) => boolean = () => false) {
+export function buildGrassChunk(map: WorldMap, chunk: ChunkKey, materials: WorldMaterials, terrain: Terrain,
+                                bare: (tile: Position) => boolean = () => false) {
     // `bare` : cases d'herbe recouvertes par une construction (le château et son chemin pavé).
     const tiles = chunkTiles(map, chunk).filter((tile) => tileAt(map, tile) === 'grass' && !bare(tile))
     if (!tiles.length) return null
@@ -265,13 +255,15 @@ export function buildGrassChunk(map: WorldMap, chunk: ChunkKey, materials: World
     tiles.forEach(({x, y}, tile) => {
         for (let index = 0; index < GRASS_PER_TILE; index++) {
             const position = new THREE.Vector3(x + hash(x, y, index), 0, y + hash(x, y, index + 10))
+            position.y = terrain.height(position.x, position.z)
             rotation.setFromEuler(euler.set((hash(x, index, y) - 0.5) * 0.5, hash(y, x, index) * 6, 0))
             const size = 0.6 + hash(index, x, y) * 0.9
             grass.setMatrixAt(tile * GRASS_PER_TILE + index, matrix.compose(position, rotation, new THREE.Vector3(size, size, size)))
             grass.setColorAt(tile * GRASS_PER_TILE + index, color.setHSL(0.22 + hash(x, y, index + 20) * 0.07, 0.55, 0.24 + hash(x, y, index + 30) * 0.1))
         }
         if (hash(x, y, 40) > 0.82) {
-            flowers.setMatrixAt(flowerCount, matrix.makeTranslation(x + hash(x, y, 41), 0.12, y + hash(x, y, 42)))
+            const fx = x + hash(x, y, 41), fz = y + hash(x, y, 42)
+            flowers.setMatrixAt(flowerCount, matrix.makeTranslation(fx, terrain.height(fx, fz) + 0.12, fz))
             flowers.setColorAt(flowerCount++, color.set([0xfff4a8, 0xf49ac1, 0xffffff, 0xb7a6ff][Math.floor(hash(x, y, 43) * 4)]))
         }
     })

@@ -17,7 +17,7 @@ const GATE_ROWS = [50, 51]
 export const CASTLE_DOORSTEP: Position = {x: 22, y: 50}
 /** Chemin pavé depuis la grande route (x = 17 à 19) jusqu'à la porte. */
 const PATH = {fromX: 20, toX: 22}
-const WALL_HEIGHT = 5, WALL_THICKNESS = 0.9
+const WALL_HEIGHT = 7.5, WALL_THICKNESS = 0.9
 
 /** Pousser vers l'est contre la porte fait entrer dans le château. */
 export function entersCastle(target: Position, direction: Direction) {
@@ -32,7 +32,22 @@ export function isCastleGround(position: Position) {
 export function buildCastleExterior(scene: THREE.Scene, materials: CastleMaterials) {
     const castle = new THREE.Group()
     castle.name = 'château'
-    const roof = materials.roof
+    // Matériaux propres à la façade : l'intérieur conserve son éclairage et ses textures.
+    const stone = materials.rampart.clone()
+    stone.color.setHex(0x525363)
+    const roof = materials.roof.clone()
+    roof.color.setHex(0x252536)
+    // Les textures arrivent après la construction : un clone initial ne les reçoit pas automatiquement.
+    void materials.ready.then(() => {
+        for (const [target, source] of [[stone, materials.rampart], [roof, materials.roof]]) {
+            target.map = source.map
+            target.normalMap = source.normalMap
+            target.roughnessMap = source.roughnessMap
+            target.needsUpdate = true
+        }
+    })
+    const glow = new THREE.MeshBasicMaterial({color: 0x9973cc})
+    const recess = new THREE.MeshBasicMaterial({color: 0x100f1a})
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) => {
         const mesh = new THREE.Mesh(geometry, material)
         mesh.position.set(x, y, z)
@@ -42,7 +57,7 @@ export function buildCastleExterior(scene: THREE.Scene, materials: CastleMateria
         return mesh
     }
     const wall = (width: number, height: number, depth: number, x: number, y: number, z: number) =>
-        add(texturedBox(width, height, depth, TEXTURE_SIZE.rampart), materials.rampart, x, y, z)
+        add(texturedBox(width, height, depth, TEXTURE_SIZE.rampart), stone, x, y, z)
     const left = CASTLE_AREA.x, top = CASTLE_AREA.y, right = left + CASTLE_AREA.width, bottom = top + CASTLE_AREA.depth
     const centerX = (left + right) / 2, centerZ = (top + bottom) / 2
     const gateTop = GATE_ROWS[0], gateBottom = GATE_ROWS[GATE_ROWS.length - 1] + 1
@@ -71,7 +86,7 @@ export function buildCastleExterior(scene: THREE.Scene, materials: CastleMateria
         merlon(right - half, z)
         merlon(left + half, z)
     }
-    const merlonMesh = new THREE.InstancedMesh(texturedBox(0.45, 0.6, WALL_THICKNESS, TEXTURE_SIZE.rampart), materials.rampart, merlons.length)
+    const merlonMesh = new THREE.InstancedMesh(texturedBox(0.45, 0.6, WALL_THICKNESS, TEXTURE_SIZE.rampart), stone, merlons.length)
     merlons.forEach((matrix, index) => merlonMesh.setMatrixAt(index, matrix))
     merlonMesh.castShadow = true
     merlonMesh.receiveShadow = true
@@ -79,33 +94,56 @@ export function buildCastleExterior(scene: THREE.Scene, materials: CastleMateria
 
     // Tours : fût cylindrique, couronne crénelée, toit conique en ardoise.
     const tower = (x: number, z: number, radius: number, height: number) => {
-        add(texturedCylinder(radius, radius * 1.08, height, 28, TEXTURE_SIZE.rampart), materials.rampart, x, height / 2, z)
-        add(texturedCylinder(radius + 0.18, radius + 0.18, 0.5, 28, TEXTURE_SIZE.rampart), materials.rampart, x, height + 0.25, z)
-        add(texturedCylinder(0, radius + 0.45, radius * 2.4, 28, TEXTURE_SIZE.rampart / 2), roof, x, height + 0.5 + radius * 1.2, z)
+        add(texturedCylinder(radius, radius * 1.08, height, 20, TEXTURE_SIZE.rampart), stone, x, height / 2, z)
+        add(texturedCylinder(radius + 0.18, radius + 0.18, 0.5, 20, TEXTURE_SIZE.rampart), stone, x, height + 0.25, z)
+        const spireHeight = radius * 4.2
+        add(texturedCylinder(0, radius + 0.4, spireHeight, 20, TEXTURE_SIZE.rampart / 2), roof, x, height + 0.5 + spireHeight / 2, z)
+        add(new THREE.ConeGeometry(0.1, 1.2, 6), materials.iron, x, height + spireHeight + 1, z)
         // Meurtrières lumineuses, tournées vers l'extérieur.
         for (let level = 1; level < height / 2.2; level++) {
-            const slit = add(new THREE.PlaneGeometry(0.16, 0.6), new THREE.MeshBasicMaterial({color: new THREE.Color(2.4, 1.4, 0.5)}), 0, 0, 0)
+            const slit = add(new THREE.PlaneGeometry(0.22, 1.05), glow, 0, 0, 0)
             const angle = Math.atan2(x - centerX, z - centerZ) + level * 0.7
             slit.position.set(x + Math.sin(angle) * (radius + 0.06), level * 2.2, z + Math.cos(angle) * (radius + 0.06))
             slit.rotation.y = angle
             slit.castShadow = false
         }
     }
-    for (const [x, z] of [[left + 0.4, top + 0.4], [right - 0.4, top + 0.4], [left + 0.4, bottom - 0.4], [right - 0.4, bottom - 0.4]]) tower(x, z, 1.5, 7.5)
-    tower(left + 0.2, gateTop - 0.9, 0.95, 6.4)
-    tower(left + 0.2, gateBottom + 0.9, 0.95, 6.4)
+    for (const [x, z] of [[left + 1, top + 1], [right - 1, top + 1], [left + 1, bottom - 1], [right - 1, bottom - 1]]) tower(x, z, 1.65, x < centerX ? 11 : 13)
+    tower(left + 0.6, gateTop - 1, 0.95, 10)
+    tower(left + 0.6, gateBottom + 1, 0.95, 11.5)
 
     // Donjon central avec ses tourelles et son toit pyramidal.
-    const keepX = centerX + 1, keepSize = 6, keepHeight = 10.5
+    const keepX = centerX + 1, keepSize = 7.4, keepHeight = 17
     wall(keepSize, keepHeight, keepSize, keepX, keepHeight / 2, centerZ)
-    add(texturedCylinder(0, keepSize * 0.78, 4.2, 4, TEXTURE_SIZE.rampart / 2).rotateY(Math.PI / 4), roof, keepX, keepHeight + 2.1, centerZ)
+    add(texturedCylinder(0, keepSize * 0.78, 7, 4, TEXTURE_SIZE.rampart / 2).rotateY(Math.PI / 4), roof, keepX, keepHeight + 3.5, centerZ)
     for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) tower(keepX + dx * keepSize / 2, centerZ + dz * keepSize / 2, 0.7, keepHeight + 1.2)
-    const glow = new THREE.MeshBasicMaterial({color: new THREE.Color(2.6, 1.6, 0.6)})
-    for (const level of [3.2, 6.4]) {
+    for (const level of [5, 9, 13]) {
         for (const offset of [-1.6, 0, 1.6]) {
-            add(new THREE.PlaneGeometry(0.5, 1.1), glow, keepX - keepSize / 2 - 0.01, level, centerZ + offset).rotation.y = -Math.PI / 2
+            const arch = new THREE.Shape()
+            arch.moveTo(-0.4, -1)
+            arch.lineTo(0.4, -1)
+            arch.lineTo(0.4, 0.4)
+            arch.quadraticCurveTo(0.35, 0.9, 0, 1.3)
+            arch.quadraticCurveTo(-0.35, 0.9, -0.4, 0.4)
+            arch.closePath()
+            const pane = add(new THREE.ShapeGeometry(arch), glow, keepX - keepSize / 2 - 0.02, level, centerZ + offset)
+            pane.rotation.y = -Math.PI / 2
+            pane.castShadow = false
+            wall(0.12, 2, 0.08, keepX - keepSize / 2 - 0.05, level, centerZ + offset)
         }
     }
+
+    // Contreforts effilés : une silhouette gothique lisible depuis le village.
+    for (const z of [top + 1.8, bottom - 1.8]) {
+        for (const x of [left + 0.7, right - 0.7]) {
+            wall(0.65, 9, 0.7, x, 4.5, z)
+            add(new THREE.ConeGeometry(0.48, 2.8, 4), roof, x, 10.4, z)
+        }
+    }
+    // Rosace aveugle au-dessus du portail.
+    add(new THREE.CircleGeometry(0.8, 16), recess, left - 0.03, 6, (gateTop + gateBottom) / 2).rotation.y = -Math.PI / 2
+    const rose = add(new THREE.TorusGeometry(0.67, 0.07, 6, 16), materials.iron, left - 0.06, 6, (gateTop + gateBottom) / 2)
+    rose.rotation.y = -Math.PI / 2
 
     // Porte : passage sombre, battants de bois entrouverts, herse levée et torches.
     const gateZ = (gateTop + gateBottom) / 2, gateWidth = gateBottom - gateTop
@@ -123,7 +161,7 @@ export function buildCastleExterior(scene: THREE.Scene, materials: CastleMateria
         torch.rotation.y = -Math.PI / 2
         castle.add(torch)
     }
-    const gateLight = new THREE.PointLight(0xff9a45, 6, 9, 2)
+    const gateLight = new THREE.PointLight(0x9374d4, 5, 9, 2)
     gateLight.position.set(left - 0.8, 2.6, gateZ)
     castle.add(gateLight)
     for (const z of [top + 2.5, bottom - 2.5]) {

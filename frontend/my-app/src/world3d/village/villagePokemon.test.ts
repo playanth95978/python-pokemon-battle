@@ -112,4 +112,21 @@ describe('Pokémon du village', () => {
         expect(pokemonNear(world.pokemon, {x: Math.round(ghost.x), y: Math.round(ghost.y)})?.profile.id).toBe('fantominus')
         expect(pokemonNear(world.pokemon, {x: 16, y: 29})?.profile.id).toBe('ronflex')
     })
+
+    it('abrite Roucool sous la pluie et fait sauter Magicarpe dans les champs noyés', () => {
+        const world = village(10)
+        const pools = [{x: 12, y: 46}]
+        let inField = 0
+        let hour = 10
+        for (let time = 0; time < 60; time += 0.1) {
+            updateVillagePokemon(world.pokemon, hour, 0.1, {player: WORLD_SPAWN, passable, villagers: world.villagers, random: world.random, rain: 1, pools})
+            const fish = find(world.pokemon, 'magicarpe-1')
+            if (fish.visible && Math.round(fish.x) === 12 && Math.round(fish.y) === 46) inField++
+            hour = advanceHour(hour, 0.1)
+        }
+        expect(world.pokemon.filter((pokemon) => pokemon.profile.behaviour === 'perch').every((bird) => !bird.visible)).toBe(true)
+        expect(inField).toBeGreaterThan(0)
+        updateVillagePokemon(world.pokemon, hour, 0.1, {player: WORLD_SPAWN, passable, villagers: world.villagers, random: world.random, rain: 0})
+        expect(find(world.pokemon, 'roucool-1').visible).toBe(true)
+    })
 })

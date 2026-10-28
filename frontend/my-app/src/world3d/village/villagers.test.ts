@@ -78,4 +78,19 @@ describe('Vie du village', () => {
         expect(advanceHour(23.5, 30)).toBeCloseTo(0.5)
         expect(formatHour(9.0834)).toBe('9 h 05')
     })
+
+    it('fait rentrer tout le monde en courant sous l’averse, puis ressortir quand elle cesse', () => {
+        const villagers = createVillagers(VILLAGERS, 11)
+        let hour = 11
+        let ran = false
+        for (let time = 0; time < 120 && villagers.some((villager) => !villager.inside); time += 0.1) {
+            updateVillagers(villagers, hour, 0.1, WORLD_SPAWN, passable, () => false, true)
+            ran ||= villagers.some((villager) => villager.pose === 'run')
+            hour = advanceHour(hour, 0.1)
+        }
+        expect(villagers.every((villager) => villager.inside)).toBe(true)
+        expect(ran).toBe(true)
+        updateVillagers(villagers, hour, 0.1, WORLD_SPAWN, passable)
+        expect(villagers.filter((villager) => !villager.inside).length).toBeGreaterThan(5)
+    })
 })

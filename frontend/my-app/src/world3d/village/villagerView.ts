@@ -37,7 +37,8 @@ interface Body {
     pose: Pose | null
 }
 
-export function createVillagerView(scene: THREE.Scene, villagers: Villager[]) {
+/** `ground` : hauteur du sol sous chaque habitant (relief de la vallée). */
+export function createVillagerView(scene: THREE.Scene, villagers: Villager[], ground: (x: number, z: number) => number) {
     const bodies = new Map<string, Body>()
     void new GLTFLoader().loadAsync(MODEL).then((gltf) => {
         gltf.scene.updateMatrixWorld(true)
@@ -88,7 +89,7 @@ export function createVillagerView(scene: THREE.Scene, villagers: Villager[]) {
                 if (!body) continue
                 const at = positionOf(villager)
                 const far = Math.hypot(at.x + 0.5 - around.x, at.y + 0.5 - around.z)
-                body.root.position.set(at.x + 0.5, 0, at.y + 0.5)
+                body.root.position.set(at.x + 0.5, ground(at.x + 0.5, at.y + 0.5), at.y + 0.5)
                 // Sphère large : un habitant juste hors champ projette encore son ombre dans l'image.
                 bounds.center.set(at.x + 0.5, 0.8, at.y + 0.5)
                 bounds.radius = 2

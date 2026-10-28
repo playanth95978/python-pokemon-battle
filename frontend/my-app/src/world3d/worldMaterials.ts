@@ -20,6 +20,10 @@ export interface WorldMaterials {
     roof: (color: string) => THREE.MeshStandardMaterial
     /** Temps partagé par les shaders animés (vent). */
     time: { value: number }
+    /** Sol mouillé par la pluie, de 0 à 1 (plus sombre et plus brillant). */
+    wetness: { value: number }
+    /** Texture de la crue, une texel par case : son canal B dit où le sol est boueux (voir floodView.ts). */
+    floodMap: { value: THREE.Texture }
     /** Résolu quand toutes les textures sont appliquées (ou ont échoué). */
     ready: Promise<void>
     progress: () => number
@@ -52,7 +56,7 @@ function splatTexture(map: WorldMap) {
     return texture
 }
 
-function groundMaterial(map: WorldMap, path: { value: THREE.Texture }) {
+function groundMaterial(map: WorldMap, path: { value: THREE.Texture }, wetness: { value: number }, floodMap: { value: THREE.Texture }) {
     const material = new THREE.MeshStandardMaterial({map: solid('#5f8a45'), roughness: 1})
     const splat = splatTexture(map)
     // Mélange herbe/chemin par case, avec un bruit tiré de la texture pour casser la grille.
@@ -60,11 +64,15 @@ function groundMaterial(map: WorldMap, path: { value: THREE.Texture }) {
         shader.uniforms.pathMap = path
         shader.uniforms.splatMap = {value: splat}
         shader.uniforms.splatSize = {value: new THREE.Vector2(map.width, map.height)}
+        shader.uniforms.wetness = wetness
+        shader.uniforms.floodMap = floodMap
         shader.fragmentShader = shader.fragmentShader
             .replace('#include <common>', `#include <common>
                 uniform sampler2D pathMap;
                 uniform sampler2D splatMap;
-                uniform vec2 splatSize;`)
+                uniform vec2 splatSize;
+                uniform float wetness;
+                uniform sampler2D floodMap;`)
             .replace('#include <map_fragment>', `
                 vec2 worldXZ = vMapUv * ${GROUND_TILE.toFixed(1)};
                 vec4 grassTexel = texture2D(map, vMapUv);
@@ -74,7 +82,13 @@ function groundMaterial(map: WorldMap, path: { value: THREE.Texture }) {
                 float pathMask = smoothstep(0.35, 0.65, splat.r + breakup * 0.6);
                 vec4 groundTexel = mix(grassTexel, pathTexel, max(pathMask, splat.b));
                 groundTexel.rgb *= 1.0 - splat.g * 0.45 - splat.b * 0.35;
-                diffuseColor *= groundTexel;`)
+                diffuseColor *= groundTexel;
+                // Sol mouillé : plus sombre et lisse sous la pluie ; boue brune là où la crue est passée.
+                float mud = texture2D(floodMap, worldXZ / splatSize).b;
+                float wet = max(wetness * (0.6 + breakup * 0.6), mud);
+                diffuseColor.rgb *= mix(vec3(1.0), mix(vec3(0.62), vec3(0.58, 0.47, 0.36), mud), wet);`)
+            .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+                roughnessFactor = mix(roughnessFactor, 0.3, wet * 0.85);`)
     }
     return material
 }
@@ -113,9 +127,9 @@ export function createWorldMaterials(map: WorldMap, renderer: THREE.WebGLRendere
             .catch(() => undefined)
     }
 
-    const time = {value: 0}
+    const time = {value: 0}, wetness = {value: 0}, floodMap = {value: solid('#000000') as THREE.Texture}
     const path = {value: solid('#b39a6e') as THREE.Texture}
-    const ground = groundMaterial(map, path)
+    const ground = groundMaterial(map, path, wetness, floodMap)
     // Terre clairsemée pour les chemins, sous-bois moussu pour l'herbe.
     void load('sparse_grass_diff', true, 1).then((texture) => { path.value = texture }).catch(() => undefined)
     void Promise.all([load('forrest_ground_01_diff', true, 1), load('forrest_ground_01_nor_gl', false, 1)]).then(([diffuse, normal]) => {
@@ -159,7 +173,7 @@ export function createWorldMaterials(map: WorldMap, renderer: THREE.WebGLRendere
     pbr('bark_willow', [bark], 1, 1.5)
 
     return {
-        ground, blade, plaster, wood, bark, roof, time,
+        ground, blade, plaster, wood, bark, roof, time, wetness, floodMap,
         flower: new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.6}),
         foliage: new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.9, flatShading: true}),
         stone: new THREE.MeshStandardMaterial({color: 0x8d877d, roughness: 1}),

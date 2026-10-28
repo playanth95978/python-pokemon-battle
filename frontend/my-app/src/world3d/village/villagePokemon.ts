@@ -118,6 +118,10 @@ export interface PokemonWorld {
     passable: (tile: Position) => boolean
     villagers: Villager[]
     random: () => number
+    /** Pluie, de 0 à 1 : sous l'averse, Roucool s'abrite. */
+    rain?: number
+    /** Cases de terre noyées assez profond pour nager : Magicarpe y saute pendant la crue. */
+    pools?: Position[]
 }
 
 const same = (a: Position, b: Position) => a.x === b.x && a.y === b.y
@@ -327,6 +331,15 @@ export function updateVillagePokemon(list: VillagePokemon[], hour: number, secon
 }
 
 function updateBird(bird: VillagePokemon, world: PokemonWorld, list: VillagePokemon[], seconds: number) {
+    // Sous la pluie, il quitte son perchoir pour un abri (invisible) et y revient quand elle cesse.
+    bird.visible = (world.rain ?? 0) < 0.3
+    if (!bird.visible) {
+        if (bird.flight) {
+            ({x: bird.x, y: bird.y, height: bird.height} = bird.flight.to)
+            bird.flight = null
+        }
+        return
+    }
     if (bird.flight) {
         const flight = bird.flight
         flight.t = Math.min(1, flight.t + seconds / flight.duration)
@@ -371,8 +384,16 @@ function updateFish(fish: VillagePokemon, world: PokemonWorld, seconds: number) 
     }
     if (fish.timer > 0) return
     const area = fish.profile.area!
-    fish.x = area.x + world.random() * area.width
-    fish.y = area.y + world.random() * area.height
+    const pools = world.pools ?? []
+    // Pendant la crue, un saut sur deux a lieu dans les champs noyés.
+    if (pools.length && world.random() < 0.5) {
+        const pool = pools[Math.floor(world.random() * pools.length)]
+        fish.x = pool.x + (world.random() - 0.5) * 0.6
+        fish.y = pool.y + (world.random() - 0.5) * 0.6
+    } else {
+        fish.x = area.x + world.random() * area.width
+        fish.y = area.y + world.random() * area.height
+    }
     fish.heading = world.random() * Math.PI * 2
     fish.visible = true
     fish.pose = 'jump'

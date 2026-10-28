@@ -14,7 +14,8 @@ import {
     WORLD_SPAWN,
     zoneAt
 } from '../world/worldMap'
-import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter, WATER_LEVEL, waterBounds } from './buildWorld3D'
+import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter } from './buildWorld3D'
+import { createTerrain, RIVER_LEVEL } from './terrain'
 import { createWater } from './water'
 import { CHUNK_SIZE, GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
 import { createWorldMaterials } from './worldMaterials'
@@ -46,8 +47,12 @@ import { createVillagers, talkTo, updateVillagers, VILLAGERS, villagerAt } from 
 import { createVillagerView } from './village/villagerView'
 import { createVillagePokemon, pokemonAt, pokemonNear, updateVillagePokemon, VILLAGE_POKEMON } from './village/villagePokemon'
 import { createVillagePokemonView } from './village/villagePokemonView'
-import { advanceHour, formatHour, START_HOUR } from './village/villageClock'
-import { applyDaylight, daylight } from './village/dayCycle'
+import { advanceHour, DAY_SECONDS, formatHour, START_HOUR } from './village/villageClock'
+import { createFlood, isFlooded, stepFlood, surfaceAt, WADE, WET } from './village/flood'
+import { createFloodView } from './village/floodView'
+import { createRain } from './village/rainView'
+import { createWeather, describeWeather, floodLevels, startRain, updateWeather } from './village/weather'
+import { applyDaylight, createCloudCover, daylight } from './village/dayCycle'
 import { lanternGlass } from './villageProps'
 
 const STEP_DURATION = 170
@@ -92,6 +97,13 @@ const post = createPostProcessing(renderer, scene, camera)
 if (import.meta.env.DEV) Object.assign(window, {world3d: {
     renderer, scene, camera, post, water: () => water, castle: () => castle, villagers: () => villagers,
     setHour: (value: number) => { hour = value },
+    weather: () => weather, flood: () => flood,
+    /** Averse (`storm` : orage, qui fait déborder la rivière) de `hours` heures de jeu. */
+    rain: (hours = 3, storm = false) => startRain(weather, hours, storm),
+    /** Avance la crue de `seconds` secondes d'un coup, aux niveaux actuels (le navigateur de test ne tourne pas en continu). */
+    simulate: (seconds: number) => {
+        for (let time = 0; time < seconds; time += 1 / 30) stepFlood(flood, 1 / 30, floodLevels(weather))
+    },
     teleport: (x: number, y: number) => {
         player = {...player, position: {x, y}}
         from = to = tileCenter(x, y)
@@ -107,27 +119,39 @@ void Promise.all([prepareTrees(renderer, scene, ['oak', 'aspen', 'pine']), loadV
     village = models
 })
 const villageProps = createVillageProps(materials)
-const base = buildWorldBase(scene, WORLD_MAP, materials)
-// Lac et rivière : eau peu profonde, claire au bord et vert sombre au milieu, petites vagues.
-const lake = waterBounds(WORLD_MAP)
+// Relief : le bourg sur un plateau, la vallée de la rivière en contrebas, des cuvettes aux champs et à l'enclos.
+const terrain = createTerrain(WORLD_MAP)
+const base = buildWorldBase(scene, WORLD_MAP, materials, terrain)
+// Météo et crue : la pluie fait monter la nappe, l'orage fait déborder la rivière ; maisons et château arrêtent l'eau.
+const weather = createWeather()
+const isBuilding = (tile: Position) => WORLD_MAP.buildings.some((building) => tile.x >= building.x && tile.x < building.x + building.width
+    && tile.y >= building.y && tile.y < building.y + building.height)
+const flood = createFlood(WORLD_MAP, terrain, (tile) => isBuilding(tile) || insideCastleWalls(tile), floodLevels(weather))
+const floodView = createFloodView(flood)
+materials.floodMap.value = floodView.texture
+// Une seule eau pour toute la carte : rivière, lac et crue. Sa hauteur vient de la crue, case par case ; là où il
+// n'y a pas d'eau, elle passe sous le sol. Claire au bord, vert sombre au milieu, brune quand elle déborde.
+const WATER_MARGIN = 2
 const water = createWater(renderer, scene, sunDirection, {
-    width: lake.width, depth: lake.depth, segments: Math.ceil(Math.max(lake.width, lake.depth) * 4),
+    width: WORLD_MAP.width + WATER_MARGIN * 2, depth: WORLD_MAP.height + WATER_MARGIN * 2, segments: (WORLD_MAP.width + WATER_MARGIN * 2) * 3,
     waveHeight: 0.02, wavelength: 2.4, shallowColor: 0xcfe6dc, deepColor: 0x0e3438, absorption: 3.2, foamWidth: 0.1,
+    surface: {map: floodView.texture, rect: floodView.rect, muddyColor: 0x7a5c3e},
 })
-water.mesh.position.set(lake.x, WATER_LEVEL, lake.z)
+water.mesh.position.set(WORLD_MAP.width / 2, RIVER_LEVEL, WORLD_MAP.height / 2)
+const rain = createRain(scene)
 const streamer = new WorldStreamer(WORLD_MAP, scene, [
     {
         name: 'decor',
         loadRadius: LOAD_RADIUS,
         unloadRadius: UNLOAD_RADIUS,
-        build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, village!, villageProps),
+        build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, village!, villageProps, terrain),
         dispose: disposeChunk
     },
     {
         name: 'grass',
         loadRadius: GRASS_RADIUS,
         unloadRadius: GRASS_UNLOAD_RADIUS,
-        build: (chunk) => buildGrassChunk(WORLD_MAP, chunk, materials, isCastleGround),
+        build: (chunk) => buildGrassChunk(WORLD_MAP, chunk, materials, terrain, isCastleGround),
         dispose: disposeChunk
     },
 ])
@@ -214,47 +238,85 @@ let stepsSinceGhost = 0
 // Habitants de Clairbois : leur journée suit l'horloge du village (douze minutes pour vingt-quatre heures).
 let hour = START_HOUR
 const villagers = createVillagers(VILLAGERS, hour)
-const villagerView = createVillagerView(scene, villagers)
+const villagerView = createVillagerView(scene, villagers, terrain.height)
 // Pokémon du village : au travail, au pré, sur les lanternes, dans le lac… et deux sauvages (Évoli, Fantominus la nuit).
 const villagePokemon = createVillagePokemon(VILLAGE_POKEMON, Math.random)
-const villagePokemonView = createVillagePokemonView(scene, villagePokemon)
-/** Cases à moins de `reach` cases d'une eau. */
+/** Niveau de l'eau en un point : la crue là où elle est, sinon la rivière. */
+const waterLevel = (x: number, z: number) => surfaceAt(flood, {x: Math.floor(x), y: Math.floor(z)}) ?? floodLevels(weather).river
+const villagePokemonView = createVillagePokemonView(scene, villagePokemon, terrain.height, waterLevel)
+/**
+ * Cases à moins de `reach` cases (en carré) d'une eau : rivière, lac ou terre noyée. Recalculé chaque seconde pendant
+ * la crue : une passe par ligne puis une par colonne, sans parcourir tout le carré autour de chaque case mouillée.
+ */
 function aroundWater(reach: number) {
-    const near = new Set<string>()
-    for (let y = 0; y < WORLD_MAP.height; y++) for (let x = 0; x < WORLD_MAP.width; x++) {
-        if (tileAt(WORLD_MAP, {x, y}) !== 'water') continue
-        for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) near.add(`${x + dx},${y + dy}`)
+    const {width, height} = WORLD_MAP
+    const spread = (wet: (x: number, y: number) => boolean, alongX: boolean) => {
+        const near = new Uint8Array(width * height)
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+            for (let step = -reach; step <= reach; step++) {
+                const nx = alongX ? x + step : x, ny = alongX ? y : y + step
+                if (nx >= 0 && ny >= 0 && nx < width && ny < height && wet(nx, ny)) {
+                    near[y * width + x] = 1
+                    break
+                }
+            }
+        }
+        return near
     }
-    return near
+    const rows = spread((x, y) => flood.river[y * width + x] === 1 || flood.depth[y * width + x] > WET, true)
+    const near = spread((x, y) => rows[y * width + x] === 1, false)
+    return (x: number, z: number) => {
+        const tx = Math.floor(x), ty = Math.floor(z)
+        return tx >= 0 && ty >= 0 && tx < width && ty < height && near[ty * width + tx] === 1
+    }
 }
 /** Près d'une rive, on peut se voir à travers l'eau ; à moins d'un chunk, son reflet reste visible (arbres de l'autre rive). */
-const SHORE = aroundWater(4), MIRRORED = aroundWater(CHUNK_SIZE + 2)
-const tileKey = (x: number, z: number) => `${Math.floor(x)},${Math.floor(z)}`
-const chunkReach = new WeakMap<THREE.Object3D, { shore: boolean; mirrored: boolean }>()
+let nearShore = aroundWater(4), nearMirror = aroundWater(CHUNK_SIZE + 2)
+let chunkReach = new WeakMap<THREE.Object3D, { shore: boolean; mirrored: boolean }>()
+/** Champs noyés où Magicarpe peut sauter. */
+let pools: Position[] = []
+let shoresAt = 0
+/** Les rives bougent avec la crue : recalculées une fois par seconde. */
+function followShores(now: number) {
+    if (now - shoresAt < 1000) return
+    shoresAt = now
+    nearShore = aroundWater(4)
+    nearMirror = aroundWater(CHUNK_SIZE + 2)
+    chunkReach = new WeakMap()
+    pools = []
+    for (let y = 0; y < WORLD_MAP.height; y++) for (let x = 0; x < WORLD_MAP.width; x++) {
+        if (tileAt(WORLD_MAP, {x, y}) !== 'water' && flood.depth[y * WORLD_MAP.width + x] > 0.3) pools.push({x, y})
+    }
+}
 
 /** Ce que les passes de l'eau peuvent ignorer : objets ni vus à travers l'eau (`refraction`) ni reflétés (`reflection`). */
 function dryObjects() {
-    const actors = [...villagerView.roots(), ...villagePokemonView.roots()].filter((root) => !SHORE.has(tileKey(root.position.x, root.position.z)))
+    const actors = [...villagerView.roots(), ...villagePokemonView.roots()].filter((root) => !nearShore(root.position.x, root.position.z))
     const chunks = scene.children.filter((object) => object.name.startsWith('decor') || object.name.startsWith('grass'))
     const reach = (chunk: THREE.Object3D) => {
         if (!chunkReach.has(chunk)) {
             const [cx, cy] = chunk.name.split(' ')[1].split(',').map(Number)
-            const tiles = Array.from({length: CHUNK_SIZE * CHUNK_SIZE}, (_, index) => tileKey(cx * CHUNK_SIZE + index % CHUNK_SIZE, cy * CHUNK_SIZE + Math.floor(index / CHUNK_SIZE)))
-            chunkReach.set(chunk, {shore: tiles.some((tile) => SHORE.has(tile)), mirrored: tiles.some((tile) => MIRRORED.has(tile))})
+            const tiles = Array.from({length: CHUNK_SIZE * CHUNK_SIZE}, (_, index) => [cx * CHUNK_SIZE + index % CHUNK_SIZE, cy * CHUNK_SIZE + Math.floor(index / CHUNK_SIZE)])
+            chunkReach.set(chunk, {shore: tiles.some(([x, z]) => nearShore(x, z)), mirrored: tiles.some(([x, z]) => nearMirror(x, z))})
         }
         return chunkReach.get(chunk)!
     }
+    // La pluie n'a ni reflet ni réfraction : dessinée une seule fois, devant l'eau.
     return {
-        reflection: [...actors, ...chunks.filter((chunk) => !reach(chunk).mirrored || chunk.name.startsWith('grass'))],
-        refraction: [...actors, ...chunks.filter((chunk) => !reach(chunk).shore)],
+        reflection: [rain.object, ...actors, ...chunks.filter((chunk) => !reach(chunk).mirrored || chunk.name.startsWith('grass'))],
+        refraction: [rain.object, ...actors, ...chunks.filter((chunk) => !reach(chunk).shore)],
     }
 }
 const frustum = new THREE.Frustum(), viewProjection = new THREE.Matrix4()
-const walkable = (tile: Position) => canEnter(tileAt(WORLD_MAP, tile), 'walking') && !insideCastleWalls(tile)
+const walkable = (tile: Position) => canEnter(tileAt(WORLD_MAP, tile), 'walking') && !insideCastleWalls(tile) && !isFlooded(flood, tile)
+/** Dernière fois que l'eau a arrêté le dresseur (message du HUD). */
+let wadeBlocked = -Infinity
 /** Répliques déjà entendues, par habitant : la conversation avance à chaque visite. */
 const said = new Map<string, number>()
 let dialogue: { name: string; job: string; text: string; until: number } | null = null
-const DAY = {scene, sun, sunDirection, sky, hemisphere, lanterns: lanternGlass}
+const clouds = createCloudCover()
+scene.add(clouds)
+const DAY = {scene, clouds, sun, sunDirection, sky, hemisphere, lanterns: lanternGlass}
 
 let pikachu: Companion | null = null
 const wildCharmander: WorldPokemon = {
@@ -272,6 +334,7 @@ void loadPokemon('/models/poc/pikachu.glb', 0.32).then((companion) => {
 void loadPokemon('/models/poc/charmander.glb', 0.38).then(({root}) => {
     root.name = wildCharmander.id
     root.position.copy(tileCenter(wildCharmander.position.x, wildCharmander.position.y))
+    root.position.y = terrain.tile(wildCharmander.position)
     root.rotation.y = -0.6
 })
 
@@ -288,6 +351,11 @@ function step(now: number) {
     // Un habitant sur la case : le dresseur se tourne vers lui sans avancer.
     if (player.travelMode === 'walking' && (villagerAt(villagers, position) || pokemonAt(villagePokemon, position))) {
         player = {...player, direction}
+        return
+    }
+    if (player.travelMode === 'walking' && isFlooded(flood, position)) {
+        player = {...player, direction}
+        wadeBlocked = now
         return
     }
     if (castleBlocks(position)) {
@@ -539,9 +607,23 @@ const encounterOverlay = createEncounterOverlay({
     },
 })
 
+/** Images par seconde, lissées ; le HUD n'en montre une nouvelle valeur que deux fois par seconde. */
+let fps = 60, shownFps = 60, fpsShownAt = 0
+
+function measureFps(now: number, frameSeconds: number) {
+    fps = fps * 0.95 + (1 / Math.max(frameSeconds, 0.001)) * 0.05
+    if (now - fpsShownAt < 500) return
+    fpsShownAt = now
+    shownFps = Math.round(fps)
+}
+
+function performanceLine() {
+    return `<p>${shownFps} i/s · résolution ×${resolution.ratio().toFixed(2)}</p>`
+}
+
 function updateHud(now: number) {
     if (castle.active) {
-        const text = castle.hud(now, `${viewHelp()} · M : ${castleAudio.muted ? 'remettre' : 'couper'} le son`)
+        const text = castle.hud(now, `${viewHelp()} · M : ${castleAudio.muted ? 'remettre' : 'couper'} le son`) + performanceLine()
         if (text === lastHud) return
         lastHud = text
         hud.innerHTML = text + NEW_GAME
@@ -557,10 +639,13 @@ function updateHud(now: number) {
         && Math.abs(villager.tile.x - player.position.x) + Math.abs(villager.tile.y - player.position.y) === 1) : undefined
     const beast = player.travelMode === 'walking' ? pokemonNear(villagePokemon, player.position) : undefined
     const time = formatHour(Math.floor(hour * 4) / 4)
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}`
+    const sky = describeWeather(weather)
+    const wading = now - wadeBlocked < 2500
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${performanceLine()}`
     if (text === lastHud) return
     lastHud = text
-    hud.innerHTML = `<strong>${zoneAt(player.position)} · ${time}</strong>`
+    hud.innerHTML = `<strong>${zoneAt(player.position)} · ${time}${sky ? ` · ${sky}` : ''}</strong>`
+        + (wading ? `<p>L’eau est trop profonde pour passer à pied (plus de ${Math.round(WADE * 100)} cm).</p>` : '')
         + (dialogue ? `<p class="world3d-dialogue"><b>${dialogue.name}</b> <i>(${dialogue.job})</i> — ${dialogue.text}</p>` : '')
         + (!dialogue && neighbour ? `<p>E : parler à ${neighbour.profile.name} <i>(${neighbour.profile.job})</i></p>` : '')
         + (!dialogue && beast ? `<p>E : ${beast.profile.wild ? `combattre ${beast.profile.name} <i>(sauvage)</i>` : `observer ${beast.profile.name}`}</p>` : '')
@@ -570,6 +655,7 @@ function updateHud(now: number) {
         + (nearCharmander ? '<p><b>Salamèche</b> — E : ouvrir le combat</p>' : '')
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
         + (captured.includes('mewtwo') ? '<p>Équipe : Pikachu, Mewtwo</p>' : '')
+        + performanceLine()
         + `<p class="world3d-help">Flèches / ZQSD pour marcher · ${viewHelp()} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
         + NEW_GAME
 }
@@ -607,12 +693,16 @@ camera.position.copy(from).add(new THREE.Vector3(0, 7, 8))
 
 function animate(now: number) {
     const frameSeconds = clock.getDelta()
+    measureFps(now, frameSeconds)
     const delta = Math.min(frameSeconds, 0.05)
     step(now)
     // Le village continue de vivre pendant qu'on explore le château.
     hour = advanceHour(hour, delta)
-    updateVillagers(villagers, hour, delta, player.position, walkable, (tile) => pokemonAt(villagePokemon, tile) !== undefined)
-    updateVillagePokemon(villagePokemon, hour, delta, {player: player.position, passable: walkable, villagers, random: Math.random})
+    updateWeather(weather, delta * 24 / DAY_SECONDS, Math.random)
+    stepFlood(flood, delta, floodLevels(weather))
+    followShores(now)
+    updateVillagers(villagers, hour, delta, player.position, walkable, (tile) => pokemonAt(villagePokemon, tile) !== undefined, weather.rain > 0.45)
+    updateVillagePokemon(villagePokemon, hour, delta, {player: player.position, passable: walkable, villagers, random: Math.random, rain: weather.rain, pools})
     if (castle.active) {
         // À l'intérieur : seul le château est animé et dessiné ; Clairbois attend dehors.
         walkInCastle(delta, now)
@@ -633,24 +723,28 @@ function animate(now: number) {
     const onBoat = player.travelMode === 'boat'
 
     trainer.position.lerpVectors(from, to, progress)
-    trainer.position.y = onBoat ? WATER_LEVEL + 0.1 : 0
+    trainer.position.y = onBoat ? waterLevel(trainer.position.x, trainer.position.z) + 0.1 : terrain.height(trainer.position.x, trainer.position.z)
     // Petite marge après chaque pas : la marche ne se coupe pas entre deux cases enchaînées.
     trainer.animate(delta, !onBoat && now - stepStart < STEP_DURATION + 60 ? 'walk' : 'idle')
     trainer.rotation.y = THREE.MathUtils.lerp(trainer.rotation.y, ANGLES[player.direction], 0.25)
     boat.visible = onBoat
-    boat.position.set(trainer.position.x, WATER_LEVEL + Math.sin(now * 0.002) * 0.03, trainer.position.z)
+    boat.position.set(trainer.position.x, waterLevel(trainer.position.x, trainer.position.z) + Math.sin(now * 0.002) * 0.03, trainer.position.z)
     boat.rotation.y = trainer.rotation.y
 
     if (pikachu) {
         const {root} = pikachu
         root.visible = !onBoat
         root.position.lerpVectors(followerFrom, followerTo, progress)
+        root.position.y = terrain.height(root.position.x, root.position.z)
         const dx = followerTo.x - followerFrom.x, dz = followerTo.z - followerFrom.z
         if (dx * dx + dz * dz > 0.01) root.rotation.y = Math.atan2(dx, dz)
     }
     companions.forEach(({mixer}) => mixer.update(delta))
     base.update(now / 1000)
-    applyDaylight(DAY, daylight(hour))
+    applyDaylight(DAY, daylight(hour), weather.rain)
+    floodView.update(weather.rise)
+    water.setRain(weather.rain)
+    materials.wetness.value = Math.min(1, weather.soak * 2.5)
 
     // En vue FPS le dresseur disparaît : la caméra est sa tête.
     trainer.visible = rig.mode !== 'fps'
@@ -663,6 +757,8 @@ function animate(now: number) {
     // La carte d'ombre suit le regard : l'avant de la scène a ses ombres avant qu'on s'en approche.
     followShadow(sun, sunDirection, camera, trainer.position, 10, 40)
     castleOutside.update(now / 1000)
+    rain.update(now / 1000, weather.rain, camera)
+    clouds.position.copy(camera.position)
 
     updateHud(now)
     water.prepare(camera, now / 1000, dryObjects())

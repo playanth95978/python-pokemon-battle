@@ -234,6 +234,11 @@ configuration de logging n'est déjà en place.
 
 ### Monde ouvert 3D et mini-carte
 
+Le château au sud-ouest de Clairbois présente une silhouette de château hanté :
+donjon de 17 unités, hautes flèches d'ardoise, remparts sombres, fenêtres gothiques
+violacées et lumière vacillante au portail. L'emprise au sol et l'entrée restent
+compatibles avec les déplacements et les sauvegardes existantes.
+
 `/open-world.html` affiche le monde procédural. Un radar circulaire en bas à gauche
 suit la position interpolée du personnage : flèche de direction, repère du nord,
 coordonnées et point de départ. Le terrain tourne avec la caméra, déplacée en

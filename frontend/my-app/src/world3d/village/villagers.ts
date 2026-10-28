@@ -242,11 +242,12 @@ function directionTo(from: Position, to: Position): Direction {
 
 /**
  * Une image de vie du village. `passable` dit où l'on peut marcher (carte et château), `player` est la case du dresseur
- * et `blocked` les autres obstacles mobiles (Pokémon du village).
+ * et `blocked` les autres obstacles mobiles (Pokémon du village). Avec `shelter` (grosse pluie), chacun rentre chez
+ * lui en courant, et ressort quand elle cesse.
  * Les habitants se réservent la case où ils entrent : deux personnes ne sont jamais sur la même case.
  */
 export function updateVillagers(villagers: Villager[], hour: number, seconds: number, player: Position, passable: (tile: Position) => boolean,
-                                blocked: (tile: Position) => boolean = () => false) {
+                                blocked: (tile: Position) => boolean = () => false, shelter = false) {
     const occupied = (tile: Position, self: Villager) => same(tile, player) || blocked(tile)
         || villagers.some((other) => other !== self && !other.inside && (same(other.tile, tile) || (other.next !== null && same(other.next, tile))))
     for (const villager of villagers) {
@@ -256,11 +257,13 @@ export function updateVillagers(villagers: Villager[], hour: number, seconds: nu
             villager.spotIndex = 0
             villager.path = []
             villager.dwell = DWELL
-            // Au réveil, il sort de chez lui, s'il a la place.
-            if (villager.inside && shift.activity !== 'sleep' && !occupied(villager.profile.home, villager)) {
-                villager.inside = false
-                villager.tile = {x: villager.profile.home.x, y: villager.profile.home.y}
-            }
+        }
+        const resting = shift.activity === 'sleep' || shelter
+        // Au réveil (ou après l'averse), il sort de chez lui, s'il a la place.
+        if (villager.inside && !resting && !occupied(villager.profile.home, villager)) {
+            villager.inside = false
+            villager.tile = {x: villager.profile.home.x, y: villager.profile.home.y}
+            villager.path = []
         }
         if (villager.inside) continue
         if (villager.talking > 0) villager.talking -= seconds
@@ -277,11 +280,11 @@ export function updateVillagers(villagers: Villager[], hour: number, seconds: nu
             villager.pose = 'idle'
             continue
         }
-        const goal = goalOf(villager)
+        const goal = resting ? villager.profile.home : goalOf(villager)
         if (same(villager.tile, goal)) {
             villager.path = []
             villager.waiting = 0
-            if (shift.activity === 'sleep') {
+            if (resting) {
                 villager.inside = true
                 continue
             }
@@ -294,7 +297,8 @@ export function updateVillagers(villagers: Villager[], hour: number, seconds: nu
             }
             continue
         }
-        if (!villager.path.length) villager.path = findPath(villager.tile, goal, passable) ?? []
+        const last = villager.path[villager.path.length - 1]
+        if (!last || !same(last, goal)) villager.path = findPath(villager.tile, goal, passable) ?? []
         const next = villager.path[0]
         if (!next) {
             villager.pose = 'idle'
@@ -321,7 +325,7 @@ export function updateVillagers(villagers: Villager[], hour: number, seconds: nu
         villager.next = next
         villager.step = 0
         villager.facing = directionTo(villager.tile, next)
-        villager.pose = shift.activity === 'play' ? 'run' : 'walk'
+        villager.pose = shift.activity === 'play' || shelter ? 'run' : 'walk'
     }
 }
 
