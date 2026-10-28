@@ -27,9 +27,11 @@ export interface CastleRoom {
 export interface Tile { floor: number; x: number; z: number }
 
 export type ItemKind = 'potion' | 'key' | 'ball' | 'stone' | 'candy'
-export interface CastleItem extends Tile { id: string; name: string; kind: ItemKind; color: number }
+/** `reward` : objet qui n'est pas posé au sol, mais remis par une énigme (sa case est celle où il apparaît). */
+export interface CastleItem extends Tile { id: string; name: string; kind: ItemKind; color: number; reward?: true }
 
-export interface CastleDoor extends Tile { id: string; key?: string }
+/** `key` : porte fermée à clé ; `secret` : pan de mur qui ne s'ouvre qu'en le poussant (E juste à côté). */
+export interface CastleDoor extends Tile { id: string; key?: string; secret?: true }
 export interface CastleStairs extends Tile { to: Tile; facing: Direction; up: boolean }
 
 export type PropKind = 'pillar' | 'armorStand' | 'weaponRack' | 'table' | 'longTable' | 'barrel' | 'hearth' | 'shelf'
@@ -40,7 +42,7 @@ export const ROOMS: CastleRoom[] = [
     {id: 'hall', name: 'Grand hall', description: 'Des piliers soutiennent une voûte noircie par les torches.', floor: 0, x: 1, z: 9, width: 10, depth: 8, style: 'stone', carpet: 'x'},
     {id: 'armory', name: 'Salle d’armes', description: 'Armures et lances attendent des chevaliers disparus.', floor: 0, x: 1, z: 1, width: 10, depth: 7, style: 'stone'},
     {id: 'kitchen', name: 'Cuisines', description: 'L’âtre fume encore ; quelqu’un vit ici.', floor: 0, x: 12, z: 9, width: 11, depth: 8, style: 'stone'},
-    {id: 'library', name: 'Bibliothèque', description: 'Des grimoires sur les Pokémon légendaires… et un escalier.', floor: 0, x: 12, z: 1, width: 11, depth: 7, style: 'wood'},
+    {id: 'library', name: 'Bibliothèque', description: 'Des grimoires sur les Pokémon légendaires… et un escalier. Un courant d’air froid filtre du mur ouest.', floor: 0, x: 12, z: 1, width: 11, depth: 7, style: 'wood'},
     {id: 'gallery', name: 'Galerie des portraits', description: 'Les seigneurs de Clairbois te suivent du regard.', floor: 1, x: 12, z: 1, width: 11, depth: 7, style: 'wood', carpet: 'x'},
     {id: 'chapel', name: 'Chapelle', description: 'Un vitrail violet baigne l’autel d’une lumière étrange.', floor: 1, x: 1, z: 1, width: 10, depth: 7, style: 'stone', carpet: 'z'},
     {id: 'bedroom', name: 'Chambre du seigneur', description: 'Le lit est fait. Le seigneur, lui, a disparu.', floor: 1, x: 1, z: 9, width: 10, depth: 8, style: 'wood', carpet: 'z'},
@@ -56,6 +58,7 @@ export const DOORS: CastleDoor[] = [
     {id: 'gallery-chapel', floor: 1, x: 11, z: 4},
     {id: 'chapel-bedroom', floor: 1, x: 5, z: 8},
     {id: 'gallery-treasury', floor: 1, x: 17, z: 8, key: 'silver-key'},
+    {id: 'secret-passage', floor: 0, x: 11, z: 6, secret: true},
     {id: 'antechamber-throne', floor: 2, x: 11, z: 12, key: 'gold-key'},
 ]
 
@@ -77,10 +80,16 @@ export const ITEMS: CastleItem[] = [
     {id: 'moon-stone', name: 'Pierre Lune', kind: 'stone', color: 0x8e9eb8, floor: 1, x: 5, z: 3},
     {id: 'silver-key', name: 'Clé d’argent', kind: 'key', color: 0xd9dde3, floor: 1, x: 3, z: 14},
     {id: 'hyper-potion', name: 'Hyper Potion', kind: 'potion', color: 0xe74c8b, floor: 1, x: 15, z: 6},
-    {id: 'gold-key', name: 'Clé d’or', kind: 'key', color: 0xf5c542, floor: 1, x: 14, z: 15},
+    // Remise par l'autel de la chapelle quand on y dépose la Pierre Lune.
+    {id: 'gold-key', name: 'Clé d’or', kind: 'key', color: 0xf5c542, floor: 1, x: 5, z: 2, reward: true},
     {id: 'elixir', name: 'Élixir', kind: 'potion', color: 0xf39c12, floor: 1, x: 20, z: 11},
     {id: 'master-ball', name: 'Master Ball', kind: 'ball', color: 0x7d3cb5, floor: 2, x: 15, z: 12},
+    // Cachée dans l'épaisseur du mur, derrière le passage secret.
+    {id: 'max-potion', name: 'Potion Max', kind: 'potion', color: 0x3fd0c9, floor: 0, x: 11, z: 6},
 ]
+
+/** Autel de la chapelle : un creux en croissant de lune attend la Pierre Lune. */
+export const ALTAR = {floor: 1, x: 4, z: 1, width: 3, stone: 'moon-stone', reward: 'gold-key'}
 
 export const BOSS = {speciesKey: 'mewtwo', name: 'Mewtwo', floor: 2, x: 5, z: 6, width: 2}
 
@@ -158,6 +167,10 @@ export type CastleEvent =
     | {type: 'stairs'; stairs: CastleStairs}
     | {type: 'exit'}
     | {type: 'pickup'; item: CastleItem}
+    | {type: 'hollow'; door: CastleDoor}
+    | {type: 'secret'; door: CastleDoor}
+    | {type: 'altar'}
+    | {type: 'riddle'; item: CastleItem}
 
 const STEP: Record<Direction, [number, number]> = {up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0]}
 
@@ -179,6 +192,7 @@ export function moveInCastle(state: CastleState, direction: Direction): {state: 
     if (kind === 'exit') return {state: turned, event: {type: 'exit'}}
     if (kind === 'door') {
         const door = DOORS.find((candidate) => key(candidate) === key(target))!
+        if (door.secret && !state.opened.includes(door.id)) return {state: turned, event: {type: 'hollow', door}}
         if (door.key && !state.opened.includes(door.id)) {
             if (!state.inventory.includes(door.key)) return {state: turned, event: {type: 'locked', door}}
             return {state: {...turned, opened: [...state.opened, door.id]}, event: {type: 'unlocked', door}}
@@ -189,9 +203,25 @@ export function moveInCastle(state: CastleState, direction: Direction): {state: 
         return {state: {...turned, ...stairs.to, facing: stairs.facing}, event: {type: 'stairs', stairs}}
     }
     const moved = {...turned, ...target}
-    const item = ITEMS.find((candidate) => key(candidate) === key(target) && !state.inventory.includes(candidate.id))
+    const item = ITEMS.find((candidate) => !candidate.reward && key(candidate) === key(target) && !state.inventory.includes(candidate.id))
     if (item) return {state: {...moved, inventory: [...state.inventory, item.id]}, event: {type: 'pickup', item}}
     return {state: moved, event: {type: 'moved'}}
+}
+
+const nextTo = (state: Tile, tile: Tile) => state.floor === tile.floor && Math.abs(state.x - tile.x) + Math.abs(state.z - tile.z) === 1
+
+/**
+ * E : pousser un pan de mur creux voisin (il pivote et ouvre le passage secret), ou toucher l'autel de la chapelle,
+ * qui échange la Pierre Lune contre la Clé d'or. Rien à faire ici : null.
+ */
+export function interact(state: CastleState): {state: CastleState; event: CastleEvent} | null {
+    const secret = DOORS.find((door) => door.secret && !state.opened.includes(door.id) && nextTo(state, door))
+    if (secret) return {state: {...state, opened: [...state.opened, secret.id]}, event: {type: 'secret', door: secret}}
+    const altar = Array.from({length: ALTAR.width}, (_, index) => ({floor: ALTAR.floor, x: ALTAR.x + index, z: ALTAR.z}))
+    if (!altar.some((tile) => nextTo(state, tile))) return null
+    const reward = ITEMS.find((item) => item.id === ALTAR.reward)!
+    if (!state.inventory.includes(ALTAR.stone) || state.inventory.includes(reward.id)) return {state, event: {type: 'altar'}}
+    return {state: {...state, inventory: [...state.inventory, reward.id]}, event: {type: 'riddle', item: reward}}
 }
 
 /** Assez près de Mewtwo pour l'affronter (deux cases au plus de l'une de ses cases). */

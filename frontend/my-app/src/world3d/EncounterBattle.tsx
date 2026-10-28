@@ -4,17 +4,35 @@ import type { WorldPokemon } from './worldPokemon'
 import { useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 
-interface Props {
+/** Ce que l'exploration ajoute à une rencontre : bonus d'objets, titre, réaction à la victoire. */
+export interface EncounterOptions {
+    title?: string
+    /** Niveau et potions du dresseur, avec une phrase qui les explique. */
+    bonus?: { first_level: number; first_potions: number; text: string }
+    /** Appelé une fois, quand le combat se termine sur la victoire du dresseur. */
+    onVictory?: () => void
+    victoryText?: string
+}
+
+interface Props extends EncounterOptions {
     opponent: WorldPokemon
     onClose: () => void
 }
 
-export function EncounterBattle({ opponent, onClose }: Props) {
+export function EncounterBattle({ opponent, onClose, title, bonus, onVictory, victoryText }: Props) {
     const session = useBattle()
     const busy = session.pending !== null
     const dialogRef = useRef<HTMLElement>(null)
+    const battle = session.battle
+    const won = !!battle?.is_over && battle.winner === battle.first.id
+    const reported = useRef(false)
 
     useEffect(() => { dialogRef.current?.focus() }, [])
+    useEffect(() => {
+        if (!won || reported.current) return
+        reported.current = true
+        onVictory?.()
+    }, [won, onVictory])
 
     function keepFocusInDialog(event: KeyboardEvent<HTMLElement>) {
         if (event.key !== 'Tab') return
@@ -34,6 +52,7 @@ export function EncounterBattle({ opponent, onClose }: Props) {
         void session.createBattle({
             first_species: 'pikachu',
             second_species: opponent.speciesKey,
+            ...(bonus && {first_level: bonus.first_level, first_potions: bonus.first_potions}),
         })
     }
 
@@ -48,7 +67,11 @@ export function EncounterBattle({ opponent, onClose }: Props) {
             aria-busy={busy}
             aria-labelledby="encounter-title"
         >
-            <h1 id="encounter-title">Une rencontre sauvage !</h1>
+            <h1 id="encounter-title">{title ?? 'Une rencontre sauvage !'}</h1>
+
+            {bonus?.text && !battle && <p>{bonus.text}</p>}
+
+            {won && victoryText && <p role="status"><strong>{victoryText}</strong></p>}
 
             {session.error && (
                 <p role="alert">{session.error}</p>

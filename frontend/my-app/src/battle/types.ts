@@ -69,7 +69,10 @@ export interface TurnResponse {
 
 export interface BattleChoices {
     first_species: string;
-    second_species: string
+    second_species: string;
+    /** Bonus du dresseur (objets d'exploration) ; le serveur applique 50 et 2 par défaut. */
+    first_level?: number;
+    first_potions?: number
 }
 
 export type BattleAction = {action_type: 'attack'; attack_slot: number} | {action_type: 'potion'}

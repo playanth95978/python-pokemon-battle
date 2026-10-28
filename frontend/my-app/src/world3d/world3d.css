@@ -10,3 +10,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1622; fon
 .world3d-hud p { margin: 6px 0 0; font-size: .9rem; }
 .world3d-hud a { color: #ffd66b; }
 .world3d-help { opacity: .75; font-size: .8rem !important; }
+.world3d-new-game {
+  margin-top: 4px; padding: 4px 10px; border-radius: 8px; border: 1px solid rgb(255 214 107 / .5);
+  background: transparent; color: #ffd66b; font: inherit; font-size: .8rem; cursor: pointer;
+}
+.world3d-new-game:hover, .world3d-new-game:focus-visible { background: rgb(255 214 107 / .15); }
+.castle-minimap {
+  position: fixed; right: 16px; bottom: 16px; margin: 0; padding: 8px; border-radius: 12px;
+  background: rgb(10 18 28 / .62); backdrop-filter: blur(6px); color: #f4f1e8; font-size: .8rem; text-align: center;
+}
+.castle-minimap canvas { display: block; width: min(192px, 30vw, 34vh); height: auto; image-rendering: pixelated; border-radius: 6px; }
+.castle-minimap figcaption { margin-top: 4px; opacity: .8; }
+.castle-minimap[hidden] { display: none; }

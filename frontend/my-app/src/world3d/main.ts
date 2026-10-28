@@ -33,8 +33,11 @@ import { createCastleMaterials } from './castle/castleMaterials'
 import { buildCastleExterior, CASTLE_DOORSTEP, castleBlocks, entersCastle, isCastleGround } from './castle/castleExterior'
 import { createCastle } from './castle/castleMode'
 import { createCastleAudio } from './castle/castleAudio'
+import { createCastleMinimap } from './castle/castleMinimap'
+import { battleBonus, capturesBoss, describeBonus, ghostEncounter } from './castle/castleQuest'
+import type { CastleEvent } from './castle/castleLayout'
 import { playBattleTransition } from './battleTransition'
-import { loadGame, saveGame } from './saveGame'
+import { clearGame, loadGame, saveGame } from './saveGame'
 
 const STEP_DURATION = 170
 /** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
@@ -44,6 +47,8 @@ const CAMERA_OFFSET = new THREE.Vector3(0, 4.2, 7)
 const OUTDOOR_FRAMING: CameraFraming = {offset: new THREE.Vector3(), lookHeight: 0.9, lookAhead: 1.5}
 /** Cadrage dans le château : plus bas et plus près, sous les plafonds, sans traverser les murs. */
 const CASTLE_FRAMING: CameraFraming = {offset: new THREE.Vector3(0, 2.4, 3.6), lookHeight: 1.1, lookAhead: 1.2}
+/** Direction monde de chaque touche, pour la marche libre du château (x vers l'est, z vers le sud). */
+const VECTORS: Record<Direction, [number, number]> = {up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0]}
 const KEYS: Record<string, Direction> = {
     arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right',
     z: 'up', w: 'up', s: 'down', q: 'left', a: 'left', d: 'right',
@@ -134,6 +139,7 @@ const castleMaterials = createCastleMaterials(renderer)
 const castleOutside = buildCastleExterior(scene, castleMaterials)
 const castle = createCastle(renderer, camera, castleMaterials)
 const castleAudio = createCastleAudio()
+const minimap = createCastleMinimap(document.body)
 /** Exposition plus forte à l'intérieur : la lumière n'y vient que des torches et des fenêtres. */
 const CASTLE_EXPOSURE = 1.3, OUTDOOR_EXPOSURE = renderer.toneMappingExposure
 
@@ -174,11 +180,19 @@ let player: PlayerState = saved?.player ?? {
 if (saved) castle.load(saved)
 /** Case du château où reprendre ; on y entre une fois Pikachu chargé, pour qu'il suive le dresseur à l'intérieur. */
 let resumeInCastle = saved?.castle ?? null
+/** Pokémon capturés en exploration (Mewtwo, avec la Master Ball). */
+let captured: string[] = saved?.captured ?? []
+/** Nouvelle partie demandée : la page se recharge sans réécrire la sauvegarde effacée. */
+let discarded = false
 let stepStart = 0
 let from = tileCenter(player.position.x, player.position.y), to = from.clone()
 let followerFrom = from.clone(), followerTo = from.clone()
 let held: Direction | null = null
+/** Toutes les directions enfoncées : dans le château, elles se combinent (diagonales). */
+const pressed = new Set<Direction>()
 let zoom = 1
+/** Pas faits dans le château depuis le dernier spectre (ou l'entrée). */
+let stepsSinceGhost = 0
 
 let pikachu: Companion | null = null
 const wildCharmander: WorldPokemon = {
@@ -203,17 +217,8 @@ function step(now: number) {
     if (encounterOverlay.isOpen || challenging || !held) return
     // Les touches sont relatives à la vue (caméra libre, vue de dos ou regard FPS).
     const direction = rig.direction(held)
-    if (castle.active) {
-        const event = castle.step(direction, now)
-        if (event) castleAudio.play(event, castle.state!)
-        if (event?.type === 'exit') leaveCastle(now)
-        // Après un escalier, la touche encore enfoncée ramènerait aussitôt dans l'escalier : il faut la relâcher.
-        if (event?.type === 'stairs') {
-            held = null
-            rig.release()
-        }
-        return
-    }
+    // Dans le château, la marche est continue : voir walkInCastle, appelée à chaque image.
+    if (castle.active) return
     if (now - stepStart < STEP_DURATION) return
     const previous = player.position
     const position = nextPosition(WORLD_MAP, previous, direction, player.travelMode)
@@ -240,8 +245,59 @@ function step(now: number) {
     stepStart = now
 }
 
-function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
+/** Plus aucune touche active : il faudra relâcher puis réappuyer pour repartir. */
+function stopWalking() {
     held = null
+    pressed.clear()
+    rig.release()
+}
+
+/** Marche libre dans le château : les touches enfoncées, relatives à la vue, donnent une direction monde. */
+function walkInCastle(delta: number, now: number) {
+    if (encounterOverlay.isOpen || challenging) return
+    let dx = 0, dz = 0
+    for (const key of pressed) {
+        const [x, z] = VECTORS[rig.direction(key)]
+        dx += x
+        dz += z
+    }
+    const length = Math.hypot(dx, dz)
+    for (const event of castle.move(length ? dx / length : 0, length ? dz / length : 0, delta, now)) {
+        castleAudio.play(event, castle.state!)
+        if (event.type === 'exit') return leaveCastle(now)
+        // Après un escalier, la touche encore enfoncée ramènerait aussitôt dans l'escalier : il faut la relâcher.
+        if (event.type === 'stairs') stopWalking()
+        if (event.type === 'moved' || event.type === 'pickup') haunt(++stepsSinceGhost)
+    }
+}
+
+/** À chaque case franchie, un spectre peut surgir (jamais au sommet, où Mewtwo règne seul). */
+function haunt(steps: number) {
+    const species = ghostEncounter(castle.state!, steps, Math.random(), Math.random())
+    if (!species) return
+    stepsSinceGhost = 0
+    startCastleBattle(species, 'Un spectre surgit !', 'Une silhouette glacée traverse le mur', `spectre-${species}-${Date.now()}`)
+}
+
+/** Transition manga jusqu'au noir, puis l'arène s'ouvre dessous ; les objets du sac renforcent le dresseur. */
+function startCastleBattle(speciesKey: string, title: string, subtitle: string, id: string,
+                           victory?: { onVictory: () => void; victoryText: string }) {
+    stopWalking()
+    challenging = true
+    castleAudio.challenge()
+    const bonus = battleBonus(castle.bag().inventory)
+    const transition = playBattleTransition(title, subtitle)
+    void transition.blackout.then(() => {
+        challenging = false
+        encounterOverlay.open({id, speciesKey, position: {x: castle.state!.x, y: castle.state!.z}},
+            {title, bonus: {...bonus, text: describeBonus(bonus)}, ...victory})
+        transition.leave()
+    })
+}
+
+function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
+    stopWalking()
+    stepsSinceGhost = 0
     boat.visible = false
     castle.enter(trainer, pikachu?.root ?? null, now, resume)
     castleAudio.enter()
@@ -254,8 +310,9 @@ function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
 function leaveCastle(now: number) {
     castle.leave()
     castleAudio.leave()
+    minimap.draw(null, null, false)
     renderer.toneMappingExposure = OUTDOOR_EXPOSURE
-    held = null
+    stopWalking()
     player = {...player, direction: 'left', position: {...CASTLE_DOORSTEP}}
     from = to = tileCenter(CASTLE_DOORSTEP.x, CASTLE_DOORSTEP.y)
     followerFrom = followerTo = tileCenter(CASTLE_DOORSTEP.x + 1, CASTLE_DOORSTEP.y)
@@ -267,17 +324,24 @@ function leaveCastle(now: number) {
 
 let challenging = false
 
-/** E devant Mewtwo : transition manga jusqu'au noir, puis l'arène s'ouvre dessous. */
+/** E devant Mewtwo : le duel final. Vaincu, il quitte le trône ; avec la Master Ball, il est capturé. */
 function challengeMewtwo() {
-    held = null
-    challenging = true
-    castleAudio.challenge()
-    const transition = playBattleTransition('Mewtwo !', 'Le Pokémon génétique se dresse devant le trône')
-    void transition.blackout.then(() => {
-        challenging = false
-        encounterOverlay.open({id: 'mewtwo-chateau', speciesKey: castle.boss.speciesKey, position: castle.boss.position})
-        transition.leave()
+    const capture = capturesBoss(castle.bag().inventory)
+    startCastleBattle(castle.boss.speciesKey, 'Mewtwo !', 'Le Pokémon génétique se dresse devant le trône', 'mewtwo-chateau', {
+        victoryText: capture ? 'Tu lances la Master Ball… Mewtwo est capturé !' : 'Vaincu, Mewtwo s’enfuit à travers le vitrail.',
+        onVictory: () => {
+            castle.defeatBoss(performance.now(), capture)
+            if (capture && !captured.includes('mewtwo')) captured = [...captured, 'mewtwo']
+            persist()
+        },
     })
+}
+
+/** E dans le château : Mewtwo à portée, sinon examiner (mur creux, autel). */
+function interactInCastle(now: number) {
+    if (castle.nearBoss()) return challengeMewtwo()
+    const event: CastleEvent | null = castle.interact(now)
+    if (event) castleAudio.play(event, castle.state!)
 }
 
 addEventListener('keydown', (event) => {
@@ -298,12 +362,8 @@ addEventListener('keydown', (event) => {
         if (event.repeat) return
 
         event.preventDefault()
-        held = null
-        if (castle.active) {
-            if (castle.nearBoss()) challengeMewtwo()
-            return
-        }
-        console.log(player,wildCharmander)
+        stopWalking()
+        if (castle.active) return interactInCastle(performance.now())
         const nearCharmander =
             player.travelMode === 'walking'
             && canInteractWithPokemon(player.position, wildCharmander)
@@ -323,29 +383,42 @@ addEventListener('keydown', (event) => {
     if (!direction) return
     event.preventDefault()
     // La répétition automatique d'une touche dont le pas a été interrompu (escalier, combat) ne relance pas la marche.
-    if (event.repeat && !held) return
-    // Nouvelle touche : le repère de la vue est figé jusqu'à ce qu'elle soit relâchée.
+    if (event.repeat && !pressed.has(direction)) return
+    // Nouvelle touche : le repère de la vue est figé jusqu'à ce qu'elles soient toutes relâchées.
     if (direction !== held) rig.press()
     held = direction
+    pressed.add(direction)
 })
 addEventListener('keyup', (event) => {
-    if (KEYS[event.key.toLowerCase()] !== held) return
-    held = null
-    rig.release()
+    const direction = KEYS[event.key.toLowerCase()]
+    if (!direction) return
+    pressed.delete(direction)
+    if (direction !== held) return
+    // Dehors, la dernière touche encore enfoncée reprend la main.
+    held = [...pressed].at(-1) ?? null
+    if (!held) rig.release()
 })
-addEventListener('blur', () => {
-    held = null
-    rig.release()
-})
+addEventListener('blur', stopWalking)
 
 /** Sauvegarde dans le navigateur : position (dehors ou dans le château), objets ramassés, portes ouvertes. */
 function persist() {
+    if (discarded) return
     const inside = castle.state
     saveGame(localStorage, {
         player,
         castle: inside ? {floor: inside.floor, x: inside.x, z: inside.z, facing: inside.facing} : resumeInCastle,
         ...castle.bag(),
+        bossDefeated: castle.bossDefeated,
+        captured,
     })
+}
+
+/** Nouvelle partie : après confirmation, la sauvegarde est effacée et Clairbois repart du début. */
+function newGame() {
+    if (!confirm('Effacer la sauvegarde et recommencer une nouvelle partie ?')) return
+    discarded = true
+    clearGame(localStorage)
+    location.reload()
 }
 // `pagehide` couvre la fermeture de l'onglet, le rechargement et le départ vers le monde ouvert ; un onglet masqué
 // peut être tué sans prévenir (mobile, navigateur fermé), d'où la sauvegarde aussi au passage en arrière-plan.
@@ -362,11 +435,15 @@ addEventListener('wheel', (event) => {
 const hud = document.createElement('div')
 hud.className = 'world3d-hud'
 document.body.appendChild(hud)
+hud.addEventListener('click', (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest('.world3d-new-game')) newGame()
+})
+const NEW_GAME = '<p><button type="button" class="world3d-new-game">Nouvelle partie</button></p>'
 let lastHud = ''
 const encounterOverlay = createEncounterOverlay({
     background: [host, hud],
     onPause: () => {
-        held = null
+        stopWalking()
         rig.setActive(false)
         renderer.setAnimationLoop(null)
     },
@@ -383,7 +460,7 @@ function updateHud(now: number) {
         const text = castle.hud(now, `${viewHelp()} · M : ${castleAudio.muted ? 'remettre' : 'couper'} le son`)
         if (text === lastHud) return
         lastHud = text
-        hud.innerHTML = text
+        hud.innerHTML = text + NEW_GAME
         return
     }
     const loading = Math.round(Math.min(materials.progress(), village ? streamer.progress(player.position) : 0) * 100)
@@ -391,7 +468,7 @@ function updateHud(now: number) {
     const boatAction = boatActionAtDock(player)
     const exit = nearExit(player.position)
     const nearCharmander = player.travelMode === 'walking' && canInteractWithPokemon(player.position, wildCharmander)
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}`
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}`
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = `<strong>${zoneAt(player.position)}</strong>`
@@ -400,7 +477,9 @@ function updateHud(now: number) {
         + (exit ? '<p><b>Sortie est</b> — continue vers l’est pour rejoindre le monde ouvert.</p>' : '')
         + (nearCharmander ? '<p><b>Salamèche</b> — E : ouvrir le combat</p>' : '')
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
+        + (captured.includes('mewtwo') ? '<p>Équipe : Pikachu, Mewtwo</p>' : '')
         + `<p class="world3d-help">Flèches / ZQSD pour marcher · ${viewHelp()} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
+        + NEW_GAME
 }
 
 addEventListener('resize', () => {
@@ -440,11 +519,14 @@ function animate(now: number) {
     step(now)
     if (castle.active) {
         // À l'intérieur : seul le château est animé et dessiné ; Clairbois attend dehors.
+        walkInCastle(delta, now)
+        if (!castle.active) return
         castle.update(now, delta)
         companions.forEach(({mixer}) => mixer.update(delta))
         trainer.visible = rig.mode !== 'fps'
-        rig.update(delta, trainer.position, castle.state!.facing, held !== null, CASTLE_FRAMING)
+        rig.update(delta, trainer.position, castle.state!.facing, pressed.size > 0, CASTLE_FRAMING)
         castleAudio.update(castle.state, encounterOverlay.isOpen || challenging)
+        minimap.draw(castle.state, castle.where(), castle.bossDefeated)
         updateHud(now)
         castle.render()
         resolution.update(now, frameSeconds)

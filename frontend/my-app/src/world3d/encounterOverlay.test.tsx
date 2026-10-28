@@ -96,4 +96,25 @@ describe('Rencontre depuis le monde 3D', () => {
         fireEvent.keyDown(start, {key: 'Tab', shiftKey: true})
         expect(back).toHaveFocus()
     })
+
+    it('renforce le dresseur avec les objets du sac et signale la victoire une seule fois', async () => {
+        setup()
+        const onVictory = vi.fn()
+        const won: Battle = {...initialBattle, is_over: true, winner: initialBattle.first.id}
+        vi.mocked(battleApi.create).mockResolvedValue(won)
+        act(() => {
+            overlay!.open({id: 'mewtwo', speciesKey: 'mewtwo', position: {x: 5, y: 6}}, {
+                title: 'Mewtwo !', bonus: {first_level: 55, first_potions: 4, text: 'Grâce à ton sac : niveau 55, 4 potions.'},
+                onVictory, victoryText: 'Mewtwo est capturé !',
+            })
+        })
+        expect(screen.getByRole('heading', {name: 'Mewtwo !'})).toBeVisible()
+        expect(screen.getByText('Grâce à ton sac : niveau 55, 4 potions.')).toBeVisible()
+        fireEvent.click(screen.getByRole('button', {name: 'Commencer le combat'}))
+        expect(battleApi.create).toHaveBeenCalledWith(
+            {first_species: 'pikachu', second_species: 'mewtwo', first_level: 55, first_potions: 4}, expect.any(AbortSignal),
+        )
+        expect(await screen.findByText('Mewtwo est capturé !')).toBeVisible()
+        expect(onVictory).toHaveBeenCalledTimes(1)
+    })
 })

@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { PlayerState } from '../world/types'
 import { tileAt, WORLD_MAP, WORLD_SPAWN } from '../world/worldMap'
-import { loadGame, SAVE_KEY, SAVE_VERSION, saveGame } from './saveGame'
+import { clearGame, loadGame, SAVE_KEY, SAVE_VERSION, saveGame } from './saveGame'
 
 function memoryStorage() {
   const values = new Map<string, string>()
   return {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value) },
+    removeItem: (key: string) => { values.delete(key) },
   }
 }
 
@@ -16,7 +17,10 @@ const player: PlayerState = {travelMode: 'walking', position: {...WORLD_SPAWN}, 
 describe('Sauvegarde de Clairbois 3D', () => {
   it('reprend la position, le sac et les portes ouvertes tels qu’ils ont été sauvegardés', () => {
     const storage = memoryStorage()
-    const game = {player, castle: {floor: 1, x: 15, z: 5, facing: 'up' as const}, inventory: ['potion', 'silver-key'], opened: ['gallery-treasury']}
+    const game = {
+      player, castle: {floor: 1, x: 15, z: 5, facing: 'up' as const}, inventory: ['potion', 'silver-key'], opened: ['gallery-treasury'],
+      bossDefeated: true, captured: ['mewtwo'],
+    }
     saveGame(storage, game)
     expect(loadGame(storage)).toEqual({version: SAVE_VERSION, ...game})
   })
@@ -26,7 +30,7 @@ describe('Sauvegarde de Clairbois 3D', () => {
     expect(loadGame(storage)).toBeNull()
     storage.setItem(SAVE_KEY, '{pas du json')
     expect(loadGame(storage)).toBeNull()
-    storage.setItem(SAVE_KEY, JSON.stringify({version: SAVE_VERSION + 1, player, castle: null, inventory: [], opened: []}))
+    storage.setItem(SAVE_KEY, JSON.stringify({version: SAVE_VERSION + 1, player, castle: null, inventory: [], opened: [], bossDefeated: false, captured: []}))
     expect(loadGame(storage)).toBeNull()
   })
 
@@ -35,20 +39,33 @@ describe('Sauvegarde de Clairbois 3D', () => {
     const tree = WORLD_MAP.tiles.indexOf('tree')
     const blocked = {x: tree % WORLD_MAP.width, y: Math.floor(tree / WORLD_MAP.width)}
     expect(tileAt(WORLD_MAP, blocked)).toBe('tree')
-    saveGame(storage, {player: {...player, position: blocked}, castle: null, inventory: [], opened: []})
+    saveGame(storage, {player: {...player, position: blocked}, castle: null, inventory: [], opened: [], bossDefeated: false, captured: []})
     expect(loadGame(storage)).toBeNull()
-    saveGame(storage, {player, castle: {floor: 0, x: 0, z: 0, facing: 'up'}, inventory: [], opened: []})
+    saveGame(storage, {player, castle: {floor: 0, x: 0, z: 0, facing: 'up'}, inventory: [], opened: [], bossDefeated: false, captured: []})
     expect(loadGame(storage)).toBeNull()
   })
 
   it('retire du sac les objets qui n’existent plus dans le château', () => {
     const storage = memoryStorage()
-    saveGame(storage, {player, castle: null, inventory: ['potion', 'objet-retire'], opened: []})
+    saveGame(storage, {player, castle: null, inventory: ['potion', 'objet-retire'], opened: [], bossDefeated: false, captured: []})
     expect(loadGame(storage)?.inventory).toEqual(['potion'])
   })
 
   it('laisse la partie continuer quand le navigateur refuse d’écrire', () => {
     const full = {setItem: () => { throw new DOMException('quota', 'QuotaExceededError') }}
-    expect(() => saveGame(full, {player, castle: null, inventory: [], opened: []})).not.toThrow()
+    expect(() => saveGame(full, {player, castle: null, inventory: [], opened: [], bossDefeated: false, captured: []})).not.toThrow()
+  })
+
+  it('reprend une sauvegarde de la première version avec Mewtwo toujours au trône', () => {
+    const storage = memoryStorage()
+    storage.setItem(SAVE_KEY, JSON.stringify({version: 1, player, castle: null, inventory: ['silver-key'], opened: []}))
+    expect(loadGame(storage)).toMatchObject({version: SAVE_VERSION, inventory: ['silver-key'], bossDefeated: false, captured: []})
+  })
+
+  it('efface la sauvegarde pour une nouvelle partie', () => {
+    const storage = memoryStorage()
+    saveGame(storage, {player, castle: null, inventory: ['potion'], opened: [], bossDefeated: false, captured: []})
+    clearGame(storage)
+    expect(loadGame(storage)).toBeNull()
   })
 })

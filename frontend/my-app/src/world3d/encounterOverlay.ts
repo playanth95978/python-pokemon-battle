@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Root } from 'react-dom/client'
 import { EncounterBattle } from './EncounterBattle'
+import type { EncounterOptions } from './EncounterBattle'
 import type { WorldPokemon } from './worldPokemon'
 import '../index.css'
 import './encounterOverlay.css'
@@ -32,7 +33,7 @@ export function createEncounterOverlay({background, onPause, onResume}: Options)
 
     return {
         get isOpen() { return root !== null },
-        open(opponent: WorldPokemon): boolean {
+        open(opponent: WorldPokemon, options: EncounterOptions = {}): boolean {
             // Le verrou est synchrone : deux pressions sur E ne créent pas deux panneaux.
             if (root) return false
             previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -43,7 +44,7 @@ export function createEncounterOverlay({background, onPause, onResume}: Options)
             document.body.appendChild(container)
             root = createRoot(container)
             onPause()
-            root.render(createElement(EncounterBattle, {opponent, onClose: close}))
+            root.render(createElement(EncounterBattle, {...options, opponent, onClose: close}))
             return true
         },
         dispose: close,

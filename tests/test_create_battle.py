@@ -61,6 +61,9 @@ def testUneEspeceInconnueNeCreeAucuneLigne(database):
 @pytest.mark.parametrize("body", [
     {}, {"first_species": " ", "second_species": "carapuce"},
     {"first_species": "carapuce", "second_species": "carapuce", "hp": 999},
+    {"first_species": "carapuce", "second_species": "carapuce", "first_level": 101},
+    {"first_species": "carapuce", "second_species": "carapuce", "first_potions": -1},
+    {"first_species": "carapuce", "second_species": "carapuce", "first_potions": "3"},
 ])
 def testLesRequetesInvalidesSontRefusees(database, body):
     """FastAPI valide la forme de la requête avant le service."""
@@ -104,3 +107,17 @@ def testLeServicePropageLesErreursDeStockage():
         service.create_battle("bulbizarre", "carapuce")
     with pytest.raises(UnknownSpeciesError):
         service.create_battle("absent", "carapuce")
+
+
+def testLesBonusDuDresseurNeConcernentQueLePremierCombattant(database):
+    """Niveau et potions gagnés en exploration : appliqués au premier combattant et sauvegardés."""
+    with TestClient(create_app(database)) as client:
+        response = client.post("/battles", json={
+            "first_species": "pikachu", "second_species": "salameche", "first_level": 55, "first_potions": 5,
+        })
+    assert response.status_code == 201
+    data = response.json()
+    assert (data["first"]["level"], data["first"]["potions"]) == (55, 5)
+    assert (data["second"]["level"], data["second"]["potions"]) == (50, 2)
+    record = SqliteBattleRepository(database).get(UUID(data["id"]))
+    assert (record.battle.first.level, record.battle.first.potions) == (55, 5)

@@ -23,6 +23,9 @@ class CreateBattleRequest(BaseModel):
 
     first_species: str = Field(min_length=1, pattern=r"\S")
     second_species: str = Field(min_length=1, pattern=r"\S")
+    # Bonus du dresseur (objets ramassés en exploration) ; sans eux, les valeurs habituelles du combat.
+    first_level: int = Field(default=50, ge=1, le=100, strict=True)
+    first_potions: int = Field(default=2, ge=0, le=9, strict=True)
 
 
 class PlayTurnRequest(BaseModel):

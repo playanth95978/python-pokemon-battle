@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Direction } from '../../world/types'
 import type { CastleState } from './castleLayout'
-import { BOSS, DOORS, enterCastle, ITEMS, moveInCastle, nearBoss, roomAt, ROOMS, STAIRS, tileAt } from './castleLayout'
+import { ALTAR, BOSS, DOORS, enterCastle, interact, ITEMS, moveInCastle, nearBoss, roomAt, ROOMS, STAIRS, tileAt } from './castleLayout'
 
 const DIRECTIONS: Direction[] = ['up', 'down', 'left', 'right']
 const KEYS = new Set(ITEMS.filter((item) => item.kind === 'key').map((item) => item.id))
@@ -16,9 +16,10 @@ function explore() {
   const queue = [start]
   while (queue.length) {
     const state = queue.shift()!
-    for (const direction of DIRECTIONS) {
-      const {state: next} = moveInCastle(state, direction)
-      if (!seen.has(id(next))) {
+    // Les quatre pas, plus E (passage secret, autel) là où il fait quelque chose.
+    const nexts = [...DIRECTIONS.map((direction) => moveInCastle(state, direction).state), interact(state)?.state]
+    for (const next of nexts) {
+      if (next && !seen.has(id(next))) {
         seen.set(id(next), next)
         queue.push(next)
       }
@@ -40,7 +41,11 @@ describe('Plan du château de Clairbois', () => {
   })
 
   it('pose chaque objet, porte et escalier sur une case libre du plan', () => {
-    for (const item of ITEMS) expect(tileAt(item)).toBe('floor')
+    // La Potion Max est cachée dans l'épaisseur du passage secret ; la Clé d'or est remise par l'autel.
+    for (const item of ITEMS.filter((candidate) => !candidate.reward)) {
+      const secret = DOORS.some((door) => door.secret && door.floor === item.floor && door.x === item.x && door.z === item.z)
+      expect(tileAt(item)).toBe(secret ? 'door' : 'floor')
+    }
     for (const door of DOORS) expect(tileAt(door)).toBe('door')
     for (const stairs of STAIRS) {
       expect(tileAt(stairs)).toBe('stairs')
@@ -53,9 +58,7 @@ describe('Plan du château de Clairbois', () => {
   it('laisse visiter les dix pièces et ramasser tous les objets en trouvant les clés dans l’ordre', () => {
     const visited = new Set(states.map((state) => roomAt(state)?.id))
     expect([...ROOMS.map((room) => room.id)].every((room) => visited.has(room))).toBe(true)
-    for (const item of ITEMS) {
-      expect(states.some((state) => state.floor === item.floor && state.x === item.x && state.z === item.z)).toBe(true)
-    }
+    for (const item of ITEMS) expect(states.some((state) => state.inventory.includes(item.id))).toBe(true)
     expect(states.some((state) => nearBoss(state))).toBe(true)
   })
 
@@ -92,5 +95,25 @@ describe('Plan du château de Clairbois', () => {
     const back = enterCastle({inventory: ['silver-key'], opened: ['gallery-treasury']})
     expect(back).toMatchObject({floor: 0, inventory: ['silver-key'], opened: ['gallery-treasury']})
     expect(moveInCastle({...back, floor: 1, x: 17, z: 7}, 'down').event.type).toBe('moved')
+  })
+
+  it('ouvre le passage secret seulement en poussant le mur creux, et y cache la Potion Max', () => {
+    const library: CastleState = {floor: 0, x: 12, z: 6, facing: 'left', inventory: [], opened: []}
+    expect(moveInCastle(library, 'left').event.type).toBe('hollow')
+    expect(interact({...library, x: 14})).toBeNull()
+    const pushed = interact(library)!
+    expect(pushed.event.type).toBe('secret')
+    const through = moveInCastle(pushed.state, 'left')
+    expect(through.event).toMatchObject({type: 'pickup', item: {id: 'max-potion'}})
+    expect(moveInCastle(through.state, 'left').state).toMatchObject({x: 10, z: 6})
+  })
+
+  it('échange la Pierre Lune contre la Clé d’or à l’autel de la chapelle, une seule fois', () => {
+    const facingAltar: CastleState = {floor: ALTAR.floor, x: ALTAR.x + 1, z: ALTAR.z + 1, facing: 'up', inventory: [], opened: []}
+    expect(interact(facingAltar)?.event.type).toBe('altar')
+    const solved = interact({...facingAltar, inventory: ['moon-stone']})!
+    expect(solved.event).toMatchObject({type: 'riddle', item: {id: 'gold-key'}})
+    expect(solved.state.inventory).toEqual(['moon-stone', 'gold-key'])
+    expect(interact(solved.state)?.event.type).toBe('altar')
   })
 })

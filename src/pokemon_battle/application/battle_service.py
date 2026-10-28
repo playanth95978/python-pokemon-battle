@@ -40,7 +40,8 @@ class BattleService:
         self.catalog = dict(catalog)
         self.engine = engine if engine is not None else BattleEngine(Random())
 
-    def create_battle(self, first_species: str, second_species: str) -> StoredBattle:
+    def create_battle(self, first_species: str, second_species: str, *,
+                      first_level: int = 50, first_potions: int = 2) -> StoredBattle:
         species = []
         for name in (first_species, second_species):
             key = name.strip().casefold()
@@ -48,10 +49,11 @@ class BattleService:
                 logger.warning("Création refusée : espèce inconnue %r", name)
                 raise UnknownSpeciesError(f"Espèce inconnue : {name}")
             species.append(self.catalog[key])
-        record = StoredBattle(
-            uuid4(),
-            Battle(Fighter(str(uuid4()), species[0]), Fighter(str(uuid4()), species[1])),
-        )
+        first = Fighter(str(uuid4()), species[0], first_level)
+        if first_potions < 0:
+            raise ValueError("first_potions must not be negative")
+        first.potions = first_potions
+        record = StoredBattle(uuid4(), Battle(first, Fighter(str(uuid4()), species[1])))
         self.repository.save(record)
         logger.info("Combat créé id=%s premier=%s second=%s", record.id,
                     record.battle.first.species.name, record.battle.second.species.name)

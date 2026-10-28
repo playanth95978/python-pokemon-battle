@@ -25,7 +25,8 @@ def create_battle(
 ) -> BattleResponse:
     """Créer et enregistrer un combat à partir de deux espèces du catalogue."""
     try:
-        record = service.create_battle(request.first_species, request.second_species)
+        record = service.create_battle(request.first_species, request.second_species,
+                                       first_level=request.first_level, first_potions=request.first_potions)
     except UnknownSpeciesError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     return BattleResponse.from_record(record)

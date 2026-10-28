@@ -272,6 +272,23 @@ export function createCastleAudio() {
                     return
                 case 'exit':
                     sound.creak(at, 1, 0.07)
+                    return
+                case 'hollow':
+                    // Deux coups sourds qui résonnent : le mur est creux.
+                    for (const delay of [0, 0.22]) sound.tone('sine', 95, 60, at + delay, 0.25, 0.45)
+                    return
+                case 'secret':
+                    // Le bloc de pierre racle en s'enfonçant, puis se cale.
+                    sound.hiss(180, 0.8, at, 1.6, 0.35, 0.2)
+                    sound.tone('sawtooth', 48, 40, at, 1.6, 0.06)
+                    sound.tone('sine', 70, 30, at + 1.55, 0.5, 0.6)
+                    return
+                case 'altar':
+                    sound.tone('sine', 440, 438, at, 1.5, 0.05)
+                    return
+                case 'riddle':
+                    for (const [index, note] of [523, 659, 784, 1047, 1319].entries()) sound.tone('sine', note, note, at + index * 0.12, 1.4, 0.1)
+                    PICKUP_NOTES.key.forEach((note, index) => sound.tone('triangle', note, note, at + 0.7 + index * 0.08, 0.5, 0.12))
             }
         },
         /** Le défi de Mewtwo : coup sourd et accord strident, sous la transition manga. */

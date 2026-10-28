@@ -1,6 +1,6 @@
 /**
- * Le château en jeu : sa propre scène (intérieur sombre, torches, brouillard), son post-traitement, les pas
- * du dresseur case par case, le ramassage des objets, les portes à clé, les escaliers et Mewtwo.
+ * Le château en jeu : sa propre scène (intérieur sombre, torches, brouillard), son post-traitement, la marche libre
+ * du dresseur, le ramassage des objets, les portes à clé, le passage secret, l'autel, les escaliers et Mewtwo.
  * Clairbois (main.ts) délègue tout ici tant que le dresseur est à l'intérieur.
  */
 import * as THREE from 'three'
@@ -9,11 +9,12 @@ import type { Direction } from '../../world/types'
 import { createPostProcessing } from '../postProcessing'
 import type { Gait } from '../scenery'
 import type { CastleEvent, CastleState, Tile } from './castleLayout'
-import { blocksCamera, BOSS, enterCastle, FLOOR_NAMES, ITEMS, moveInCastle, nearBoss, roomAt, ROOMS } from './castleLayout'
+import { blocksCamera, BOSS, enterCastle, FLOOR_NAMES, interact, ITEMS, nearBoss, roomAt, ROOMS } from './castleLayout'
+import type { Point } from './castleWalk'
+import { walk, WALK_SPEED } from './castleWalk'
 import { buildCastleInterior, ROOM_THEMES, roomLightPosition } from './castleInterior'
 import type { CastleMaterials } from './castleMaterials'
 
-const STEP_DURATION = 190
 const LIGHT_POOL = 6
 /** Multiplicateur des sources proches (torches, âtre…) et force de l'éclairage d'ambiance d'une pièce de 70 cases. */
 const LIGHT_SCALE = 3.6, ROOM_LIGHT = 9
@@ -60,8 +61,10 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
     let progress: Pick<CastleState, 'inventory' | 'opened'> = {inventory: [], opened: []}
     let trainer: Trainer | null = null, follower: THREE.Object3D | null = null
     let restore: { parent: THREE.Object3D; object: THREE.Object3D }[] = []
-    let stepStart = -Infinity
-    const from = new THREE.Vector3(), to = new THREE.Vector3(), followerFrom = new THREE.Vector3(), followerTo = new THREE.Vector3()
+    // Marche libre : position continue (en cases), cap du regard, obstacle poussé à l'image précédente.
+    let position: Point = {x: 0, z: 0}, heading = 0, moving = false
+    let pushing: Tile | null = null
+    let bossDefeated = false
     let message = {text: '', until: 0}
     const doorOpening = new Map<string, number>()
     const pickedAt = new Map<string, number>()
@@ -92,6 +95,12 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
             case 'locked': return `La porte est fermée à clé. Il faut la ${ITEMS.find((item) => item.id === event.door.key)?.name ?? 'clé'}.`
             case 'unlocked': return `La ${ITEMS.find((item) => item.id === event.door.key)?.name} tourne dans la serrure : la porte s'ouvre.`
             case 'stairs': return event.stairs.up ? `Tu montes : ${FLOOR_NAMES[current.floor]}.` : `Tu descends : ${FLOOR_NAMES[current.floor]}.`
+            case 'hollow': return 'Ce pan de mur sonne creux… (E pour le pousser)'
+            case 'secret': return 'Le mur pivote dans un grincement : un passage secret !'
+            case 'altar': return current.inventory.includes('gold-key')
+                ? 'La Pierre Lune repose dans son creux et luit doucement.'
+                : 'Un creux en forme de croissant de lune est gravé dans l’autel.'
+            case 'riddle': return `La Pierre Lune s’illumine et l’autel s’entrouvre : ${event.item.name} !`
             default: return null
         }
     }
@@ -124,8 +133,17 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
         /** Objets ramassés et portes ouvertes, dedans comme dehors (pour la sauvegarde). */
         bag: () => (state ? {inventory: state.inventory, opened: state.opened} : progress),
         /** Reprend une partie sauvegardée, avant toute entrée dans le château. */
-        load(saved: Pick<CastleState, 'inventory' | 'opened'>) {
+        load(saved: Pick<CastleState, 'inventory' | 'opened'> & { bossDefeated: boolean }) {
             progress = {inventory: [...saved.inventory], opened: [...saved.opened]}
+            bossDefeated = saved.bossDefeated
+        },
+        get bossDefeated() {
+            return bossDefeated
+        },
+        /** Mewtwo vaincu : il quitte le trône pour de bon. */
+        defeatBoss(now: number, captured: boolean) {
+            bossDefeated = true
+            say(captured ? 'Mewtwo a rejoint ton équipe. Le trône est vide.' : 'Mewtwo s’est enfui. Le trône est vide.', now)
         },
         /**
          * Fait entrer le dresseur (et son compagnon) par la grande porte, dans le hall ; avec `resume`, il réapparaît
@@ -140,13 +158,13 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
             restore = [player, companion].filter((object): object is THREE.Object3D => !!object?.parent)
                 .map((object) => ({parent: object.parent!, object}))
             restore.forEach(({object}) => scene.add(object))
-            from.copy(center(state.x, state.z))
-            to.copy(from)
+            position = {x: state.x + 0.5, z: state.z + 0.5}
+            heading = ANGLES[state.facing]
+            pushing = null
             // Le compagnon attend une case derrière la porte ; à la reprise, il part de la case du dresseur.
-            followerFrom.copy(from).x -= resume ? 0 : 1
-            followerTo.copy(followerFrom)
-            player.rotation.y = ANGLES[state.facing]
-            player.position.copy(from)
+            companion?.position.copy(center(state.x - (resume ? 0 : 1), state.z))
+            player.rotation.y = heading
+            player.position.copy(center(state.x, state.z))
             showFloor(state.floor)
             const room = roomAt(state)!
             say(`Château de Clairbois — ${room.name}. ${room.description}`, now)
@@ -158,50 +176,69 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
             if (state) progress = {inventory: state.inventory, opened: state.opened}
             state = null
         },
-        /** Un pas (touche maintenue) ; renvoie l'évènement pour que Clairbois gère la sortie. */
-        step(direction: Direction, now: number): CastleEvent | null {
-            if (!state || now - stepStart < STEP_DURATION) return null
-            const previous = state
-            const {state: next, event} = moveInCastle(state, direction)
-            state = next
-            const text = describe(event, next)
-            if (text) say(text, now)
-            if (event.type === 'unlocked') doorOpening.set(event.door.id, now)
-            if (event.type === 'pickup') pickedAt.set(event.item.id, now)
-            if (event.type === 'moved' || event.type === 'pickup') {
-                followerFrom.copy(followerTo)
-                followerTo.copy(center(previous.x, previous.z))
-                from.copy(to)
-                to.copy(center(next.x, next.z))
-                stepStart = now
-            } else if (event.type === 'stairs') {
-                // Changement d'étage : on réapparaît en haut (ou en bas) de l'escalier, compagnon sur les talons.
-                showFloor(next.floor)
-                from.copy(center(next.x, next.z))
-                to.copy(from)
-                // La case de l'escalier est une trémie : le compagnon arrive sur la case du dresseur et le suit au pas suivant.
-                followerFrom.copy(from)
-                followerTo.copy(from)
-                stepStart = now - STEP_DURATION
-                const room = roomAt(next)
-                if (room) say(`${describe(event, next)} ${room.name} : ${room.description}`, now)
+        /**
+         * Marche libre vers (dx, dz) (direction monde, longueur 1 au plus) pendant `delta` secondes. Renvoie les
+         * évènements des cases franchies et des obstacles poussés, pour que Clairbois gère sons, sortie et rencontres.
+         */
+        move(dx: number, dz: number, delta: number, now: number): CastleEvent[] {
+            if (!state) return []
+            moving = dx !== 0 || dz !== 0
+            if (moving) heading = Math.atan2(dx, dz)
+            const result = walk(state, position, dx, dz, WALK_SPEED * delta, pushing)
+            state = result.state
+            position = result.position
+            pushing = result.pushing
+            for (const event of result.events) {
+                const text = describe(event, state)
+                if (event.type === 'unlocked') doorOpening.set(event.door.id, now)
+                if (event.type === 'pickup') pickedAt.set(event.item.id, now)
+                if (event.type === 'stairs') {
+                    // Changement d'étage : on réapparaît en haut (ou en bas) de l'escalier, compagnon sur les talons.
+                    showFloor(state.floor)
+                    follower?.position.copy(center(state.x, state.z))
+                    heading = ANGLES[state.facing]
+                    const room = roomAt(state)
+                    if (room) say(`${text} ${room.name} : ${room.description}`, now)
+                } else if (text) say(text, now)
             }
-            return event
+            return result.events
         },
-        nearBoss: () => !!state && nearBoss(state),
+        /** E : pousser le mur creux voisin ou toucher l'autel. */
+        interact(now: number): CastleEvent | null {
+            if (!state) return null
+            const result = interact(state)
+            if (!result) return null
+            state = result.state
+            if (result.event.type === 'secret') doorOpening.set(result.event.door.id, now)
+            if (result.event.type === 'riddle') pickedAt.set(result.event.item.id, now)
+            const text = describe(result.event, state)
+            if (text) say(text, now)
+            return result.event
+        },
+        /** Le dresseur est à côté de quelque chose à examiner (E). */
+        canInteract: () => !!state && interact(state) !== null,
+        nearBoss: () => !!state && !bossDefeated && nearBoss(state),
         boss: {speciesKey: BOSS.speciesKey, name: BOSS.name, position: {x: BOSS.x, y: BOSS.z}},
+        /** Position continue du dresseur (en cases) et son cap, pour la mini-carte. */
+        where: () => ({...position, heading}),
         /** Anime le château et place le dresseur ; la caméra est placée par cameraRig.ts. */
         update(now: number, delta: number) {
             if (!state || !trainer) return
             const time = now / 1000
-            const progress = Math.min(1, (now - stepStart) / STEP_DURATION)
-            trainer.position.lerpVectors(from, to, progress)
-            trainer.rotation.y = THREE.MathUtils.lerp(trainer.rotation.y, ANGLES[state.facing], 0.25)
-            trainer.animate(delta, now - stepStart < STEP_DURATION + 60 ? 'walk' : 'idle')
+            trainer.position.set(position.x, 0, position.z)
+            // Demi-tour par le plus court chemin, en douceur.
+            const turn = Math.atan2(Math.sin(heading - trainer.rotation.y), Math.cos(heading - trainer.rotation.y))
+            trainer.rotation.y += turn * (1 - Math.exp(-delta * 14))
+            trainer.animate(delta, moving ? 'walk' : 'idle')
             if (follower) {
-                follower.position.lerpVectors(followerFrom, followerTo, progress)
-                const dx = followerTo.x - followerFrom.x, dz = followerTo.z - followerFrom.z
-                if (dx * dx + dz * dz > 0.01) follower.rotation.y = Math.atan2(dx, dz)
+                // Pikachu trottine derrière, à un mètre environ.
+                const dx = trainer.position.x - follower.position.x, dz = trainer.position.z - follower.position.z
+                const gap = Math.hypot(dx, dz)
+                if (gap > 1) {
+                    follower.position.x += dx / gap * (gap - 1)
+                    follower.position.z += dz / gap * (gap - 1)
+                    follower.rotation.y = Math.atan2(dx, dz)
+                }
             }
 
             // Objets : ils flottent et tournent ; ramassés, ils montent en tourbillonnant puis disparaissent.
@@ -216,16 +253,23 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
                     mesh.rotation.y += delta * 14
                     continue
                 }
-                mesh.visible = !state.inventory.includes(item.id)
+                // Une récompense d'énigme n'apparaît qu'au moment où on la gagne.
+                mesh.visible = !item.reward && !state.inventory.includes(item.id)
                 mesh.position.y = 0.55 + Math.sin(time * 2 + item.x) * 0.08
                 mesh.rotation.y = time * 1.4 + item.z
             }
             for (const [door, started] of doorOpening) {
                 const pivot = interior.lockedDoors.get(door)!
+                if (pivot.userData.secret) {
+                    // Le pan de mur s'enfonce lentement dans le sol.
+                    pivot.position.y = -Math.min(1, (now - started) / 1600) * 3.7
+                    continue
+                }
                 const base = pivot.userData.baseRotation ?? (pivot.userData.baseRotation = pivot.rotation.y)
                 pivot.rotation.y = base - Math.min(1, (now - started) / 700) * Math.PI / 2
             }
-            interior.boss.update(time)
+            interior.boss.root.visible = !bossDefeated
+            if (!bossDefeated) interior.boss.update(time)
 
             // Les flammes de l'étage vacillent ; les lumières réelles vont aux sources les plus proches.
             const floor = interior.floors[state.floor]
@@ -261,7 +305,8 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
             return `<strong>Château de Clairbois — ${room?.name ?? 'Grande porte'}</strong>`
                 + `<p>${FLOOR_NAMES[state.floor]}</p>`
                 + (now < message.until ? `<p><b>${message.text}</b></p>` : '')
-                + (nearBoss(state) ? '<p><b>Mewtwo</b> — E : l’affronter !</p>' : '')
+                + (!bossDefeated && nearBoss(state) ? '<p><b>Mewtwo</b> — E : l’affronter !</p>' : '')
+                + (interact(state) ? '<p><b>E</b> : examiner</p>' : '')
                 + `<p>Sac (${bag.length}/${ITEMS.length}) : ${bag.length ? bag.join(', ') : 'vide'}</p>`
                 + `<p class="world3d-help">Flèches / ZQSD pour marcher · ${viewHelp} · la grande porte du hall ramène à Clairbois</p>`
         },

@@ -294,7 +294,7 @@ function buildFloor(floor: number, materials: CastleMaterials, lockedDoors: Map<
     ceilingMesh.castShadow = false
 
     // Linteaux et chambranles au-dessus des passages.
-    for (const door of [...DOORS.filter((candidate) => candidate.floor === floor), ...(floor === EXIT.floor ? [EXIT] : [])]) {
+    for (const door of [...DOORS.filter((candidate) => candidate.floor === floor && !candidate.secret), ...(floor === EXIT.floor ? [EXIT] : [])]) {
         const alongX = walkable({floor, x: door.x - 1, z: door.z}) && walkable({floor, x: door.x + 1, z: door.z})
         const lintel = new THREE.Mesh(texturedBox(alongX ? 1 : 1.02, H - DOOR_HEIGHT, alongX ? 1.02 : 1, TEXTURE_SIZE.brick), materials.brick)
         lintel.position.set(door.x + 0.5, (H + DOOR_HEIGHT) / 2, door.z + 0.5)
@@ -307,6 +307,16 @@ function buildFloor(floor: number, materials: CastleMaterials, lockedDoors: Map<
         const pivot = lockedDoor(door, materials)
         lockedDoors.set(door.id, pivot)
         add(pivot)
+    }
+    // Passage secret : un bloc de maçonnerie bouche l'ouverture ; poussé, il s'enfonce dans le sol.
+    for (const door of DOORS.filter((candidate) => candidate.floor === floor && candidate.secret)) {
+        const block = new THREE.Mesh(texturedBox(1, H, 1, TEXTURE_SIZE.brick), materials.brick)
+        block.position.set(door.x + 0.5, H / 2, door.z + 0.5)
+        const slider = new THREE.Group()
+        slider.userData.secret = true
+        slider.add(block)
+        lockedDoors.set(door.id, slider)
+        add(slider)
     }
     if (floor === EXIT.floor) {
         // Grande porte ouverte sur le jour : un voile lumineux chaud dans l'embrasure.
