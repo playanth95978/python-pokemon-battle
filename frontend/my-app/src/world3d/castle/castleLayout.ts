@@ -161,8 +161,9 @@ export type CastleEvent =
 
 const STEP: Record<Direction, [number, number]> = {up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0]}
 
-export function enterCastle(): CastleState {
-    return {...ENTRANCE, facing: 'right', inventory: [], opened: []}
+/** Entrée par la grande porte ; les objets déjà ramassés et les portes déjà ouvertes le restent. */
+export function enterCastle(progress: Pick<CastleState, 'inventory' | 'opened'> = {inventory: [], opened: []}): CastleState {
+    return {...ENTRANCE, facing: 'right', inventory: [...progress.inventory], opened: [...progress.opened]}
 }
 
 /**

@@ -106,7 +106,7 @@ export function cameraPosition(map: WorldMap, player: Position, width: number, h
 }
 
 
-function canEnter(tile: TileType | null, mode: TravelMode): boolean {
+export function canEnter(tile: TileType | null, mode: TravelMode): boolean {
   if (mode === 'boat') {
     return tile === 'water'
   }

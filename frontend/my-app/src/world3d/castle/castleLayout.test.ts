@@ -87,4 +87,10 @@ describe('Plan du château de Clairbois', () => {
     expect(nearBoss(near)).toBe(true)
     expect(nearBoss({...near, z: BOSS.z + 4})).toBe(false)
   })
+
+  it('garde les objets ramassés et les portes ouvertes quand on revient dans le château', () => {
+    const back = enterCastle({inventory: ['silver-key'], opened: ['gallery-treasury']})
+    expect(back).toMatchObject({floor: 0, inventory: ['silver-key'], opened: ['gallery-treasury']})
+    expect(moveInCastle({...back, floor: 1, x: 17, z: 7}, 'down').event.type).toBe('moved')
+  })
 })

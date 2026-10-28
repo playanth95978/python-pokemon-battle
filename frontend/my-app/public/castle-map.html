@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan du château</title>
+<style>
+    :root {
+        --bg: #f4efe6; --ink: #2b241c; --muted: #7a6d5d; --wall: #3a3129; --grid: #00000010;
+        --card: #fffaf2; --border: #d9cdb9; --accent: #8a2be2; --stairs: #c0392b; --door: #6d4c2f; --lock: #b8860b;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root { --bg: #17140f; --ink: #efe6d6; --muted: #a89a86; --wall: #0b0907; --grid: #ffffff0d;
+            --card: #211c16; --border: #3a3127; --door: #c49a6c; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+    main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 26px; margin: 0 0 4px; }
+    .lead { color: var(--muted); margin: 0 0 20px; }
+    .floors { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; }
+    section.floor { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+    section.floor h2 { font-size: 17px; margin: 0 0 8px; display: flex; justify-content: space-between; }
+    section.floor h2 small { color: var(--muted); font-weight: 400; }
+    svg { width: 100%; height: auto; display: block; }
+    svg text { font-family: system-ui, sans-serif; }
+    ol.route { padding-left: 20px; }
+    ol.route li { margin: 4px 0; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 18px 0; color: var(--muted); font-size: 14px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+    .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 20px; }
+    .box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; }
+    .box h3 { margin: 0 0 6px; font-size: 16px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    td { padding: 3px 6px; border-top: 1px solid var(--border); }
+    .num { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+        background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+    <h1>Château de Clairbois</h1>
+    <p class="lead">Trois étages, dix pièces. L'escalier est toujours dans l'angle <b>est</b> (à droite) : on y entre en marchant vers la droite sur la marche rouge.</p>
+
+    <div class="legend">
+        <span><i class="sw" style="background:var(--stairs)"></i> Escalier</span>
+        <span><i class="sw" style="background:var(--door)"></i> Porte</span>
+        <span><i class="sw" style="background:var(--lock)"></i> Porte à clé</span>
+        <span><span class="num">1</span> Objet (ordre conseillé)</span>
+        <span><i class="sw" style="background:#8a7a6680"></i> Meuble (infranchissable)</span>
+        <span>★ Mewtwo</span>
+    </div>
+
+    <div class="floors" id="floors"></div>
+
+    <div class="cols">
+        <div class="box">
+            <h3>Parcours conseillé</h3>
+            <ol class="route" id="route"></ol>
+        </div>
+        <div class="box">
+            <h3>Objets</h3>
+            <table id="items"></table>
+        </div>
+    </div>
+</main>
+<script>
+    // Données recopiées de src/world3d/castle/castleLayout.ts (cases de 1 m, x vers l'est, z vers le sud).
+    const W = 24, D = 18, S = 22
+    const FLOORS = ['Rez-de-chaussée', 'Premier étage', 'Sommet du donjon']
+    const STYLE = {stone: '#c9bba6', wood: '#d6a96f', marble: '#d8d3e3'}
+    const ROOMS = [
+        ['hall', 'Grand hall', 0, 1, 9, 10, 8, 'stone'],
+        ['armory', 'Salle d’armes', 0, 1, 1, 10, 7, 'stone'],
+        ['kitchen', 'Cuisines', 0, 12, 9, 11, 8, 'stone'],
+        ['library', 'Bibliothèque', 0, 12, 1, 11, 7, 'wood'],
+        ['gallery', 'Galerie des portraits', 1, 12, 1, 11, 7, 'wood'],
+        ['chapel', 'Chapelle', 1, 1, 1, 10, 7, 'stone'],
+        ['bedroom', 'Chambre du seigneur', 1, 1, 9, 10, 8, 'wood'],
+        ['treasury', 'Salle du trésor', 1, 12, 9, 11, 8, 'marble'],
+        ['antechamber', 'Antichambre', 2, 12, 9, 11, 8, 'marble'],
+        ['throne', 'Salle du trône', 2, 1, 1, 10, 16, 'marble'],
+    ]
+    const DOORS = [
+        [0, 5, 8], [0, 11, 12], [0, 17, 8], [1, 11, 4], [1, 5, 8],
+        [1, 17, 8, 'Clé d’argent'], [2, 11, 12, 'Clé d’or'],
+    ]
+    const STAIRS = [
+        [0, 22, 2, '▲ 1er'], [1, 22, 2, '▼ RDC'], [1, 22, 15, '▲ Sommet'], [2, 22, 15, '▼ 1er'],
+    ]
+    // Ordre conseillé : chaque objet est ramassable quand on arrive dessus.
+    const ITEMS = [
+        ['Potion', 0, 3, 4, 'Salle d’armes'],
+        ['Super Potion', 0, 20, 14, 'Cuisines'],
+        ['Super Bonbon', 0, 14, 5, 'Bibliothèque'],
+        ['Hyper Potion', 1, 15, 6, 'Galerie'],
+        ['Pierre Lune', 1, 5, 3, 'Chapelle'],
+        ['Clé d’argent', 1, 3, 14, 'Chambre'],
+        ['Élixir', 1, 20, 11, 'Trésor'],
+        ['Clé d’or', 1, 14, 15, 'Trésor'],
+        ['Master Ball', 2, 15, 12, 'Antichambre'],
+    ]
+    const PROPS = [
+        ...[[3, 10], [8, 10], [3, 15], [8, 15]].map(([x, z]) => [0, x, z]),
+        ...[2, 4, 6, 8].map((x) => [0, x, 1]), [0, 10, 3, 1, 3], [0, 5, 5, 2], [0, 15, 12, 4],
+        [0, 22, 16], [0, 21, 16], [0, 22, 14], [0, 16, 16, 3],
+        ...[13, 14, 15, 16, 18, 19, 20].map((x) => [0, x, 1]), [0, 17, 5, 2],
+        [1, 4, 1, 3], ...[[2, 4], [7, 4], [2, 6], [7, 6]].map(([x, z]) => [1, x, z, 2]),
+        [1, 2, 10, 2, 3], [1, 9, 9], [1, 8, 15, 2], [1, 14, 2], [1, 18, 2],
+        ...[[13, 10], [16, 10], [13, 16], [19, 16]].map(([x, z]) => [1, x, z]),
+        [2, 12, 11], [2, 12, 13], ...[[14, 9], [20, 9], [14, 16], [20, 16]].map(([x, z]) => [2, x, z]),
+        ...[[2, 5], [9, 5], [2, 9], [9, 9], [2, 13], [9, 13]].map(([x, z]) => [2, x, z]), [2, 5, 2, 2],
+    ]
+    const BOSS = [2, 5, 6, 2]
+
+    const el = (name, attrs, text) => {
+        const node = document.createElementNS('http://www.w3.org/2000/svg', name)
+        for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v)
+        if (text) node.textContent = text
+        return node
+    }
+
+    FLOORS.forEach((title, floor) => {
+        const section = document.createElement('section')
+        section.className = 'floor'
+        section.innerHTML = `<h2>${title} <small>étage ${floor}</small></h2>`
+        const svg = el('svg', {viewBox: `0 0 ${W * S} ${D * S}`, role: 'img', 'aria-label': `Plan : ${title}`})
+        svg.append(el('rect', {width: W * S, height: D * S, fill: 'var(--wall)', rx: 6}))
+        for (const [, name, f, x, z, w, d, style] of ROOMS) {
+            if (f !== floor) continue
+            svg.append(el('rect', {x: x * S, y: z * S, width: w * S, height: d * S, fill: STYLE[style]}))
+            for (let i = 1; i < w; i++) svg.append(el('line', {x1: (x + i) * S, y1: z * S, x2: (x + i) * S, y2: (z + d) * S, stroke: 'var(--grid)'}))
+            for (let i = 1; i < d; i++) svg.append(el('line', {x1: x * S, y1: (z + i) * S, x2: (x + w) * S, y2: (z + i) * S, stroke: 'var(--grid)'}))
+            svg.append(el('text', {x: (x + w / 2) * S, y: z * S + 18, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 700, fill: '#2b241c', opacity: 0.75}, name))
+        }
+        for (const [f, x, z, w = 1, d = 1] of PROPS) {
+            if (f === floor) svg.append(el('rect', {x: x * S + 2, y: z * S + 2, width: w * S - 4, height: d * S - 4, fill: '#00000030', rx: 3}))
+        }
+        for (const [f, x, z, key] of DOORS) {
+            if (f !== floor) continue
+            svg.append(el('rect', {x: x * S, y: z * S, width: S, height: S, fill: key ? 'var(--lock)' : 'var(--door)'}))
+            if (key) svg.append(el('text', {x: x * S + S / 2, y: z * S + S / 2 + 5, 'text-anchor': 'middle', 'font-size': 13}, '🔒'))
+        }
+        for (const [f, x, z, label] of STAIRS) {
+            if (f !== floor) continue
+            svg.append(el('rect', {x: x * S, y: z * S, width: S, height: S, fill: 'var(--stairs)'}))
+            svg.append(el('text', {x: x * S - 4, y: z * S + S / 2 + 5, 'text-anchor': 'end', 'font-size': 13, 'font-weight': 700, fill: 'var(--stairs)',
+                stroke: '#fff', 'stroke-width': 3, 'paint-order': 'stroke'}, label))
+        }
+        if (floor === 0) {
+            svg.append(el('rect', {x: 0, y: 12 * S, width: S, height: S, fill: '#2e8b57'}))
+            svg.append(el('text', {x: S + 4, y: 12 * S + S / 2 + 5, 'font-size': 13, 'font-weight': 700, fill: '#2e8b57', stroke: '#fff', 'stroke-width': 3, 'paint-order': 'stroke'}, '← Entrée'))
+        }
+        if (BOSS[0] === floor) {
+            const [, x, z, w] = BOSS
+            svg.append(el('rect', {x: x * S, y: z * S, width: w * S, height: S, fill: 'var(--accent)', rx: 4}))
+            svg.append(el('text', {x: (x + w / 2) * S, y: z * S + S / 2 + 5, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: '#fff'}, '★ Mewtwo'))
+        }
+        ITEMS.forEach(([, f, x, z], index) => {
+            if (f !== floor) return
+            svg.append(el('circle', {cx: x * S + S / 2, cy: z * S + S / 2, r: S / 2 - 1, fill: 'var(--accent)', stroke: '#fff', 'stroke-width': 2}))
+            svg.append(el('text', {x: x * S + S / 2, y: z * S + S / 2 + 4, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, fill: '#fff'}, index + 1))
+        })
+        section.append(svg)
+        document.getElementById('floors').append(section)
+    })
+
+    document.getElementById('items').innerHTML = ITEMS
+        .map(([name, f, , , room], index) => `<tr><td><span class="num">${index + 1}</span></td><td>${name}</td><td>${room}</td><td>${FLOORS[f]}</td></tr>`)
+        .join('')
+
+    document.getElementById('route').innerHTML = [
+        'Entre par la grande porte du hall (à gauche du rez-de-chaussée).',
+        'Porte nord du hall → <b>Salle d’armes</b> : Potion (1).',
+        'Porte est du hall → <b>Cuisines</b> : Super Potion (2), près des tonneaux.',
+        'Porte nord des cuisines → <b>Bibliothèque</b> : Super Bonbon (3).',
+        'Angle nord-est de la bibliothèque : marche vers la droite sur l’<b>escalier</b> → Premier étage.',
+        '<b>Galerie</b> : Hyper Potion (4). Porte ouest → <b>Chapelle</b> : Pierre Lune (5).',
+        'Porte sud de la chapelle → <b>Chambre</b> : <b>Clé d’argent</b> (6).',
+        'Reviens à la galerie : la porte sud s’ouvre avec la clé d’argent → <b>Trésor</b> : Élixir (7), <b>Clé d’or</b> (8).',
+        'Angle sud-est du trésor : <b>escalier</b> vers le Sommet du donjon.',
+        '<b>Antichambre</b> : Master Ball (9). La porte ouest s’ouvre avec la clé d’or.',
+        '<b>Salle du trône</b> : approche-toi de Mewtwo et appuie sur <b>E</b>.',
+    ].map((text) => `<li>${text}</li>`).join('')
+</script>
+</body>
+</html>

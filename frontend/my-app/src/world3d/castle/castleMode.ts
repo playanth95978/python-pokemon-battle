@@ -8,7 +8,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import type { Direction } from '../../world/types'
 import { createPostProcessing } from '../postProcessing'
 import type { Gait } from '../scenery'
-import type { CastleEvent, CastleState } from './castleLayout'
+import type { CastleEvent, CastleState, Tile } from './castleLayout'
 import { blocksCamera, BOSS, enterCastle, FLOOR_NAMES, ITEMS, moveInCastle, nearBoss, roomAt, ROOMS } from './castleLayout'
 import { buildCastleInterior, ROOM_THEMES, roomLightPosition } from './castleInterior'
 import type { CastleMaterials } from './castleMaterials'
@@ -56,6 +56,8 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
     const post = createPostProcessing(renderer, scene, camera)
 
     let state: CastleState | null = null
+    /** Objets ramassés et portes ouvertes : ils restent acquis quand on sort du château et qu'on y revient. */
+    let progress: Pick<CastleState, 'inventory' | 'opened'> = {inventory: [], opened: []}
     let trainer: Trainer | null = null, follower: THREE.Object3D | null = null
     let restore: { parent: THREE.Object3D; object: THREE.Object3D }[] = []
     let stepStart = -Infinity
@@ -119,9 +121,20 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
             return state
         },
         progress: () => materials.progress(),
-        /** Fait entrer le dresseur (et son compagnon) par la grande porte, dans le hall. */
-        enter(player: Trainer, companion: THREE.Object3D | null, now: number) {
-            state = enterCastle()
+        /** Objets ramassés et portes ouvertes, dedans comme dehors (pour la sauvegarde). */
+        bag: () => (state ? {inventory: state.inventory, opened: state.opened} : progress),
+        /** Reprend une partie sauvegardée, avant toute entrée dans le château. */
+        load(saved: Pick<CastleState, 'inventory' | 'opened'>) {
+            progress = {inventory: [...saved.inventory], opened: [...saved.opened]}
+        },
+        /**
+         * Fait entrer le dresseur (et son compagnon) par la grande porte, dans le hall ; avec `resume`, il réapparaît
+         * sur la case sauvegardée.
+         */
+        enter(player: Trainer, companion: THREE.Object3D | null, now: number, resume?: Tile & { facing: Direction }) {
+            state = resume ? {...resume, ...progress} : enterCastle(progress)
+            // Les portes déjà ouvertes le sont d'emblée, sans rejouer leur animation.
+            state.opened.forEach((door) => doorOpening.set(door, -Infinity))
             trainer = player
             follower = companion
             restore = [player, companion].filter((object): object is THREE.Object3D => !!object?.parent)
@@ -129,9 +142,10 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
             restore.forEach(({object}) => scene.add(object))
             from.copy(center(state.x, state.z))
             to.copy(from)
-            followerFrom.copy(from).x -= 1
+            // Le compagnon attend une case derrière la porte ; à la reprise, il part de la case du dresseur.
+            followerFrom.copy(from).x -= resume ? 0 : 1
             followerTo.copy(followerFrom)
-            player.rotation.y = ANGLES.right
+            player.rotation.y = ANGLES[state.facing]
             player.position.copy(from)
             showFloor(state.floor)
             const room = roomAt(state)!
@@ -141,6 +155,7 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
         leave() {
             restore.forEach(({parent, object}) => parent.add(object))
             restore = []
+            if (state) progress = {inventory: state.inventory, opened: state.opened}
             state = null
         },
         /** Un pas (touche maintenue) ; renvoie l'évènement pour que Clairbois gère la sortie. */

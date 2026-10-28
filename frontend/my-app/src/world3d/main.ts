@@ -33,6 +33,7 @@ import { createCastleMaterials } from './castle/castleMaterials'
 import { buildCastleExterior, CASTLE_DOORSTEP, castleBlocks, entersCastle, isCastleGround } from './castle/castleExterior'
 import { createCastle } from './castle/castleMode'
 import { playBattleTransition } from './battleTransition'
+import { loadGame, saveGame } from './saveGame'
 
 const STEP_DURATION = 170
 /** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
@@ -159,15 +160,20 @@ async function loadPokemon(path: string, scale: number) {
     return companion
 }
 
-let player: PlayerState = {
+// Reprise de la partie sauvegardée (position, objets ramassés, portes ouvertes), sinon départ au point d'apparition.
+const saved = loadGame(localStorage)
+let player: PlayerState = saved?.player ?? {
     travelMode: 'walking',
     position: {...WORLD_SPAWN},
     direction: 'down',
     steps: 0,
     visited: [zoneAt(WORLD_SPAWN)]
 }
+if (saved) castle.load(saved)
+/** Case du château où reprendre ; on y entre une fois Pikachu chargé, pour qu'il suive le dresseur à l'intérieur. */
+let resumeInCastle = saved?.castle ?? null
 let stepStart = 0
-let from = tileCenter(WORLD_SPAWN.x, WORLD_SPAWN.y), to = from.clone()
+let from = tileCenter(player.position.x, player.position.y), to = from.clone()
 let followerFrom = from.clone(), followerTo = from.clone()
 let held: Direction | null = null
 let zoom = 1
@@ -180,6 +186,10 @@ const wildCharmander: WorldPokemon = {
 }
 void loadPokemon('/models/poc/pikachu.glb', 0.32).then((companion) => {
     pikachu = companion
+}).finally(() => {
+    if (!resumeInCastle) return
+    enterCastle(performance.now(), resumeInCastle)
+    resumeInCastle = null
 })
 void loadPokemon('/models/poc/charmander.glb', 0.38).then(({root}) => {
     root.name = wildCharmander.id
@@ -227,10 +237,10 @@ function step(now: number) {
     stepStart = now
 }
 
-function enterCastle(now: number) {
+function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
     held = null
     boat.visible = false
-    castle.enter(trainer, pikachu?.root ?? null, now)
+    castle.enter(trainer, pikachu?.root ?? null, now, resume)
     rig.snap(trainer.position, CASTLE_FRAMING)
     renderer.toneMappingExposure = CASTLE_EXPOSURE
     lastHud = ''
@@ -314,6 +324,22 @@ addEventListener('keyup', (event) => {
 addEventListener('blur', () => {
     held = null
     rig.release()
+})
+
+/** Sauvegarde dans le navigateur : position (dehors ou dans le château), objets ramassés, portes ouvertes. */
+function persist() {
+    const inside = castle.state
+    saveGame(localStorage, {
+        player,
+        castle: inside ? {floor: inside.floor, x: inside.x, z: inside.z, facing: inside.facing} : resumeInCastle,
+        ...castle.bag(),
+    })
+}
+// `pagehide` couvre la fermeture de l'onglet, le rechargement et le départ vers le monde ouvert ; un onglet masqué
+// peut être tué sans prévenir (mobile, navigateur fermé), d'où la sauvegarde aussi au passage en arrière-plan.
+addEventListener('pagehide', persist)
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') persist()
 })
 addEventListener('wheel', (event) => {
     if (encounterOverlay.isOpen) return
