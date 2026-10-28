@@ -2,7 +2,7 @@
 import type * as THREE from 'three'
 import type { Position, WorldMap } from '../world/types'
 import type { ChunkKey } from './worldChunks'
-import { chunkId, chunksAround, isOutside } from './worldChunks'
+import { chunkId, chunkOf, chunksAround, isOutside } from './worldChunks'
 
 export interface StreamLayer {
     name: string
@@ -19,6 +19,9 @@ export class WorldStreamer {
     private readonly map: WorldMap
     private readonly scene: THREE.Scene
     private readonly layers: StreamLayer[]
+    private center: string | null = null
+    private readonly expected = new Map<string, ChunkKey[]>()
+    private readonly pending = new Map<string, ChunkKey[]>()
 
     constructor(map: WorldMap, scene: THREE.Scene, layers: StreamLayer[]) {
         this.map = map
@@ -33,21 +36,30 @@ export class WorldStreamer {
      */
     update(player: Position, budgetMs: number) {
         const start = performance.now()
-        for (const layer of this.layers) {
-            const chunks = this.loaded.get(layer.name)!
-            for (const [id, entry] of chunks) {
-                if (!isOutside(entry.chunk, player, layer.unloadRadius)) continue
-                if (entry.object) layer.dispose(entry.object)
-                chunks.delete(id)
+        const center = chunkId(chunkOf(player))
+        // La carte et les rayons sont fixes : pas de tri ni de recherche répétée à chaque image.
+        if (center !== this.center) {
+            this.center = center
+            for (const layer of this.layers) {
+                const chunks = this.loaded.get(layer.name)!
+                for (const [id, entry] of chunks) {
+                    if (!isOutside(entry.chunk, player, layer.unloadRadius)) continue
+                    if (entry.object) layer.dispose(entry.object)
+                    chunks.delete(id)
+                }
+                const expected = chunksAround(this.map, player, layer.loadRadius)
+                this.expected.set(layer.name, expected)
+                this.pending.set(layer.name, expected.filter((chunk) => !chunks.has(chunkId(chunk))))
             }
         }
         let built = 0
         for (const layer of this.layers) {
             const chunks = this.loaded.get(layer.name)!
-            for (const chunk of chunksAround(this.map, player, layer.loadRadius)) {
-                const id = chunkId(chunk)
-                if (chunks.has(id)) continue
+            const pending = this.pending.get(layer.name)!
+            while (pending.length) {
                 if (built > 0 && performance.now() - start > budgetMs) return
+                const chunk = pending.shift()!
+                const id = chunkId(chunk)
                 const object = layer.build(chunk)
                 if (object) this.scene.add(object)
                 chunks.set(id, {chunk, object})
@@ -61,7 +73,9 @@ export class WorldStreamer {
         let expected = 0, ready = 0
         for (const layer of this.layers) {
             const chunks = this.loaded.get(layer.name)!
-            for (const chunk of chunksAround(this.map, player, layer.loadRadius)) {
+            const nearby = chunkId(chunkOf(player)) === this.center
+                ? this.expected.get(layer.name)! : chunksAround(this.map, player, layer.loadRadius)
+            for (const chunk of nearby) {
                 expected++
                 if (chunks.has(chunkId(chunk))) ready++
             }

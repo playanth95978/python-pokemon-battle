@@ -234,6 +234,37 @@ configuration de logging n'est déjà en place.
 
 ### Monde ouvert 3D et mini-carte
 
+Clairbois couvre **160 × 128 cases**, soit **20 480 cases et cinq fois la surface
+initiale**. Le vieux bourg conserve ses coordonnées, son château, Salamèche et son
+embarcadère. Quatre nouveaux quartiers sont reliés par des routes et des ponts :
+les artisans (80, 34), le port des roseaux (128, 34), le hameau des moissons
+(18, 88) et les vergers (84, 90). La sortie vers le monde procédural se trouve
+désormais au bout de la route est, en 157, 33–35.
+
+Le village compte 35 bâtiments, 55 habitants et 65 Pokémon d'ambiance : travail,
+marché, enfants, pâtures, compagnons, oiseaux, poissons et apparitions nocturnes.
+Les routines, dialogues et réactions à la pluie sont conservés. Les sauvegardes
+du vieux bourg restent compatibles ; la carte 2D et sa mini-carte utilisent aussi
+les nouvelles dimensions.
+
+Pour limiter le coût de la grande carte, le sol, les maisons, les arbres et
+l'herbe sont chargés par chunks proches, puis libérés à distance. Les corps des
+habitants et des Pokémon sont créés progressivement (deux de chaque par image)
+et déchargés loin du joueur. Les recherches de chemin sont suspendues hors d'un
+rayon de 48 cases, avec reprise des routines à l'approche. L'eau garde un maillage
+local de taille fixe ; le relief est précalculé en temps linéaire et la crue ne
+simule que son front actif, avec une texture actualisée au maximum à 30 Hz.
+Ces limites sont vérifiées par les tests ; le nombre d'images par seconde dépend
+toujours du GPU, de la résolution et des effets actifs.
+
+Dans Clairbois 3D, le décor est chargé dans un rayon de six chunks (48 cases),
+contre trois auparavant. Par beau temps, la brume commence à 22 unités de la
+caméra et masque complètement le décor à 44 ; sous forte pluie, elle se rapproche
+à 10–28 unités. Les arbres lointains restent simplifiés, l'herbe détaillée et les
+animations conservent leurs rayons proches. Le chargement reste progressif avec
+un budget de quatre millisecondes par image et le décor éloigné est déchargé.
+La surface d'eau couvre cette portée sans augmenter son nombre de sommets.
+
 Le château au sud-ouest de Clairbois présente une silhouette de château hanté :
 donjon de 17 unités, hautes flèches d'ardoise, remparts sombres, fenêtres gothiques
 violacées et lumière vacillante au portail. L'emprise au sol et l'entrée restent
@@ -260,7 +291,7 @@ une nouvelle rencontre permet de créer un nouveau duel, sans reprendre le préc
 
 ### Prototype d'exploration 2D
 
-L'onglet **Explorer** ouvre Clairbois : une carte de 64 × 64 cases de 32 pixels,
+L'onglet **Explorer** ouvre Clairbois : une carte de 160 × 128 cases de 32 pixels,
 avec village, prairie, forêt, rivière, pont et lac. Cliquer sur la carte pour lui
 donner le focus, puis utiliser les flèches, ZQSD ou WASD. Maintenir une direction
 pour marcher ; les arbres, bâtiments et plans d'eau bloquent le passage.

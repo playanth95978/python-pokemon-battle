@@ -49,7 +49,7 @@ export function WorldPage({ active }: { active: boolean }) {
     <header className="world-heading">
       <div><p className="world-intro">Une première escapade</p><h1>Les sentiers de Clairbois</h1>
         <p>Un village, un bois et toute une promenade devant toi.</p></div>
-      <span className="world-map-size">64 × 64 cases<span>Monde 2D</span></span>
+      <span className="world-map-size">{WORLD_MAP.width} × {WORLD_MAP.height} cases<span>Monde 2D</span></span>
     </header>
     <div className="world-layout">
       <section className="world-play-area" aria-label="Exploration">
@@ -75,7 +75,7 @@ export function WorldPage({ active }: { active: boolean }) {
       <aside className="world-sidebar" aria-label="Carnet d’exploration">
         <section className="world-notebook">
           <h2>Ta carte</h2>
-          <svg viewBox="0 0 64 64" className="world-minimap" role="img" aria-label={`Position sur la carte : ${zoneAt(player.position)}`}>
+          <svg viewBox={`0 0 ${WORLD_MAP.width} ${WORLD_MAP.height}`} className="world-minimap" role="img" aria-label={`Position sur la carte : ${zoneAt(player.position)}`}>
             {minimapPaths.map(([tile, path]) => <path key={tile} d={path} fill={TILE_COLORS[tile as keyof typeof TILE_COLORS]} />)}
             <rect x={BOAT_DOCK.shore.x - .5} y={BOAT_DOCK.shore.y - .5} width="2" height="2" fill="#6d422b" stroke="#fff1ca" strokeWidth=".5" />
             <circle cx={player.position.x + .5} cy={player.position.y + .5} r="1.7" fill="#fff7dc" stroke="#9f3d45" strokeWidth=".9" />

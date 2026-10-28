@@ -30,6 +30,65 @@ const DRY = -0.4
 /** Sens des quatre débits d'une case : est, sud, ouest, nord. */
 const NEIGHBOURS = [[1, 0], [0, 1], [-1, 0], [0, -1]]
 
+interface FlowArea {
+    wet: number[]
+    rivers: number[]
+    lowlands: number[]
+    muddy: number[]
+    mudFlags: Uint8Array
+    flags: Uint32Array
+    tiles: Uint32Array
+    generation: number
+    count: number
+}
+
+const flowAreas = new WeakMap<Flood, FlowArea>()
+
+/** Front exact : eau présente, voisines atteignables, rivière et sols sous la nappe courante. */
+function flowArea(flood: Flood, table: number) {
+    let area = flowAreas.get(flood)
+    if (!area) {
+        area = {wet: [], rivers: [], lowlands: [], muddy: [], mudFlags: new Uint8Array(flood.depth.length), flags: new Uint32Array(flood.depth.length), tiles: new Uint32Array(flood.depth.length), generation: 0, count: 0}
+        for (let index = 0; index < flood.depth.length; index++) {
+            if (!flood.river[index] && (flood.mud[index] > 0 || flood.depth[index] > WET)) {
+                area.muddy.push(index)
+                area.mudFlags[index] = 1
+            }
+            if (flood.solid[index]) continue
+            if (flood.depth[index] > 0) area.wet.push(index)
+            else flood.flux.fill(0, index * 4, index * 4 + 4)
+            if (flood.river[index]) area.rivers.push(index)
+            else area.lowlands.push(index)
+        }
+        area.lowlands.sort((a, b) => flood.ground[a] - flood.ground[b])
+        flowAreas.set(flood, area)
+    }
+    area.count = 0
+    if (++area.generation === 0xffffffff) {
+        area.flags.fill(0)
+        area.generation = 1
+    }
+    const enqueue = (index: number) => {
+        if (flood.solid[index] || area.flags[index] === area.generation) return
+        area.flags[index] = area.generation
+        area.tiles[area.count++] = index
+    }
+    for (const index of area.wet) {
+        enqueue(index)
+        const x = index % flood.width, y = Math.floor(index / flood.width)
+        if (x > 0) enqueue(index - 1)
+        if (x < flood.width - 1) enqueue(index + 1)
+        if (y > 0) enqueue(index - flood.width)
+        if (y < flood.height - 1) enqueue(index + flood.width)
+    }
+    for (const index of area.rivers) enqueue(index)
+    for (const index of area.lowlands) {
+        if (flood.ground[index] >= table) break
+        enqueue(index)
+    }
+    return area
+}
+
 export interface Flood {
     width: number
     height: number
@@ -99,18 +158,30 @@ export function stepFlood(flood: Flood, seconds: number, levels: FloodLevels) {
         flood.pending -= STEP
         flow(flood, levels)
     }
-    for (let index = 0; index < flood.mud.length; index++) {
-        if (flood.river[index]) continue
-        flood.mud[index] = flood.depth[index] > WET ? 1 : Math.max(0, flood.mud[index] - seconds / MUD_SECONDS)
+    const area = flowAreas.get(flood)
+    if (!area) {
+        // Première fraction de pas, avant l'initialisation du front d'écoulement.
+        for (let index = 0; index < flood.mud.length; index++) {
+            if (flood.river[index]) continue
+            flood.mud[index] = flood.depth[index] > WET ? 1 : Math.max(0, flood.mud[index] - seconds / MUD_SECONDS)
+        }
+        return
     }
+    let count = 0
+    for (const index of area.muddy) {
+        flood.mud[index] = flood.depth[index] > WET ? 1 : Math.max(0, flood.mud[index] - seconds / MUD_SECONDS)
+        if (flood.mud[index] > 0) area.muddy[count++] = index
+        else area.mudFlags[index] = 0
+    }
+    area.muddy.length = count
 }
 
 function flow(flood: Flood, {river, table}: FloodLevels) {
     const {width, height, ground, depth, flux, solid} = flood
+    const area = flowArea(flood, table)
     // 1. Débits : chaque côté accélère selon la différence de niveau, puis tout est réduit si la case se viderait.
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-        const index = y * width + x
-        if (solid[index]) continue
+    for (const index of area.wet) {
+        const x = index % width, y = Math.floor(index / width)
         const level = ground[index] + depth[index]
         let total = 0
         for (let side = 0; side < 4; side++) {
@@ -127,9 +198,9 @@ function flow(flood: Flood, {river, table}: FloodLevels) {
         }
     }
     // 2. Hauteurs : ce qui entre moins ce qui sort ; puis les sources (rivière imposée, nappe) et le sol qui boit.
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-        const index = y * width + x
-        if (solid[index]) continue
+    for (let cursor = 0; cursor < area.count; cursor++) {
+        const index = area.tiles[cursor]
+        const x = index % width, y = Math.floor(index / width)
         let change = 0
         for (let side = 0; side < 4; side++) {
             change -= flux[index * 4 + side]
@@ -143,6 +214,17 @@ function flow(flood: Flood, {river, table}: FloodLevels) {
             water += below > 0 ? below * SEEPAGE * STEP : -SOAK_IN * STEP
         }
         depth[index] = Math.max(0, water)
+    }
+    // Attendre la fin des hauteurs : les voisines lisent encore les débits du même pas.
+    area.wet.length = 0
+    for (let cursor = 0; cursor < area.count; cursor++) {
+        const index = area.tiles[cursor]
+        if (depth[index] > 0) area.wet.push(index)
+        else flux.fill(0, index * 4, index * 4 + 4)
+        if (depth[index] > WET && !flood.river[index] && !area.mudFlags[index]) {
+            area.muddy.push(index)
+            area.mudFlags[index] = 1
+        }
     }
 }
 

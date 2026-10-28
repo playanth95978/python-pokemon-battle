@@ -6,25 +6,41 @@ import type { VillagePokemon } from './villagePokemon'
 import { pokemonPosition } from './villagePokemon'
 
 /** Animés en dessous de cette distance (en cases), visibles en dessous de la suivante. */
-const ANIMATE_DISTANCE = 22, SHOW_DISTANCE = 32
+const ANIMATE_DISTANCE = 22, SHOW_DISTANCE = 32, RELEASE_DISTANCE = 44, BUILDS_PER_FRAME = 2
 
 /** `ground` : hauteur du sol ; `water` : niveau de l'eau où nage Magicarpe (rivière, lac ou champ noyé). */
 export function createVillagePokemonView(scene: THREE.Scene, list: VillagePokemon[], ground: (x: number, z: number) => number,
                                          water: (x: number, z: number) => number) {
-    const rigs = list.map((pokemon, index): [VillagePokemon, Rig, number] => {
-        const rig = buildPokemon(pokemon.profile.species)
-        rig.root.name = `pokémon ${pokemon.profile.name}`
-        scene.add(rig.root)
-        return [pokemon, rig, index * 1.7]
-    })
+    // Les géométries et matériaux du kit restent partagés ; seuls les objets proches sont instanciés.
+    const rigs = new Map<VillagePokemon, Rig>()
     const previousHeight = new Map<VillagePokemon, number>()
 
     return {
-        roots: () => rigs.map(([, rig]) => rig.root),
+        roots: () => [...rigs.values()].map((rig) => rig.root),
         update(time: number, seconds: number, around: THREE.Vector3, visible: boolean) {
-            for (const [pokemon, rig, phase] of rigs) {
+            let built = 0
+            for (let index = 0; index < list.length; index++) {
+                const pokemon = list[index], phase = index * 1.7
+                let rig = rigs.get(pokemon)
                 const at = pokemonPosition(pokemon)
                 const far = Math.hypot(at.x + 0.5 - around.x, at.y + 0.5 - around.z)
+                if (far > RELEASE_DISTANCE) {
+                    if (rig) {
+                        // Aucune libération GPU ici : les autres Pokémon utilisent ces mêmes ressources du kit.
+                        rig.root.removeFromParent()
+                        rigs.delete(pokemon)
+                        previousHeight.delete(pokemon)
+                    }
+                    continue
+                }
+                if (!rig) {
+                    if (!visible || !pokemon.visible || far >= SHOW_DISTANCE || built >= BUILDS_PER_FRAME) continue
+                    rig = buildPokemon(pokemon.profile.species)
+                    rig.root.name = `pokémon ${pokemon.profile.name}`
+                    rigs.set(pokemon, rig)
+                    scene.add(rig.root)
+                    built++
+                }
                 rig.root.visible = visible && pokemon.visible && far < SHOW_DISTANCE
                 if (!rig.root.visible) continue
                 const swim = pokemon.profile.behaviour === 'swim'

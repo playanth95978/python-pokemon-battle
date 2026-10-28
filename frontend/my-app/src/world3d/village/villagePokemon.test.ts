@@ -52,7 +52,9 @@ describe('Pokémon du village', () => {
             expect(new Set(tiles.map(key)).size, `à ${hour.toFixed(2)} h`).toBe(tiles.length)
             expect(tiles.map(key)).not.toContain(key(WORLD_SPAWN))
             for (const sheep of world.pokemon.filter((pokemon) => pokemon.profile.species === 'wattouat')) {
-                expect(sheep.tile.x >= 3 && sheep.tile.x < 8 && sheep.tile.y >= 49 && sheep.tile.y < 53, `${key(sheep.tile)}`).toBe(true)
+                const area = sheep.profile.area!
+                expect(sheep.tile.x >= area.x && sheep.tile.x < area.x + area.width
+                    && sheep.tile.y >= area.y && sheep.tile.y < area.y + area.height, `${key(sheep.tile)}`).toBe(true)
             }
         })
         expect(find(world.pokemon, 'ronflex')).toMatchObject({tile: {x: 15, y: 29}, pose: 'sleep'})

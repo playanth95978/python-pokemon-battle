@@ -43,21 +43,67 @@ function distanceToRect(x: number, z: number, rect: Rect) {
     return Math.hypot(dx, dz)
 }
 
-export function createTerrain(map: WorldMap): Terrain {
-    const water: Position[] = []
-    for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) if (tileAt(map, {x, y}) === 'water') water.push({x, y})
-    // Distance à l'eau la plus proche, aux coins des cases ; interpolée entre eux.
-    const corners = map.width + 1, distances = new Float32Array(corners * (map.height + 1))
-    for (let z = 0; z <= map.height; z++) for (let x = 0; x <= map.width; x++) {
-        let nearest = Infinity
-        for (const tile of water) nearest = Math.min(nearest, distanceToRect(x, z, {...tile, width: 1, height: 1}))
-        distances[z * corners + x] = nearest
+/** Distance euclidienne exacte à l'eau, en deux passes linéaires sur les coins de la grille. */
+function waterDistances(map: WorldMap) {
+    const columns = map.width + 1, rows = map.height + 1
+    const distances = new Float64Array(columns * rows).fill(Infinity)
+    // Aux coordonnées entières, le point le plus proche d'une case d'eau est un de ses quatre coins.
+    for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) {
+        if (tileAt(map, {x, y}) !== 'water') continue
+        for (const dy of [0, 1]) for (const dx of [0, 1]) distances[(y + dy) * columns + x + dx] = 0
     }
+    const size = Math.max(columns, rows)
+    const input = new Float64Array(size), output = new Float64Array(size)
+    const sites = new Int32Array(size), breaks = new Float64Array(size + 1)
+    const transform = (length: number) => {
+        let last = -1
+        for (let q = 0; q < length; q++) {
+            if (!Number.isFinite(input[q])) continue
+            let crossing = -Infinity
+            while (last >= 0) {
+                const p = sites[last]
+                crossing = ((input[q] + q * q) - (input[p] + p * p)) / (2 * (q - p))
+                if (crossing > breaks[last]) break
+                last--
+            }
+            sites[++last] = q
+            breaks[last] = last === 0 ? -Infinity : crossing
+            breaks[last + 1] = Infinity
+        }
+        if (last < 0) {
+            output.fill(Infinity, 0, length)
+            return
+        }
+        let site = 0
+        for (let q = 0; q < length; q++) {
+            while (breaks[site + 1] < q) site++
+            const offset = q - sites[site]
+            output[q] = offset * offset + input[sites[site]]
+        }
+    }
+    for (let y = 0; y < rows; y++) {
+        input.set(distances.subarray(y * columns, (y + 1) * columns))
+        transform(columns)
+        distances.set(output.subarray(0, columns), y * columns)
+    }
+    for (let x = 0; x < columns; x++) {
+        for (let y = 0; y < rows; y++) input[y] = distances[y * columns + x]
+        transform(rows)
+        for (let y = 0; y < rows; y++) distances[y * columns + x] = Math.sqrt(output[y])
+    }
+    return new Float32Array(distances)
+}
+
+export function createTerrain(map: WorldMap): Terrain {
+    // Distance à l'eau la plus proche, aux coins des cases ; interpolée entre eux.
+    const corners = map.width + 1, distances = waterDistances(map)
     const distance = (x: number, z: number) => {
         const cx = Math.min(Math.max(x, 0), map.width), cz = Math.min(Math.max(z, 0), map.height)
         const x0 = Math.min(Math.floor(cx), map.width - 1), z0 = Math.min(Math.floor(cz), map.height - 1)
         const fx = cx - x0, fz = cz - z0
         const at = (dx: number, dz: number) => distances[(z0 + dz) * corners + x0 + dx]
+        // Carte sans eau : éviter Infinity × 0 aux points situés exactement sur la grille.
+        if (!Number.isFinite(at(0, 0))) return Infinity
         return (at(0, 0) * (1 - fx) + at(1, 0) * fx) * (1 - fz) + (at(0, 1) * (1 - fx) + at(1, 1) * fx) * fz
     }
     // Plates-formes : maisons et château, avec une case de marge pour la cour.
@@ -65,10 +111,25 @@ export function createTerrain(map: WorldMap): Terrain {
         ...map.buildings.map(({x, y, width, height}) => ({x: x - 0.5, y: y - 0.5, width: width + 1, height: height + 1})),
         {x: CASTLE_AREA.x - 1, y: CASTLE_AREA.y - 1, width: CASTLE_AREA.width + 2, height: CASTLE_AREA.depth + 2},
     ]
+    // Seules les plateformes à moins d'une case influencent le relief ; les maisons lointaines sont ignorées.
+    const padBuckets = new Map<string, Rect[]>()
+    const bucketSize = 8
+    for (const pad of pads) {
+        for (let bz = Math.floor((pad.y - PAD_SLOPE) / bucketSize); bz <= Math.floor((pad.y + pad.height + PAD_SLOPE) / bucketSize); bz++) {
+            for (let bx = Math.floor((pad.x - PAD_SLOPE) / bucketSize); bx <= Math.floor((pad.x + pad.width + PAD_SLOPE) / bucketSize); bx++) {
+                const key = `${bx},${bz}`
+                const bucket = padBuckets.get(key) ?? []
+                bucket.push(pad)
+                padBuckets.set(key, bucket)
+            }
+        }
+    }
     const height = (x: number, z: number) => {
         let value = BANK * (1 - smoothstep(1, VALLEY_WIDTH, distance(x, z)))
         for (const basin of BASINS) value -= basin.depth * (1 - smoothstep(0, BASIN_SLOPE, distanceToRect(x, z, basin)))
-        for (const pad of pads) value *= smoothstep(0, PAD_SLOPE, distanceToRect(x, z, pad))
+        for (const pad of padBuckets.get(`${Math.floor(x / bucketSize)},${Math.floor(z / bucketSize)}`) ?? []) {
+            value *= smoothstep(0, PAD_SLOPE, distanceToRect(x, z, pad))
+        }
         return value
     }
     return {height, tile: ({x, y}) => height(x + 0.5, y + 0.5)}

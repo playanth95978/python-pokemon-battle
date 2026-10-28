@@ -7,6 +7,7 @@
 import type { Position } from '../../world/types'
 import { distance, findPath } from './pathfinding'
 import type { Villager } from './villagers'
+import { DISTRICT_POKEMON } from './districtLife'
 
 export type Species = 'machoc' | 'wattouat' | 'caninos' | 'evoli' | 'ronflex' | 'roucool' | 'magicarpe' | 'fantominus'
 export type Behaviour = 'worker' | 'graze' | 'follower' | 'timid' | 'sleeper' | 'perch' | 'swim' | 'haunt'
@@ -24,6 +25,8 @@ export interface PokemonProfile {
     behaviour: Behaviour
     area?: Area
     spots?: Position[]
+    /** Perchoirs du quartier : les oiseaux restent près des rues où ils vivent. */
+    perches?: Perch[]
     /** Habitant suivi (compagnon). */
     follows?: string
     /** Sauvage : E à côté lance un combat. */
@@ -80,6 +83,7 @@ export const VILLAGE_POKEMON: PokemonProfile[] = [
         spots: [{x: 21, y: 37}, {x: 26, y: 37}, {x: 26, y: 41}, {x: 21, y: 41}],
         lore: 'Un Fantominus rôde sur la place endormie.',
     },
+    ...DISTRICT_POKEMON,
 ]
 
 /** Cases par seconde ; le temps passé à chaque étape ; la distance qui effraie un timide ou un oiseau. */
@@ -122,6 +126,8 @@ export interface PokemonWorld {
     rain?: number
     /** Cases de terre noyées assez profond pour nager : Magicarpe y saute pendant la crue. */
     pools?: Position[]
+    /** Hors de ce rayon, aucun déplacement ni recherche de chemin. Le comportement reprend à l'approche. */
+    activityRadius?: number
 }
 
 const same = (a: Position, b: Position) => a.x === b.x && a.y === b.y
@@ -144,8 +150,9 @@ export function createVillagePokemon(profiles: PokemonProfile[], random: () => n
             }
         }
         taken.add(`${start.x},${start.y}`)
-        const perch = profile.behaviour === 'perch' ? (index * 3) % PERCHES.length : 0
-        const at = profile.behaviour === 'perch' ? PERCHES[perch] : {...start, height: 0}
+        const perches = profile.perches ?? PERCHES
+        const perch = profile.behaviour === 'perch' ? (index * 3) % perches.length : 0
+        const at = profile.behaviour === 'perch' ? perches[perch] : {...start, height: 0}
         return {
             profile, tile: {...start}, next: null, step: 0, path: [], x: at.x, y: at.y, height: at.height,
             heading: random() * Math.PI * 2, pose: 'idle', visible: profile.behaviour !== 'swim', timer: random() * 4, spotIndex: 0, flight: null, perch, retry: 0,
@@ -229,6 +236,10 @@ export function updateVillagePokemon(list: VillagePokemon[], hour: number, secon
 
     for (const pokemon of list) {
         const {behaviour, area, spots} = pokemon.profile
+        const at = pokemonPosition(pokemon)
+        const master = behaviour === 'follower' ? world.villagers.find((villager) => villager.profile.id === pokemon.profile.follows) : undefined
+        if (distance(at, world.player) > (world.activityRadius ?? Infinity)
+            && (!master || distance(master.tile, world.player) > (world.activityRadius ?? Infinity))) continue
         pokemon.timer -= seconds
         pokemon.retry -= seconds
         const allowed = (tile: Position) => world.passable(tile) && (!area || inArea(area, tile))
@@ -358,12 +369,14 @@ function updateBird(bird: VillagePokemon, world: PokemonWorld, list: VillagePoke
     const scared = Math.hypot(bird.x - world.player.x, bird.y - world.player.y) < BIRD_FEAR
     if (!scared && bird.timer > 0) return
     // Nouveau perchoir : libre, et loin du dresseur s'il fuit.
-    const taken = new Set(list.filter((other) => other !== bird && other.profile.behaviour === 'perch').map((other) => other.perch))
-    const choices = PERCHES.map((_, index) => index).filter((index) => index !== bird.perch && !taken.has(index)
-        && Math.hypot(PERCHES[index].x - world.player.x, PERCHES[index].y - world.player.y) > 5)
+    const perches = bird.profile.perches ?? PERCHES
+    const taken = new Set(list.filter((other) => other !== bird && other.profile.behaviour === 'perch'
+        && other.profile.perches === bird.profile.perches).map((other) => other.perch))
+    const choices = perches.map((_, index) => index).filter((index) => index !== bird.perch && !taken.has(index)
+        && Math.hypot(perches[index].x - world.player.x, perches[index].y - world.player.y) > 5)
     if (!choices.length) return
     const target = choices[Math.floor(world.random() * choices.length)]
-    const from = {x: bird.x, y: bird.y, height: bird.height}, to = PERCHES[target]
+    const from = {x: bird.x, y: bird.y, height: bird.height}, to = perches[target]
     bird.perch = target
     bird.heading = Math.atan2(to.x - from.x, to.y - from.y)
     bird.flight = {from, to, t: 0, duration: Math.max(1, Math.hypot(to.x - from.x, to.y - from.y) / FLIGHT_SPEED)}

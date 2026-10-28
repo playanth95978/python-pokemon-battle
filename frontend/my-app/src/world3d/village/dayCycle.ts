@@ -4,6 +4,7 @@
  * ciel, brouillard) : rien n'est recalculé, le coût par image est nul.
  */
 import * as THREE from 'three'
+import { VIEW_DISTANCE } from '../worldChunks'
 import type { Sky } from 'three/addons/objects/Sky.js'
 
 export const SUNRISE = 6, SUNSET = 20
@@ -77,6 +78,11 @@ export function applyDaylight({scene, clouds, sun, sunDirection, sky, hemisphere
     scene.environmentIntensity = (0.05 + 0.3 * light.day) * (1 - overcast * 0.4)
     if (scene.fog) scene.fog.color.copy(NIGHT_FOG).lerp(dayFog.copy(DAY_FOG).lerp(RAIN_FOG, overcast), Math.pow(light.day, 0.5))
     if (scene.fog instanceof THREE.FogExp2) scene.fog.density = FOG_DENSITY + (RAIN_DENSITY - FOG_DENSITY) * overcast
+    if (scene.fog instanceof THREE.Fog) {
+        // L'horloge ne rétablit pas l'ancienne brume dense ; seule la pluie rapproche sa limite.
+        scene.fog.near = THREE.MathUtils.lerp(VIEW_DISTANCE / 2, 10, overcast)
+        scene.fog.far = THREE.MathUtils.lerp(VIEW_DISTANCE, 28, overcast)
+    }
     lanterns.emissiveIntensity = Math.max(light.lanterns, overcast * 0.6) * 2.4
     clouds.visible = overcast > 0.01
     if (scene.fog) clouds.material.color.copy(scene.fog.color)

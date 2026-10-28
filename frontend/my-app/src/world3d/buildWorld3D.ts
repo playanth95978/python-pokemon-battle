@@ -5,7 +5,7 @@ import { tileAt } from '../world/worldMap'
 import { GROUND_TILE } from './worldMaterials'
 import type { WorldMaterials } from './worldMaterials'
 import type { ChunkKey } from './worldChunks'
-import { chunkTiles } from './worldChunks'
+import { CHUNK_SIZE, chunkTiles } from './worldChunks'
 import { EXIT, isExitGap } from './worldExit'
 import type { TreeKind } from './realTrees'
 import { animateTrees, treeInstances } from './realTrees'
@@ -14,6 +14,7 @@ import type { VillageModels } from './villageModels'
 import type { VillageProps } from './villageProps'
 import type { Terrain } from './terrain'
 import { BED_DEPTH, RIVER_LEVEL } from './terrain'
+import { bridgeSections } from './worldBridges'
 
 const GRASS_PER_TILE = 16
 
@@ -52,10 +53,13 @@ function waterAmount(map: WorldMap, x: number, z: number) {
 
 // --- Socle permanent : sol, eau, horizon, pont et panneaux (peu de triangles, toujours visibles) ---
 
-function addGround(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials, terrain: Terrain) {
-    const geometry = new THREE.PlaneGeometry(map.width, map.height, map.width * 2, map.height * 2)
+/** Sol détaillé seulement autour du joueur ; son coût GPU ne dépend pas de la surface totale de Clairbois. */
+export function buildGroundChunk(map: WorldMap, chunk: ChunkKey, materials: WorldMaterials, terrain: Terrain) {
+    const left = chunk.cx * CHUNK_SIZE, top = chunk.cy * CHUNK_SIZE
+    const width = Math.min(CHUNK_SIZE, map.width - left), depth = Math.min(CHUNK_SIZE, map.height - top)
+    const geometry = new THREE.PlaneGeometry(width, depth, width * 2, depth * 2)
     geometry.rotateX(-Math.PI / 2)
-    geometry.translate(map.width / 2, 0, map.height / 2)
+    geometry.translate(left + width / 2, 0, top + depth / 2)
     const positions = geometry.attributes.position, uvs = geometry.attributes.uv
     for (let index = 0; index < positions.count; index++) {
         const x = positions.getX(index), z = positions.getZ(index)
@@ -67,21 +71,26 @@ function addGround(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials,
     }
     geometry.computeVertexNormals()
     const ground = new THREE.Mesh(geometry, materials.ground)
+    ground.name = `sol ${chunk.cx},${chunk.cy}`
+    ground.userData.ownGeometry = true
     ground.receiveShadow = true
-    scene.add(ground)
+    return ground
+}
+
+function addHorizon(scene: THREE.Scene, map: WorldMap) {
     // Collines hors carte pour fermer l'horizon.
-    const hills = new THREE.Mesh(new THREE.RingGeometry(46, 140, 64, 4), new THREE.MeshStandardMaterial({color: 0x4f7a48, roughness: 1}))
+    const radius = Math.hypot(map.width, map.height) / 2 + 2
+    const hills = new THREE.Mesh(new THREE.RingGeometry(radius, radius + 94, 64, 4), new THREE.MeshStandardMaterial({color: 0x4f7a48, roughness: 1}))
     hills.rotation.x = -Math.PI / 2
     hills.position.set(map.width / 2, -0.02, map.height / 2)
     scene.add(hills)
 }
 
 function addBridge(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials, terrain: Terrain) {
-    const planks: Position[] = []
-    for (let y = 0; y < map.height; y++) {
-        for (let x = 0; x < map.width; x++) if (tileAt(map, {x, y}) === 'bridge') planks.push({x, y})
-    }
-    if (!planks.length) return
+    for (const planks of bridgeSections(map)) addBridgeSpan(scene, planks, materials, terrain)
+}
+
+function addBridgeSpan(scene: THREE.Scene, planks: Position[], materials: WorldMaterials, terrain: Terrain) {
     const plank = instanced(new THREE.BoxGeometry(0.95, 0.1, 0.22), materials.wood, planks.length * 4)
     const matrix = new THREE.Matrix4()
     // Le pont enjambe la rivière au fond de la vallée : il est le premier noyé quand elle déborde.
@@ -168,7 +177,7 @@ export interface WorldBase {
 
 export function buildWorldBase(scene: THREE.Scene, map: WorldMap, materials: WorldMaterials, terrain: Terrain): WorldBase {
     // L'eau est créée à part (voir water.ts) : elle a besoin du renderer pour ses reflets.
-    addGround(scene, map, materials, terrain)
+    addHorizon(scene, map)
     addBridge(scene, map, materials, terrain)
     addSigns(scene, map, materials, terrain)
     addExitGate(scene, materials)
@@ -229,8 +238,9 @@ function addTrees(group: THREE.Group, tiles: Position[], terrain: Terrain) {
 }
 
 /** Arbres et maisons d'un chunk : visibles de loin, construits dans le rayon de chargement. */
-export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: VillageModels, props: VillageProps, terrain: Terrain) {
+export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: VillageModels, props: VillageProps, terrain: Terrain, materials: WorldMaterials) {
     const group = chunkGroup(`decor ${chunk.cx},${chunk.cy}`)
+    group.add(buildGroundChunk(map, chunk, materials, terrain))
     const tiles = chunkTiles(map, chunk)
     addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree' && !isExitGap(tile)), terrain)
     // Une maison appartient au chunk de son coin nord-ouest.

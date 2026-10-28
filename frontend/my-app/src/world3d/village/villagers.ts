@@ -5,6 +5,7 @@
  */
 import type { Direction, Position } from '../../world/types'
 import { distance, findPath } from './pathfinding'
+import { DISTRICT_VILLAGERS } from './districtLife'
 
 export interface Spot extends Position { facing: Direction }
 /** Ce que fait un habitant arrivé à destination ; le rendu en tire l'animation. */
@@ -160,6 +161,7 @@ export const VILLAGERS: Profile[] = [
         ],
         lines: ['Léo triche, il court trop vite !', 'Un jour j’aurai un Évoli. Il est trop mignon.', 'Maman dit qu’il faut rentrer avant les lanternes.'],
     },
+    ...DISTRICT_VILLAGERS,
 ]
 
 /** Cases par seconde, à la marche (adultes) et en courant (enfants qui jouent). */
@@ -192,9 +194,15 @@ export interface Villager {
     talking: number
 }
 
+const sortedSchedules = new WeakMap<Shift[], Shift[]>()
 export function shiftAt(schedule: Shift[], hour: number): Shift {
-    const sorted = [...schedule].sort((a, b) => a.from - b.from)
-    return [...sorted].reverse().find((shift) => shift.from <= hour) ?? sorted[sorted.length - 1]
+    let sorted = sortedSchedules.get(schedule)
+    if (!sorted) {
+        sorted = [...schedule].sort((a, b) => a.from - b.from)
+        sortedSchedules.set(schedule, sorted)
+    }
+    for (let index = sorted.length - 1; index >= 0; index--) if (sorted[index].from <= hour) return sorted[index]
+    return sorted[sorted.length - 1]
 }
 
 /** Où va l'habitant pendant ce créneau : sa porte pour dormir, sinon l'étape de tournée en cours. */
@@ -247,7 +255,7 @@ function directionTo(from: Position, to: Position): Direction {
  * Les habitants se réservent la case où ils entrent : deux personnes ne sont jamais sur la même case.
  */
 export function updateVillagers(villagers: Villager[], hour: number, seconds: number, player: Position, passable: (tile: Position) => boolean,
-                                blocked: (tile: Position) => boolean = () => false, shelter = false) {
+                                blocked: (tile: Position) => boolean = () => false, shelter = false, activityRadius = Infinity) {
     const occupied = (tile: Position, self: Villager) => same(tile, player) || blocked(tile)
         || villagers.some((other) => other !== self && !other.inside && (same(other.tile, tile) || (other.next !== null && same(other.next, tile))))
     for (const villager of villagers) {
@@ -259,6 +267,21 @@ export function updateVillagers(villagers: Villager[], hour: number, seconds: nu
             villager.dwell = DWELL
         }
         const resting = shift.activity === 'sleep' || shelter
+        // Hors de la bulle visible, seul l'emploi du temps est resynchronisé : ni A*, ni déplacement image par image.
+        // Le rendez-vous ne peut pas apparaître à portée du joueur ; les collisions restent réservées normalement.
+        if (distance(villager.tile, player) > activityRadius && villager.talking <= 0) {
+            const goal = resting ? villager.profile.home : goalOf(villager)
+            if (distance(goal, player) > activityRadius && (resting || !occupied(goal, villager))) {
+                villager.tile = {x: goal.x, y: goal.y}
+                villager.next = null
+                villager.path = []
+                villager.step = 0
+                villager.pose = resting ? 'sleep' : shift.activity
+                villager.facing = goal.facing
+                villager.inside = resting
+            }
+            continue
+        }
         // Au réveil (ou après l'averse), il sort de chez lui, s'il a la place.
         if (villager.inside && !resting && !occupied(villager.profile.home, villager)) {
             villager.inside = false

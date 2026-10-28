@@ -17,7 +17,7 @@ import {
 import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter } from './buildWorld3D'
 import { createTerrain, RIVER_LEVEL } from './terrain'
 import { createWater } from './water'
-import { CHUNK_SIZE, GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
+import { CHUNK_SIZE, GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS, VIEW_DISTANCE } from './worldChunks'
 import { createWorldMaterials } from './worldMaterials'
 import { leadsToOpenWorld, nearExit, OPEN_WORLD_URL } from './worldExit'
 import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from './scenery'
@@ -84,8 +84,8 @@ renderer.domElement.tabIndex = 0
 renderer.domElement.setAttribute('aria-label', 'Monde 3D de Clairbois')
 
 const scene = new THREE.Scene()
-// Le brouillard masque la limite des chunks chargés (LOAD_RADIUS × CHUNK_SIZE ≈ 24 cases).
-scene.fog = new THREE.FogExp2(0xa9c4d4, 0.034)
+// La brume laisse les premiers plans nets, puis masque la limite du décor chargé.
+scene.fog = new THREE.Fog(0xa9c4d4, VIEW_DISTANCE / 2, VIEW_DISTANCE)
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1200)
 
 // Carte d'ombre plus large et plus fine, centrée devant la caméra (voir followShadow).
@@ -128,23 +128,24 @@ const isBuilding = (tile: Position) => WORLD_MAP.buildings.some((building) => ti
     && tile.y >= building.y && tile.y < building.y + building.height)
 const flood = createFlood(WORLD_MAP, terrain, (tile) => isBuilding(tile) || insideCastleWalls(tile), floodLevels(weather))
 const floodView = createFloodView(flood)
+floodView.update(weather.rise)
 materials.floodMap.value = floodView.texture
-// Une seule eau pour toute la carte : rivière, lac et crue. Sa hauteur vient de la crue, case par case ; là où il
-// n'y a pas d'eau, elle passe sous le sol. Claire au bord, vert sombre au milieu, brune quand elle déborde.
-const WATER_MARGIN = 2
+// Surface locale qui suit le joueur : densité des vagues constante, même quand la carte grandit.
+// Le brouillard masque son bord ; la texture de crue continue de décrire toute la carte.
+const WATER_REACH = (LOAD_RADIUS + 2) * CHUNK_SIZE
 const water = createWater(renderer, scene, sunDirection, {
-    width: WORLD_MAP.width + WATER_MARGIN * 2, depth: WORLD_MAP.height + WATER_MARGIN * 2, segments: (WORLD_MAP.width + WATER_MARGIN * 2) * 3,
+    width: WATER_REACH * 2, depth: WATER_REACH * 2, segments: 240, focused: true,
     waveHeight: 0.02, wavelength: 2.4, shallowColor: 0xcfe6dc, deepColor: 0x0e3438, absorption: 3.2, foamWidth: 0.1,
     surface: {map: floodView.texture, rect: floodView.rect, muddyColor: 0x7a5c3e},
 })
-water.mesh.position.set(WORLD_MAP.width / 2, RIVER_LEVEL, WORLD_MAP.height / 2)
+water.mesh.position.set(WORLD_SPAWN.x + 0.5, RIVER_LEVEL, WORLD_SPAWN.y + 0.5)
 const rain = createRain(scene)
 const streamer = new WorldStreamer(WORLD_MAP, scene, [
     {
         name: 'decor',
         loadRadius: LOAD_RADIUS,
         unloadRadius: UNLOAD_RADIUS,
-        build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, village!, villageProps, terrain),
+        build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, village!, villageProps, terrain, materials),
         dispose: disposeChunk
     },
     {
@@ -689,6 +690,7 @@ function outdoorFraming() {
 CASTLE_FRAMING.reach = castle.cameraReach
 
 const clock = new THREE.Clock()
+let floodViewTime = 0
 camera.position.copy(from).add(new THREE.Vector3(0, 7, 8))
 
 function animate(now: number) {
@@ -701,8 +703,8 @@ function animate(now: number) {
     updateWeather(weather, delta * 24 / DAY_SECONDS, Math.random)
     stepFlood(flood, delta, floodLevels(weather))
     followShores(now)
-    updateVillagers(villagers, hour, delta, player.position, walkable, (tile) => pokemonAt(villagePokemon, tile) !== undefined, weather.rain > 0.45)
-    updateVillagePokemon(villagePokemon, hour, delta, {player: player.position, passable: walkable, villagers, random: Math.random, rain: weather.rain, pools})
+    updateVillagers(villagers, hour, delta, player.position, walkable, (tile) => pokemonAt(villagePokemon, tile) !== undefined, weather.rain > 0.45, 48)
+    updateVillagePokemon(villagePokemon, hour, delta, {player: player.position, passable: walkable, villagers, random: Math.random, rain: weather.rain, pools, activityRadius: 48})
     if (castle.active) {
         // À l'intérieur : seul le château est animé et dessiné ; Clairbois attend dehors.
         walkInCastle(delta, now)
@@ -742,7 +744,14 @@ function animate(now: number) {
     companions.forEach(({mixer}) => mixer.update(delta))
     base.update(now / 1000)
     applyDaylight(DAY, daylight(hour), weather.rain)
-    floodView.update(weather.rise)
+    // La crue avance à 30 Hz : inutile de convertir et transférer sa texture à 60 ou 144 Hz.
+    floodViewTime += delta
+    if (floodViewTime >= 1 / 30) {
+        floodView.update(weather.rise)
+        floodViewTime %= 1 / 30
+    }
+    water.mesh.position.x = trainer.position.x
+    water.mesh.position.z = trainer.position.z
     water.setRain(weather.rain)
     materials.wetness.value = Math.min(1, weather.soak * 2.5)
 

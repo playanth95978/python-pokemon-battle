@@ -3,9 +3,11 @@ import type { Position, WorldMap } from '../world/types'
 
 export const CHUNK_SIZE = 8
 /** Chunks construits autour du joueur (distance de Tchebychev, en chunks). */
-export const LOAD_RADIUS = 3
+export const LOAD_RADIUS = 6
 /** Rayon de déchargement des chunks de décor. */
-export const UNLOAD_RADIUS = 4
+export const UNLOAD_RADIUS = 7
+/** Le décor est entièrement masqué avant la limite garantie des chunks, avec une marge de quatre cases. */
+export const VIEW_DISTANCE = LOAD_RADIUS * CHUNK_SIZE - 4
 /** Les brins d'herbe, coûteux et invisibles de loin, restent proches du joueur. */
 export const GRASS_RADIUS = 1
 export const GRASS_UNLOAD_RADIUS = 2

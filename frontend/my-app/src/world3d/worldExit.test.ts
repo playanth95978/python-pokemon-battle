@@ -12,7 +12,7 @@ describe('Sortie de Clairbois 3D vers le monde ouvert', () => {
 
   it('est atteignable à pied depuis le départ en suivant la route vers l’est', () => {
     let position = {x: 18, y: 34}
-    for (let step = 0; step < 60; step++) position = nextPosition(WORLD_MAP, position, 'right')
+    for (let step = 0; step < WORLD_MAP.width; step++) position = nextPosition(WORLD_MAP, position, 'right')
     expect(position).toEqual({x: EXIT.x, y: 34})
     expect(leadsToOpenWorld(position, 'right')).toBe(true)
   })
@@ -26,7 +26,8 @@ describe('Sortie de Clairbois 3D vers le monde ouvert', () => {
   it('prévient à l’approche et ouvre une trouée dans les arbres derrière la sortie', () => {
     expect(nearExit({x: EXIT.x - 2, y: 33})).toBe(true)
     expect(nearExit({x: 30, y: 34})).toBe(false)
-    expect(isExitGap({x: 63, y: 34})).toBe(true)
-    expect(isExitGap({x: 63, y: 20})).toBe(false)
+    expect(isExitGap({x: WORLD_MAP.width - 1, y: 34})).toBe(true)
+    expect(isExitGap({x: WORLD_MAP.width - 1, y: 20})).toBe(false)
+    expect(nearExit({x: 61, y: 34})).toBe(false)
   })
 })

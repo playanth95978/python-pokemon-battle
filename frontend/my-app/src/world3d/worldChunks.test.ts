@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { WORLD_MAP } from '../world/worldMap'
-import { CHUNK_SIZE, chunkOf, chunksAround, chunkTiles, isOutside, LOAD_RADIUS, UNLOAD_RADIUS } from './worldChunks'
+import { CHUNK_SIZE, chunkOf, chunksAround, chunkTiles, GRASS_RADIUS, isOutside, LOAD_RADIUS, UNLOAD_RADIUS, VIEW_DISTANCE } from './worldChunks'
 
 describe('Découpage du monde 3D en chunks', () => {
+  it('charge le décor à 48 cases et garde les détails coûteux près du joueur', () => {
+    const player = {x: 80, y: 64}
+    const chunks = chunksAround(WORLD_MAP, player)
+    expect(chunks).toHaveLength(169)
+    expect(chunks).toContainEqual({cx: 16, cy: 8})
+    expect(chunksAround(WORLD_MAP, player, GRASS_RADIUS)).toHaveLength(9)
+    expect(VIEW_DISTANCE).toBe(44)
+    expect(VIEW_DISTANCE).toBeLessThan(LOAD_RADIUS * CHUNK_SIZE)
+  })
+
   it('range chaque case dans le chunk qui la contient', () => {
     expect(chunkOf({ x: 0, y: 0 })).toEqual({ cx: 0, cy: 0 })
     expect(chunkOf({ x: CHUNK_SIZE - 1, y: CHUNK_SIZE })).toEqual({ cx: 0, cy: 1 })

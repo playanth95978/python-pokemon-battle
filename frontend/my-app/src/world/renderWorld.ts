@@ -1,5 +1,5 @@
 import type { PlayerState, Position, WorldMap } from './types'
-import { BOAT_DOCK, cameraPosition, TILE_COLORS } from './worldMap'
+import { BOAT_DOCK, cameraPosition, TILE_COLORS, tileAt } from './worldMap'
 
 type Paint = CanvasRenderingContext2D
 function rect(ctx: Paint, color: string, x: number, y: number, w: number, h: number) {
@@ -121,10 +121,12 @@ export function renderWorld(ctx: Paint, map: WorldMap, player: PlayerState, widt
     if (tile === 'bridge') {
       rect(ctx, '#d5a16a', px, py + 2, size, 9)
       rect(ctx, '#d5a16a', px, py + 14, size, 9)
-      if (y !== 34) rect(ctx, '#6d5039', px, py + (y === 33 ? 0 : 27), size, 5)
+      if (tileAt(map, {x, y: y - 1}) !== 'bridge') rect(ctx, '#6d5039', px, py, size, 5)
+      if (tileAt(map, {x, y: y + 1}) !== 'bridge') rect(ctx, '#6d5039', px, py + 27, size, 5)
     }
   }
   for (const building of map.buildings) {
+    if (building.x + building.width < left || building.x > right || building.y + building.height < top || building.y > bottom) continue
     const x = building.x * size, y = building.y * size, w = building.width * size, h = building.height * size
     rect(ctx, '#314f4240', x + 8, y + 13, w, h)
     rect(ctx, '#f2dfb2', x + 8, y + 38, w - 16, h - 38)
@@ -142,6 +144,7 @@ export function renderWorld(ctx: Paint, map: WorldMap, player: PlayerState, widt
     }
   }
   for (const item of map.landmarks) {
+    if (item.x < left || item.x >= right || item.y < top || item.y >= bottom) continue
     rect(ctx, '#745b3d', item.x * size + 14, item.y * size + 14, 5, 17)
     rect(ctx, '#f0da9c', item.x * size + 4, item.y * size + 3, 24, 15)
     rect(ctx, '#987a4d', item.x * size + 8, item.y * size + 7, 15, 2)
