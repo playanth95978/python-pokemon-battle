@@ -32,6 +32,7 @@ import { canInteractWithPokemon } from './pokemonInteraction'
 import { createCastleMaterials } from './castle/castleMaterials'
 import { buildCastleExterior, CASTLE_DOORSTEP, castleBlocks, entersCastle, isCastleGround } from './castle/castleExterior'
 import { createCastle } from './castle/castleMode'
+import { createCastleAudio } from './castle/castleAudio'
 import { playBattleTransition } from './battleTransition'
 import { loadGame, saveGame } from './saveGame'
 
@@ -132,6 +133,7 @@ scene.add(trainer, boat)
 const castleMaterials = createCastleMaterials(renderer)
 const castleOutside = buildCastleExterior(scene, castleMaterials)
 const castle = createCastle(renderer, camera, castleMaterials)
+const castleAudio = createCastleAudio()
 /** Exposition plus forte à l'intérieur : la lumière n'y vient que des torches et des fenêtres. */
 const CASTLE_EXPOSURE = 1.3, OUTDOOR_EXPOSURE = renderer.toneMappingExposure
 
@@ -202,10 +204,11 @@ function step(now: number) {
     // Les touches sont relatives à la vue (caméra libre, vue de dos ou regard FPS).
     const direction = rig.direction(held)
     if (castle.active) {
-        const event = castle.step(direction, now)?.type
-        if (event === 'exit') leaveCastle(now)
+        const event = castle.step(direction, now)
+        if (event) castleAudio.play(event, castle.state!)
+        if (event?.type === 'exit') leaveCastle(now)
         // Après un escalier, la touche encore enfoncée ramènerait aussitôt dans l'escalier : il faut la relâcher.
-        if (event === 'stairs') {
+        if (event?.type === 'stairs') {
             held = null
             rig.release()
         }
@@ -241,6 +244,7 @@ function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
     held = null
     boat.visible = false
     castle.enter(trainer, pikachu?.root ?? null, now, resume)
+    castleAudio.enter()
     rig.snap(trainer.position, CASTLE_FRAMING)
     renderer.toneMappingExposure = CASTLE_EXPOSURE
     lastHud = ''
@@ -249,6 +253,7 @@ function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
 /** Retour devant la grande porte, face à l'ouest ; Pikachu suit une case derrière. */
 function leaveCastle(now: number) {
     castle.leave()
+    castleAudio.leave()
     renderer.toneMappingExposure = OUTDOOR_EXPOSURE
     held = null
     player = {...player, direction: 'left', position: {...CASTLE_DOORSTEP}}
@@ -266,6 +271,7 @@ let challenging = false
 function challengeMewtwo() {
     held = null
     challenging = true
+    castleAudio.challenge()
     const transition = playBattleTransition('Mewtwo !', 'Le Pokémon génétique se dresse devant le trône')
     void transition.blackout.then(() => {
         challenging = false
@@ -277,6 +283,12 @@ function challengeMewtwo() {
 addEventListener('keydown', (event) => {
     if (encounterOverlay.isOpen || challenging || event.ctrlKey || event.metaKey || event.altKey) return
     const key = event.key.toLowerCase()
+    castleAudio.resume()
+    if (key === 'm' && !event.repeat && castle.active) {
+        castleAudio.toggleMute()
+        lastHud = ''
+        return
+    }
     if (key === 'v' && !event.repeat) {
         rig.cycle(castle.state?.facing ?? player.direction)
         lastHud = ''
@@ -339,6 +351,7 @@ function persist() {
 // peut être tué sans prévenir (mobile, navigateur fermé), d'où la sauvegarde aussi au passage en arrière-plan.
 addEventListener('pagehide', persist)
 document.addEventListener('visibilitychange', () => {
+    castleAudio.setHidden(document.hidden)
     if (document.visibilityState === 'hidden') persist()
 })
 addEventListener('wheel', (event) => {
@@ -367,7 +380,7 @@ const encounterOverlay = createEncounterOverlay({
 
 function updateHud(now: number) {
     if (castle.active) {
-        const text = castle.hud(now, viewHelp())
+        const text = castle.hud(now, `${viewHelp()} · M : ${castleAudio.muted ? 'remettre' : 'couper'} le son`)
         if (text === lastHud) return
         lastHud = text
         hud.innerHTML = text
@@ -431,6 +444,7 @@ function animate(now: number) {
         companions.forEach(({mixer}) => mixer.update(delta))
         trainer.visible = rig.mode !== 'fps'
         rig.update(delta, trainer.position, castle.state!.facing, held !== null, CASTLE_FRAMING)
+        castleAudio.update(castle.state, encounterOverlay.isOpen || challenging)
         updateHud(now)
         castle.render()
         resolution.update(now, frameSeconds)
