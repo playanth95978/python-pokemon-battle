@@ -55,8 +55,11 @@ export function followShadow(sun: THREE.DirectionalLight, sunDirection: THREE.Ve
     sun.position.copy(sun.target.position).addScaledVector(sunDirection, height)
 }
 
-/** Allure du dresseur ; `fish` : debout, canne en main (la garde de l'épée du modèle). */
-export type Gait = 'idle' | 'walk' | 'run' | 'fish'
+/**
+ * Allure du dresseur ; `fish` : debout, canne en main (la garde de l'épée du modèle) ; `ride` : à vélo, la tête et les
+ * mains gardent le repos neutre, le reste est posé par cinématique inverse (voir createRiderPose).
+ */
+export type Gait = 'idle' | 'walk' | 'run' | 'fish' | 'ride'
 
 const TRAINER_MODEL = '/models/trainer/casual_character.glb'
 const TRAINER_HEIGHT = 1.45
@@ -66,6 +69,7 @@ const CLIPS: Record<Gait, [string, number]> = {
     walk: ['CharacterArmature|Walk', 1.8],
     run: ['CharacterArmature|Run', 1.4],
     fish: ['CharacterArmature|Idle_Sword', 0.6],
+    ride: ['CharacterArmature|Idle_Neutral', 1],
 }
 
 /**
@@ -85,6 +89,10 @@ export function createTrainer() {
             object.castShadow = true
             // Les maillages animés sortent de leur boîte de repos : on ne les écarte jamais du rendu par erreur.
             object.frustumCulled = false
+        })
+        // Pose de repos de chaque nœud, avant toute animation : la pose à vélo repart d'elle à chaque image.
+        model.traverse((object) => {
+            object.userData.rest = {quaternion: object.quaternion.clone(), position: object.position.clone()}
         })
         model.updateMatrixWorld(true)
         const box = new THREE.Box3().setFromObject(model)

@@ -61,9 +61,13 @@ import { createRain } from './village/rainView'
 import { createWeather, describeWeather, floodLevels, startRain, updateWeather } from './village/weather'
 import { applyDaylight, createCloudCover, daylight } from './village/dayCycle'
 import { lanternGlass } from './villageProps'
+import { bankAngle, createBicycle, createRiderPose, WHEELBASE } from './bicycle'
 
 const STEP_DURATION = 170
-/** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
+/** Une case en 100 ms à vélo : environ 9 m/s, une cadence de pédalage d'à peu près 100 tours par minute. */
+const BIKE_STEP_DURATION = 100
+/** À l'arrêt, le vélo penche à gauche, sur le pied posé au sol. */
+const BIKE_STOP_LEAN = -0.2/** Temps de construction de chunks accordé par image : le reste du budget de 16 ms va au rendu. */
 const STREAM_BUDGET_MS = 4
 const CAMERA_OFFSET = new THREE.Vector3(0, 4.2, 7)
 /** Cadrage dehors : caméra en hauteur derrière le dresseur, regard un peu devant lui. */
@@ -180,8 +184,57 @@ function createBoat() {
 }
 
 const trainer = createTrainer()
+// Lacet d'abord, puis tangage et roulis : le vélo suit la pente et penche dans les virages sans dévier de son cap.
+trainer.rotation.order = 'YXZ'
 const boat = createBoat()
 scene.add(trainer, boat)
+
+// Vélo (B) : il porte le dresseur, qui va deux fois plus vite qu'à pied ; on en descend pour parler, pêcher ou entrer.
+const bicycle = createBicycle()
+bicycle.group.visible = false
+trainer.add(bicycle.group)
+const rider = createRiderPose(trainer)
+let riding = false, saddleFitted = false
+/** Vitesse de lacet lissée (rad/s), et 1 quand le vélo est à l'arrêt (pied au sol), 0 en roulant. */
+let bikeTurn = 0, bikeStill = 1
+const bikeLast = new THREE.Vector3()
+const stepDuration = () => riding ? BIKE_STEP_DURATION : STEP_DURATION
+function ride(on: boolean) {
+    if (riding === on) return
+    riding = on
+    bicycle.group.visible = on
+    bikeStill = 1
+    if (!on) trainer.rotation.x = trainer.rotation.z = 0
+    lastHud = ''
+}
+/** Roues, pédalier et chaîne suivent le chemin parcouru ; le vélo épouse la pente, penche dans les virages, et le pilote s'y pose. */
+function updateBicycle(delta: number, yawStep: number) {
+    const moved = Math.hypot(trainer.position.x - bikeLast.x, trainer.position.z - bikeLast.z)
+    // Une téléportation (sortie du château, chargement) n'est pas un coup de pédale.
+    const distance = moved > 2 ? 0 : moved
+    const seconds = Math.max(delta, 1e-3)
+    bikeTurn += (yawStep / seconds - bikeTurn) * Math.min(1, delta * 6)
+    bikeStill = THREE.MathUtils.clamp(bikeStill + (distance > 1e-4 ? -delta * 4 : delta * 2.5), 0, 1)
+    if (!saddleFitted) {
+        const leg = rider.legLength()
+        if (leg) {
+            // Selle à la bonne hauteur : jambe presque tendue, pédale en bas (cheville 0,2 m au-dessus du sol).
+            bicycle.fitSaddle(0.2 + Math.sqrt((0.95 * leg) ** 2 - 0.14 ** 2) - 0.05)
+            saddleFitted = true
+        }
+    }
+    const heading = trainer.rotation.y, half = WHEELBASE / 2
+    const front = terrain.height(trainer.position.x + Math.sin(heading) * half, trainer.position.z + Math.cos(heading) * half)
+    const rear = terrain.height(trainer.position.x - Math.sin(heading) * half, trainer.position.z - Math.cos(heading) * half)
+    trainer.rotation.x = -Math.atan2(front - rear, WHEELBASE)
+    trainer.position.y = (front + rear) / 2
+    const bank = bankAngle(distance / seconds, bikeTurn)
+    trainer.rotation.z = THREE.MathUtils.lerp(bank, BIKE_STOP_LEAN, bikeStill)
+    // On braque un peu dans le sens du virage (le contre-braquage, trop bref, ne se verrait pas).
+    bicycle.update(distance, THREE.MathUtils.clamp(bikeTurn * 0.05, -0.5, 0.5) * (1 - bikeStill * 0.5))
+    trainer.updateMatrixWorld(true)
+    rider.apply(bicycle, bikeStill)
+}
 
 // Château du pré sud-ouest : extérieur dans Clairbois, intérieur dans sa propre scène (trois étages, Mewtwo au sommet).
 const castleMaterials = createCastleMaterials(renderer)
@@ -409,7 +462,7 @@ function step(now: number) {
     const direction = rig.direction(held)
     // Dans le château, la marche est continue : voir walkInCastle, appelée à chaque image.
     if (castle.active) return
-    if (now - stepStart < STEP_DURATION) return
+    if (now - stepStart < stepDuration()) return
     const previous = player.position
     const position = nextPosition(WORLD_MAP, previous, direction, player.travelMode)
     // Le château n'est pas sur la carte 2D : ses murs bloquent, sa grande porte fait entrer.
@@ -496,6 +549,7 @@ function startCastleBattle(speciesKey: string, title: string, subtitle: string, 
 }
 
 function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
+    ride(false)
     villageAudio.setActive(false)
     stopWalking()
     stepsSinceGhost = 0
@@ -567,11 +621,17 @@ addEventListener('keydown', (event) => {
         lastHud = ''
         return
     }
+    if (key === 'b' && !event.repeat && !castle.active) {
+        event.preventDefault()
+        if (player.travelMode === 'walking' && !isFishing(fishing) && !landedCatch) ride(!riding)
+        return
+    }
     if (key === 'f' && !castle.active) {
         event.preventDefault()
         if (event.repeat) return
         fishHeld = fishPressed = true
         if (!isFishing(fishing) && !landedCatch) {
+            ride(false)
             const [dx, dz] = VECTORS[player.direction]
             const origin = {x: trainer.position.x, z: trainer.position.z}, heading = {x: dx, z: dz}
             const distance = castDistance(origin, heading, fishingWater)
@@ -595,6 +655,8 @@ addEventListener('keydown', (event) => {
         event.preventDefault()
         stopWalking()
         if (castle.active) return interactInCastle(performance.now())
+        // Parler, combattre ou embarquer : on descend d'abord du vélo.
+        ride(false)
         const nearCharmander =
             player.travelMode === 'walking'
             && canInteractWithPokemon(player.position, wildCharmander)
@@ -786,7 +848,7 @@ function updateHud(now: number) {
     const angling = describeFishing(fishing)
     const fishHint = !angling && !landedCatch && !castle.active && waterAhead()
     const team = ['Pikachu', ...captured.map((key) => key === 'mewtwo' ? 'Mewtwo' : FISH[key]?.name ?? key)]
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${angling}|${fishingNote?.text}|${fishHint}|${performanceLine()}`
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${angling}|${fishingNote?.text}|${fishHint}|${riding}|${performanceLine()}`
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = `<strong>${zoneAt(player.position)} · ${time}${sky ? ` · ${sky}` : ''}</strong>`
@@ -804,7 +866,8 @@ function updateHud(now: number) {
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
         + (captured.length ? `<p>Équipe : ${team.join(', ')}</p>` : '')
         + performanceLine()
-        + `<p class="world3d-help">Flèches / ZQSD pour marcher · ${viewHelp()} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
+        + (player.travelMode === 'walking' ? `<p>B : ${riding ? 'descendre du vélo' : 'monter à vélo'}</p>` : '')
+        + `<p class="world3d-help">Flèches / ZQSD pour ${riding ? 'pédaler' : 'marcher'} · ${viewHelp()} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
         + MAP_BUTTON + NEW_GAME
 }
 
@@ -887,20 +950,23 @@ function animate(now: number) {
         return
     }
     if (village) streamer.update(player.position, STREAM_BUDGET_MS)
-    const progress = Math.min(1, (now - stepStart) / STEP_DURATION)
+    const progress = Math.min(1, (now - stepStart) / stepDuration())
     const onBoat = player.travelMode === 'boat'
 
     trainer.position.lerpVectors(from, to, progress)
     trainer.position.y = onBoat ? waterLevel(trainer.position.x, trainer.position.z) + 0.1 : terrain.height(trainer.position.x, trainer.position.z)
     // Petite marge après chaque pas : la marche ne se coupe pas entre deux cases enchaînées.
     const fishingNow = isFishing(fishing) || landedCatch !== null
-    const walking = !onBoat && now - stepStart < STEP_DURATION + 60
-    trainer.animate(delta, walking ? 'walk' : fishingNow ? 'fish' : 'idle')
+    const walking = !onBoat && now - stepStart < stepDuration() + 60
+    trainer.animate(delta, riding ? 'ride' : walking ? 'walk' : fishingNow ? 'fish' : 'idle')
     // Ligne à l'eau, le dresseur arrêté se tourne vers son flotteur (il a pu longer la berge entre-temps).
     const facingFloat = !walking && fishing.phase !== 'idle' && fishing.phase !== 'casting'
     const facing = facingFloat ? Math.atan2(fishing.float.x - trainer.position.x, fishing.float.z - trainer.position.z) : ANGLES[player.direction]
     // Par le plus court chemin : sans cela, passer de -170° à 170° ferait faire un tour complet au dresseur.
-    trainer.rotation.y += (THREE.MathUtils.euclideanModulo(facing - trainer.rotation.y + Math.PI, Math.PI * 2) - Math.PI) * 0.25
+    const yawStep = (THREE.MathUtils.euclideanModulo(facing - trainer.rotation.y + Math.PI, Math.PI * 2) - Math.PI) * 0.25
+    trainer.rotation.y += yawStep
+    if (riding) updateBicycle(delta, yawStep)
+    bikeLast.copy(trainer.position)
     boat.visible = onBoat
     boat.position.set(trainer.position.x, waterLevel(trainer.position.x, trainer.position.z) + Math.sin(now * 0.002) * 0.03, trainer.position.z)
     boat.rotation.y = trainer.rotation.y
