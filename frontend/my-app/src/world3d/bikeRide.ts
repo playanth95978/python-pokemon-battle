@@ -2,7 +2,8 @@
  * Conduite libre à vélo, sans three.js. Pédaler accélère (de moins en moins près de la vitesse de croisière), lâcher
  * laisse rouler en roue libre, freiner arrête puis fait reculer au pas (on pousse le vélo). Tourner braque le guidon,
  * et le cap suit le modèle cinématique du vélo : lacet = vitesse × tan(braquage) / empattement. Le braquage possible
- * se réduit avec la vitesse, comme sur un vrai vélo : on vire serré au pas, large en pleine course.
+ * se réduit avec la vitesse, comme sur un vrai vélo : on vire serré au pas, large en pleine course. Contre un mur pris
+ * de biais, le vélo est dévié et le longe ; de face, il s'arrête net.
  *
  * Cap : 0 vers le sud (+z), positif vers l'est (+x) ; la gauche du cycliste est donc côté cap croissant.
  */
@@ -17,8 +18,6 @@ const ROLLING = 0.35, AIR = 0.012
 const STEER_AT_REST = 0.65, STEER_AT_SPEED = 0.16, STEER_RATE = 2.5
 /** Distance du centre à la roue qui touche l'obstacle en premier (l'avant en avançant, l'arrière en reculant). */
 const WHEEL_REACH = 0.55
-/** Vitesse gardée en frottant contre un mur. */
-const SCRAPE = 0.75
 
 export interface BikeState {
     x: number
@@ -47,10 +46,7 @@ export function maxSteer(speed: number) {
     return STEER_AT_REST + (STEER_AT_SPEED - STEER_AT_REST) * t
 }
 
-/**
- * Avance le vélo de `dt` secondes. `passable` dit si un point du sol est praticable. Renvoie `bump` quand le vélo bute
- * de front contre un obstacle (il s'arrête) ; contre un mur pris de biais, il glisse le long en perdant de la vitesse.
- */
+/** Avance le vélo de `dt` secondes. `passable` dit si un point du sol est praticable ; `bump` : arrêt net contre un obstacle. */
 export function updateRide(state: BikeState, dt: number, input: BikeInput, passable: (x: number, z: number) => boolean): 'bump' | null {
     let speed = state.speed
     if (input.brake && speed > 0.05) speed = Math.max(0, speed - BRAKE * dt)
@@ -75,15 +71,19 @@ export function updateRide(state: BikeState, dt: number, input: BikeInput, passa
         state.z += dz
         return null
     }
-    // De biais contre un mur : on glisse le long, sur l'axe encore libre.
+    // De biais contre un mur : le vélo est dévié le long, sur l'axe encore libre, et ne garde que la part de sa
+    // vitesse parallèle au mur.
+    const direction = Math.sign(speed)
     if (Math.abs(dx) > 1e-6 && free(state.x + dx, state.z)) {
         state.x += dx
-        state.speed *= SCRAPE
+        state.speed *= Math.abs(forwardX)
+        state.heading = Math.atan2(Math.sign(dx) * direction, 0)
         return null
     }
     if (Math.abs(dz) > 1e-6 && free(state.x, state.z + dz)) {
         state.z += dz
-        state.speed *= SCRAPE
+        state.speed *= Math.abs(forwardZ)
+        state.heading = Math.atan2(0, Math.sign(dz) * direction)
         return null
     }
     state.speed = 0

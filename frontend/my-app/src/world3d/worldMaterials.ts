@@ -75,8 +75,15 @@ function groundMaterial(map: WorldMap, path: { value: THREE.Texture }, wetness: 
                 uniform sampler2D floodMap;`)
             .replace('#include <map_fragment>', `
                 vec2 worldXZ = vMapUv * ${GROUND_TILE.toFixed(1)};
-                vec4 grassTexel = texture2D(map, vMapUv);
-                vec4 pathTexel = texture2D(pathMap, vMapUv);
+                // Photos de sol adoucies vers leur teinte moyenne (mipmap lointain) : des aplats de dessin animé où
+                // ne reste qu'un léger grain, plutôt que chaque brindille.
+                vec4 grassTexel = mix(texture2D(map, vMapUv, 5.0), texture2D(map, vMapUv), 0.35);
+                // La photo de sous-bois est brune : on n'en garde que le grain, sur le vert franc des prairies du
+                // dessin animé (#3f7a2f).
+                vec3 grassAverage = texture2D(map, vMapUv, 9.0).rgb;
+                float grain = dot(grassTexel.rgb, vec3(0.33)) / max(dot(grassAverage, vec3(0.33)), 0.01);
+                grassTexel.rgb = vec3(0.05, 0.19, 0.028) * mix(1.0, grain, 0.45);
+                vec4 pathTexel = mix(texture2D(pathMap, vMapUv, 5.0), texture2D(pathMap, vMapUv), 0.35);
                 vec3 splat = texture2D(splatMap, worldXZ / splatSize).rgb;
                 float breakup = texture2D(pathMap, vMapUv * 0.37).g - 0.4;
                 float pathMask = smoothstep(0.35, 0.65, splat.r + breakup * 0.6);
@@ -145,6 +152,9 @@ export function createWorldMaterials(map: WorldMap, renderer: THREE.WebGLRendere
         shader.uniforms.uTime = time
         shader.vertexShader = shader.vertexShader
             .replace('#include <common>', '#include <common>\nuniform float uTime;')
+            // Éclairés comme le sol qui les porte : avec l'ombrage en aplats, leurs normales de ruban feraient
+            // basculer la moitié des brins dans l'ombre, en touffes noires sur la prairie.
+            .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);')
             .replace('#include <begin_vertex>', `#include <begin_vertex>
                 vec4 root = instanceMatrix[3];
                 transformed.x += sin(uTime * 1.8 + root.x * 0.6 + root.z * 0.4) * 0.35 * position.y;

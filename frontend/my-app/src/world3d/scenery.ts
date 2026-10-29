@@ -4,14 +4,15 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Sky } from 'three/addons/objects/Sky.js'
 
 export function createAtmosphere(renderer: THREE.WebGLRenderer, scene: THREE.Scene, shadowExtent = 16, shadowMapSize = 2048) {
-    // Ciel physique en fin d'après-midi ; il sert aussi d'éclairage d'ambiance (reflets PBR).
+    // Ciel physique en fin d'après-midi ; il sert aussi d'éclairage d'ambiance (reflets PBR). Air très pur et diffusion
+    // forte : le bleu profond et saturé des décors de dessin animé plutôt que le voile laiteux d'un vrai ciel d'été.
     const sunDirection = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(215))
     const sky = new Sky()
     sky.scale.setScalar(1000)
     const skyUniforms = sky.material.uniforms
-    skyUniforms.turbidity.value = 4
-    skyUniforms.rayleigh.value = 1.4
-    skyUniforms.mieCoefficient.value = 0.004
+    skyUniforms.turbidity.value = 2
+    skyUniforms.rayleigh.value = 2.6
+    skyUniforms.mieCoefficient.value = 0.003
     skyUniforms.mieDirectionalG.value = 0.85
     skyUniforms.sunPosition.value.copy(sunDirection)
     scene.add(sky)
@@ -21,7 +22,7 @@ export function createAtmosphere(renderer: THREE.WebGLRenderer, scene: THREE.Sce
     scene.environment = pmrem.fromScene(skyScene).texture
     scene.environmentIntensity = 0.35
 
-    const hemisphere = new THREE.HemisphereLight(0xcfe6ff, 0x4a6a3a, 0.6)
+    const hemisphere = new THREE.HemisphereLight(0xcfe6ff, 0x4a6a3a, 1.2)
     scene.add(hemisphere)
     const sun = new THREE.DirectionalLight(0xffe2b8, 3.4)
     sun.castShadow = true

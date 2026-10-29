@@ -201,13 +201,58 @@ export function createBicycle() {
     rearWheel.position.copy(rearAxle)
     const rearFender = fender(-0.35, 2.3)
     rearFender.position.copy(rearAxle)
-    // Pignon et dérailleur, côté transmission : le pignon tourne avec la roue.
+    // Pignon et dérailleur, côté transmission. Roue libre : le pignon suit la chaîne, pas la roue.
     const cog = new THREE.Mesh(new THREE.TorusGeometry(COG, 0.005, 6, 28).rotateY(Math.PI / 2), steel)
-    cog.position.x = DRIVE_SIDE
-    rearWheel.add(cog)
+    cog.position.copy(rearAxle).setX(DRIVE_SIDE)
+    group.add(cog)
     const derailleur = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.07, 0.03), steel)
     derailleur.position.set(DRIVE_SIDE - 0.01, WHEEL_RADIUS - 0.07, -WHEELBASE / 2 + 0.01)
     group.add(rearWheel, rearFender, derailleur)
+
+    // Porte-bagages au-dessus de la roue arrière, et siège enfant pour Pikachu : coque à dossier haut, accoudoirs,
+    // coussin, harnais et repose-pieds, comme les sièges qu'on fixe sur les vélos de ville.
+    const rackY = 0.72, rackFront = -0.24, rackBack = -0.66
+    for (const side of [-1, 1]) {
+        const x = side * 0.065
+        group.add(
+            tube(point(rackFront, rackY, x), point(rackBack, rackY, x), 0.006, steel),
+            tube(rearAxle.clone().setX(side * 0.068), point(rackBack + 0.05, rackY, x), 0.006, steel),
+            tube(point(rackFront, rackY, x), seatCluster.clone().add(point(-0.04, -0.05)).setX(side * 0.03), 0.005, steel),
+        )
+    }
+    for (const z of [rackFront, -0.45, rackBack]) group.add(tube(point(z, rackY, -0.065), point(z, rackY, 0.065), 0.005, steel))
+    const shell = new THREE.MeshStandardMaterial({color: 0xd9dde2, roughness: 0.45})
+    const padding = new THREE.MeshStandardMaterial({color: 0x2f5fa3, roughness: 0.85})
+    const childSeat = new THREE.Group()
+    childSeat.position.set(0, rackY + 0.012, -0.46)
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.03, 0.24), shell)
+    const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.025, 0.2), padding)
+    cushion.position.set(0, 0.027, 0.01)
+    const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.36, 0.03), shell)
+    backrest.position.set(0, 0.18, -0.13)
+    backrest.rotation.x = -0.12
+    const backPad = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.28, 0.02), padding)
+    backPad.position.set(0, 0.18, -0.11)
+    backPad.rotation.x = -0.12
+    childSeat.add(base, cushion, backrest, backPad)
+    for (const side of [-1, 1]) {
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.16, 0.22), shell)
+        wing.position.set(side * 0.13, 0.08, -0.01)
+        // Harnais : une sangle par épaule, du dossier vers le coussin.
+        const strap = tube(point(-0.11, 0.27, side * 0.06), point(0.06, 0.04, side * 0.04), 0.008, plastic)
+        const footrest = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.015, 0.08), shell)
+        footrest.position.set(side * 0.1, -0.16, 0.13)
+        const footStrut = tube(point(0.08, -0.01, side * 0.1), point(0.13, -0.16, side * 0.1), 0.006, shell)
+        childSeat.add(wing, strap, footrest, footStrut)
+    }
+    childSeat.traverse((object) => {
+        object.castShadow = true
+    })
+    // Pikachu s'installe au fond du siège, face à la route : le bas de ses pattes disparaît derrière les flancs.
+    const passenger = new THREE.Object3D()
+    passenger.position.set(0, -0.02, -0.01)
+    childSeat.add(passenger)
+    group.add(childSeat)
 
     // Avant orientable : fourche, roue, garde-boue, potence, cintre, poignées, leviers, sonnette, phare.
     const steer = new THREE.Group()
@@ -301,10 +346,10 @@ export function createBicycle() {
     group.add(chain)
     const link = new THREE.Object3D()
 
-    let wheelAngle = 0
+    let wheelAngle = 0, crankAngle = 0
     function place(steerAngle: number) {
         rearWheel.rotation.x = frontWheel.rotation.x = wheelAngle
-        const crankAngle = wheelAngle / GEAR
+        cog.rotation.x = crankAngle * GEAR
         crank.rotation.x = crankAngle
         for (const {pedal, side} of pedals) {
             // Bout de manivelle : gauche (side 1) vers le haut à l'angle zéro, droite vers le bas.
@@ -328,12 +373,16 @@ export function createBicycle() {
     return {
         group,
         /** Points où le pilote pose bassin, mains et pieds ; gauche puis droite. */
-        anchors: {seat, grips, pedals: pedals.map(({foot}) => foot)},
+        anchors: {seat, grips, pedals: pedals.map(({foot}) => foot), passenger},
         bottomBracket,
         fitSaddle,
-        /** Avance de `distance` mètres (roues, pédalier, chaîne) et braque de `steerAngle` radians. */
-        update(distance: number, steerAngle: number) {
+        /**
+         * Avance de `distance` mètres (négatif : en reculant) et braque de `steerAngle` radians. Le pédalier et la chaîne
+         * ne tournent qu'en pédalant : en roue libre ou en reculant, seules les roues tournent.
+         */
+        update(distance: number, steerAngle: number, pedaling: boolean) {
             wheelAngle += distance / WHEEL_RADIUS
+            if (pedaling && distance > 0) crankAngle += crankTurn(distance)
             place(steerAngle)
         },
     }

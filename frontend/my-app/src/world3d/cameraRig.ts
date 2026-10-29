@@ -99,14 +99,23 @@ export function createCameraRig(camera: THREE.PerspectiveCamera, canvas: HTMLCan
             if (mode === 'fps') return firstPerson.direction(key)
             return relativeDirection(lockedYaw ?? viewYaw(), key)
         },
-        /** Place la caméra : la vue de dos rattrape le regard du dresseur, la vue libre garde son angle. */
-        update(delta: number, target: THREE.Vector3, facing: Direction, moving: boolean, framing: CameraFraming) {
+        /**
+         * Place la caméra : la vue de dos rattrape le regard du dresseur, la vue libre garde son angle. `facing` peut
+         * être un lacet de vue (à vélo, le cap n'est plus une des quatre directions) : la vue libre le suit alors aussi,
+         * plus lentement, sinon le cycliste finirait de face ou de profil à chaque virage.
+         */
+        update(delta: number, target: THREE.Vector3, facing: Direction | number, moving: boolean, framing: CameraFraming) {
             if (mode === 'fps') {
                 firstPerson.place(target)
                 return
             }
+            const heading = typeof facing === 'number' ? facing : FACING_YAW[facing]
+            if (mode === 'free' && typeof facing === 'number' && moving) {
+                yaw += angleDelta(yaw, heading) * (1 - Math.exp(-delta * 1.5))
+                orbit *= Math.exp(-delta * 1.5)
+            }
             if (mode === 'chase') {
-                yaw += angleDelta(yaw, FACING_YAW[facing]) * (1 - Math.exp(-delta * 3.5))
+                yaw += angleDelta(yaw, heading) * (1 - Math.exp(-delta * 3.5))
                 // En marchant, l'angle choisi à la souris revient doucement derrière le dresseur.
                 if (moving) orbit *= Math.exp(-delta * 1.5)
             }

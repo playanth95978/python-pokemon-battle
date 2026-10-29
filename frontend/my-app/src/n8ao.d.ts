@@ -1,6 +1,6 @@
 /** Types minimaux de n8ao (le paquet n'en fournit pas) : seule la passe pour l'EffectComposer de three.js est utilisée. */
 declare module 'n8ao' {
-    import type { Camera, Color, Scene } from 'three'
+    import type { Camera, Color, DepthTexture, Scene, WebGLRenderTarget } from 'three'
     import { Pass } from 'three/addons/postprocessing/Pass.js'
 
     export interface N8AOConfiguration {
@@ -22,6 +22,8 @@ declare module 'n8ao' {
         constructor(scene: Scene, camera: Camera, width?: number, height?: number)
         configuration: N8AOConfiguration
         autoDetectTransparency: boolean
+        /** Rendu de la scène et sa profondeur, relue pour les contours. */
+        beautyRenderTarget: WebGLRenderTarget & {depthTexture: DepthTexture}
         setQualityMode(mode: 'Performance' | 'Low' | 'Medium' | 'High' | 'Ultra'): void
     }
 }

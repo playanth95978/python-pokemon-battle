@@ -64,8 +64,9 @@ export interface DayScene {
 
 /** `overcast` : ciel couvert par la pluie, de 0 à 1 (soleil voilé, brume grise, lanternes allumées plus tôt). */
 export function applyDaylight({scene, clouds, sun, sunDirection, sky, hemisphere, lanterns}: DayScene, light: Daylight, overcast = 0) {
-    sky.material.uniforms.turbidity.value = 4 + overcast * 16
-    sky.material.uniforms.rayleigh.value = 1.4 - overcast * 1.1
+    // Ciel bleu profond de dessin animé par beau temps (voir createAtmosphere), gris laiteux sous la pluie.
+    sky.material.uniforms.turbidity.value = 2 + overcast * 18
+    sky.material.uniforms.rayleigh.value = 2.6 - overcast * 2.3
     const sunPosition = new THREE.Vector3().setFromSphericalCoords(1,
         THREE.MathUtils.degToRad(90 - light.elevation), THREE.MathUtils.degToRad(light.azimuth))
     sky.material.uniforms.sunPosition.value.copy(sunPosition)
@@ -74,7 +75,8 @@ export function applyDaylight({scene, clouds, sun, sunDirection, sky, hemisphere
     sunDirection.copy(sunPosition).lerp(MOON_DIRECTION, night).normalize()
     sun.color.copy(DAWN).lerp(NOON, THREE.MathUtils.smoothstep(light.day, 0.1, 0.6)).lerp(MOON, night)
     sun.intensity = THREE.MathUtils.lerp(0.35, 3.4, Math.pow(light.day, 0.5)) * (1 - overcast * 0.75)
-    hemisphere.intensity = (0.12 + 0.48 * light.day) * (1 - overcast * 0.15)
+    // Ambiance forte : les ombres en aplats restent claires et colorées, comme dans un dessin animé, pas noires.
+    hemisphere.intensity = (0.15 + 1.05 * light.day) * (1 - overcast * 0.15)
     scene.environmentIntensity = (0.05 + 0.3 * light.day) * (1 - overcast * 0.4)
     if (scene.fog) scene.fog.color.copy(NIGHT_FOG).lerp(dayFog.copy(DAY_FOG).lerp(RAIN_FOG, overcast), Math.pow(light.day, 0.5))
     if (scene.fog instanceof THREE.FogExp2) scene.fog.density = FOG_DENSITY + (RAIN_DENSITY - FOG_DENSITY) * overcast

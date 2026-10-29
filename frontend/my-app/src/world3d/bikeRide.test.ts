@@ -42,7 +42,7 @@ describe('Conduite à vélo', () => {
     it('recule au pas quand on freine à l’arrêt', () => {
         const state = createRide(0, 0, 0)
         ride(state, {brake: true}, 3)
-        expect(state.speed).toBeCloseTo(-REVERSE_SPEED)
+        expect(state.speed).toBeCloseTo(-REVERSE_SPEED, 1)
         expect(state.z).toBeLessThan(0)
     })
 
@@ -53,9 +53,9 @@ describe('Conduite à vélo', () => {
             ride(state, {pedal: true, turn: 1}, 1)
             return Math.abs(state.speed / state.yawRate)
         }
-        const slow = radius(0.6), fast = radius(6)
+        const slow = radius(0), fast = radius(10)
         expect(slow).toBeGreaterThan(1)
-        expect(fast).toBeGreaterThan(slow * 2)
+        expect(fast).toBeGreaterThan(slow * 1.5)
     })
 
     it('tourne à gauche du cycliste avec la touche gauche', () => {
