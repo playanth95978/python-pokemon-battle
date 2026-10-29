@@ -13,13 +13,20 @@ describe('Ombrage en aplats', () => {
         }
     })
 
+    it('aplatit le relief des cartes de normales', () => {
+        const relief = celShadedChunks(THREE.ShaderChunk).normal_fragment_maps
+        expect(relief).toContain('mapN.xy *= normalScale * 0.30;')
+        expect(relief).not.toContain('mapN.xy *= normalScale;')
+    })
+
     it('ne s’applique qu’une fois, même installé par plusieurs vues', () => {
         const once = celShadedChunks(THREE.ShaderChunk)
         expect(celShadedChunks(once)).toEqual(once)
     })
 
     it('refuse un éclairage de three.js qu’il ne reconnaît pas plutôt que de l’ignorer', () => {
-        const changed = {lights_physical_pars_fragment: 'void RE_Direct_Physical() {}', lights_lambert_pars_fragment: THREE.ShaderChunk.lights_lambert_pars_fragment}
+        const {lights_lambert_pars_fragment, normal_fragment_maps} = THREE.ShaderChunk
+        const changed = {lights_physical_pars_fragment: 'void RE_Direct_Physical() {}', lights_lambert_pars_fragment, normal_fragment_maps}
         expect(() => celShadedChunks(changed)).toThrow(/ombrage en aplats impossible/)
     })
 })
