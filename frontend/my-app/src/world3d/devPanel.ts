@@ -21,6 +21,8 @@ export interface DevPanelTargets {
     resolution: { ratio(): number; pin(ratio: number | null): void }
     rain(hours: number, storm: boolean): void
     simulate(seconds: number): void
+    /** Éditeur de mobilier (voir propEditor.ts). */
+    editor: { enabled: boolean; changes(): string }
 }
 
 export function createDevPanel(targets: DevPanelTargets) {
@@ -81,5 +83,16 @@ export function createDevPanel(targets: DevPanelTargets) {
         ratio.updateDisplay()
     }
     setInterval(follow, 500)
+
+    const decor = gui.addFolder('Mobilier')
+    const exported = {
+        copy: () => {
+            const text = targets.editor.changes()
+            console.info(text)
+            void navigator.clipboard?.writeText(text).catch(() => undefined)
+        },
+    }
+    decor.add(targets.editor, 'enabled').name('Déplacer (clic · R · Échap)')
+    decor.add(exported, 'copy').name('Copier les changements')
     return gui
 }

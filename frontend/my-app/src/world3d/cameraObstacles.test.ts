@@ -16,6 +16,10 @@ describe('Caméra dehors', () => {
         expect(32.5 - 7 * allowed).toBeGreaterThan(32)
     })
 
+    it('garde tout son recul au bord de l’eau, sous le niveau du bourg', () => {
+        expect(reach({x: 39.5, y: -0.45, z: 42.5}, {x: 0, y: 4.2, z: -7})).toBe(1)
+    })
+
     it('ne bouge pas pour un bâtiment que le regard survole de haut', () => {
         expect(reach({x: 12.5, y: 0, z: 34.5}, {x: 0, y: 30, z: -4})).toBe(1)
     })

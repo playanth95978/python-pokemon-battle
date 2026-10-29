@@ -55,7 +55,8 @@ export function followShadow(sun: THREE.DirectionalLight, sunDirection: THREE.Ve
     sun.position.copy(sun.target.position).addScaledVector(sunDirection, height)
 }
 
-export type Gait = 'idle' | 'walk' | 'run'
+/** Allure du dresseur ; `fish` : debout, canne en main (la garde de l'épée du modèle). */
+export type Gait = 'idle' | 'walk' | 'run' | 'fish'
 
 const TRAINER_MODEL = '/models/trainer/casual_character.glb'
 const TRAINER_HEIGHT = 1.45
@@ -64,6 +65,7 @@ const CLIPS: Record<Gait, [string, number]> = {
     idle: ['CharacterArmature|Idle', 1],
     walk: ['CharacterArmature|Walk', 1.8],
     run: ['CharacterArmature|Run', 1.4],
+    fish: ['CharacterArmature|Idle_Sword', 0.6],
 }
 
 /**

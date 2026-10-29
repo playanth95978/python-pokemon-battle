@@ -40,7 +40,9 @@ export function createCameraObstacles(map: WorldMap) {
         let allowed = 1
         for (let t = STEP; t <= 1.0001; t += STEP) {
             const x = target.x + offset.x * t, z = target.z + offset.z * t
-            if (target.y + offset.y * t < heightAt(x, z)) {
+            // Une case sans bâtiment ne gêne jamais, même quand le dresseur est sous le niveau 0 (berges, vallée).
+            const top = heightAt(x, z)
+            if (top > 0 && target.y + offset.y * t < top) {
                 allowed = t - STEP
                 break
             }

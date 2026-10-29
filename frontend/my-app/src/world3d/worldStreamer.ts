@@ -68,6 +68,18 @@ export class WorldStreamer {
         }
     }
 
+    /** Reconstruit au plus vite le chunk de cette case, s'il est chargé (la carte a changé, par exemple un meuble déplacé). */
+    refresh(tile: Position) {
+        const chunk = chunkOf(tile), id = chunkId(chunk)
+        for (const layer of this.layers) {
+            const entry = this.loaded.get(layer.name)!.get(id)
+            if (!entry) continue
+            if (entry.object) layer.dispose(entry.object)
+            this.loaded.get(layer.name)!.delete(id)
+            this.pending.get(layer.name)?.unshift(chunk)
+        }
+    }
+
     /** Proportion des chunks attendus autour du joueur déjà construits, toutes couches confondues. */
     progress(player: Position) {
         let expected = 0, ready = 0

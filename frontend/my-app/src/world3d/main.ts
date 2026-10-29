@@ -52,7 +52,10 @@ import { createVillagerView } from './village/villagerView'
 import { createVillagePokemon, pokemonAt, pokemonNear, pokemonPosition, updateVillagePokemon, VILLAGE_POKEMON } from './village/villagePokemon'
 import { createVillagePokemonView } from './village/villagePokemonView'
 import { advanceHour, DAY_SECONDS, formatHour, START_HOUR } from './village/villageClock'
-import { createFlood, isFlooded, stepFlood, surfaceAt, WADE, WET } from './village/flood'
+import { createFlood, depthAt, isFlooded, stepFlood, surfaceAt, WADE, WET } from './village/flood'
+import type { FishingEvent, WaterKind } from './village/fishing'
+import { castDistance, castLine, createFishing, describeFishing, FISH, isFishing, moveAngler, reelIn, updateFishing } from './village/fishing'
+import { createFishingView } from './village/fishingView'
 import { createFloodView } from './village/floodView'
 import { createRain } from './village/rainView'
 import { createWeather, describeWeather, floodLevels, startRain, updateWeather } from './village/weather'
@@ -101,7 +104,7 @@ const post = createPostProcessing(renderer, scene, camera)
 if (import.meta.env.DEV) Object.assign(window, {world3d: {
     renderer, scene, camera, post, water: () => water, castle: () => castle, villagers: () => villagers,
     setHour: (value: number) => { hour = value },
-    weather: () => weather, flood: () => flood,
+    weather: () => weather, flood: () => flood, fishing: () => fishing,
     /** Averse (`storm` : orage, qui fait déborder la rivière) de `hours` heures de jeu. */
     rain: (hours = 3, storm = false) => startRain(weather, hours, storm),
     /** Avance la crue de `seconds` secondes d'un coup, aux niveaux actuels (le navigateur de test ne tourne pas en continu). */
@@ -323,6 +326,59 @@ let wadeBlocked = -Infinity
 /** Répliques déjà entendues, par habitant : la conversation avance à chaque visite. */
 const said = new Map<string, number>()
 let dialogue: { name: string; job: string; text: string; until: number } | null = null
+
+// Pêche : F lance, ferre, puis mouline (maintenu) ; la prise ouvre un combat, et la victoire la capture.
+const fishing = createFishing()
+const fishingView = createFishingView(scene, trainer)
+let fishHeld = false, fishPressed = false
+/** Événements nés hors de la boucle d'image (le lancer, au clavier), joués à l'image suivante. */
+const fishingQueue: FishingEvent[] = []
+let fishingNote: { text: string; until: number } | null = null
+/** Prise suspendue au bout du fil, avant d'ouvrir le combat. */
+let landedCatch: { speciesKey: string; name: string; weight: number; at: number } | null = null
+/** Eau d'une case pour la pêche : le lac, la rivière, ou un champ assez noyé pour qu'un poisson s'y aventure. */
+function fishingWater({x, z}: { x: number; z: number }): WaterKind | null {
+    const tile = {x: Math.floor(x), y: Math.floor(z)}
+    if (tileAt(WORLD_MAP, tile) === 'water') return zoneAt(tile) === 'Lac azur' ? 'lake' : 'river'
+    return depthAt(flood, tile) > 0.3 ? 'flood' : null
+}
+/** Il y a de l'eau à portée de lancer devant le dresseur. */
+function waterAhead() {
+    const [dx, dz] = VECTORS[player.direction]
+    return castDistance({x: player.position.x + 0.5, z: player.position.y + 0.5}, {x: dx, z: dz}, fishingWater) !== null
+}
+const FISHING_NOTES: Partial<Record<FishingEvent['type'], string>> = {
+    missed: 'Le flotteur retombe sur la berge. Vise l’eau.',
+    tooFar: 'Trop loin du flotteur : tu ramènes la ligne.',
+    spat: 'Raté… le poisson a recraché l’appât. Le flotteur remonte.',
+    snap: 'Clac ! Le fil a cassé : il fallait relâcher quand la jauge rougissait.',
+    unhooked: 'Le fil est resté mou : le poisson s’est décroché.',
+}
+function handleFishing(events: FishingEvent[], now: number) {
+    for (const event of events) {
+        const note = event.type === 'hooked' ? `Ferré ! Ça tire… un ${event.fish.name} ?`
+            : event.type === 'landed' ? `${event.fish.name} de ${event.weight.toLocaleString('fr-FR')} kg sorti de l’eau !`
+            : FISHING_NOTES[event.type]
+        if (note) fishingNote = {text: note, until: now + 4000}
+        if (event.type === 'landed') {
+            landedCatch = {speciesKey: event.fish.speciesKey, name: event.fish.name, weight: event.weight, at: now + 1600}
+            fishingView.showCatch(event.fish, event.weight)
+        }
+        lastHud = ''
+    }
+    if (!landedCatch || now < landedCatch.at || encounterOverlay.isOpen) return
+    const {speciesKey, name, weight} = landedCatch
+    landedCatch = null
+    fishingView.showCatch(null)
+    encounterOverlay.open({id: `${speciesKey}-${Date.now()}`, speciesKey, position: {...player.position}}, {
+        title: `Un ${name} de ${weight.toLocaleString('fr-FR')} kg au bout de la ligne !`,
+        victoryText: `${name} est capturé !`,
+        onVictory: () => {
+            if (!captured.includes(speciesKey)) captured = [...captured, speciesKey]
+            persist()
+        },
+    })
+}
 const clouds = createCloudCover()
 scene.add(clouds)
 const DAY = {scene, clouds, sun, sunDirection, sky, hemisphere, lanterns: lanternGlass}
@@ -511,6 +567,28 @@ addEventListener('keydown', (event) => {
         lastHud = ''
         return
     }
+    if (key === 'f' && !castle.active) {
+        event.preventDefault()
+        if (event.repeat) return
+        fishHeld = fishPressed = true
+        if (!isFishing(fishing) && !landedCatch) {
+            const [dx, dz] = VECTORS[player.direction]
+            const origin = {x: trainer.position.x, z: trainer.position.z}, heading = {x: dx, z: dz}
+            const distance = castDistance(origin, heading, fishingWater)
+            if (distance === null) fishingNote = {text: 'Pas d’eau à portée devant toi.', until: performance.now() + 2500}
+            else {
+                stopWalking()
+                fishingQueue.push(...castLine(fishing, origin, heading, distance))
+            }
+            lastHud = ''
+        }
+        return
+    }
+    if (key === 'escape' && isFishing(fishing)) {
+        reelIn(fishing)
+        lastHud = ''
+        return
+    }
     if (key === 'e') {
         if (event.repeat) return
 
@@ -555,6 +633,11 @@ addEventListener('keydown', (event) => {
     const direction = KEYS[key]
     if (!direction) return
     event.preventDefault()
+    // Marcher pendant le vol du flotteur ramène la ligne ; une fois à l'eau, le fil suit le dresseur (voir moveAngler).
+    if (fishing.phase === 'casting') {
+        reelIn(fishing)
+        lastHud = ''
+    }
     // La répétition automatique d'une touche dont le pas a été interrompu (escalier, combat) ne relance pas la marche.
     if (event.repeat && !pressed.has(direction)) return
     // Nouvelle touche : le repère de la vue est figé jusqu'à ce qu'elles soient toutes relâchées.
@@ -563,6 +646,7 @@ addEventListener('keydown', (event) => {
     pressed.add(direction)
 })
 addEventListener('keyup', (event) => {
+    if (event.key.toLowerCase() === 'f') fishHeld = false
     const direction = KEYS[event.key.toLowerCase()]
     if (!direction) return
     pressed.delete(direction)
@@ -571,7 +655,10 @@ addEventListener('keyup', (event) => {
     held = [...pressed].at(-1) ?? null
     if (!held) rig.release()
 })
-addEventListener('blur', stopWalking)
+addEventListener('blur', () => {
+    stopWalking()
+    fishHeld = false
+})
 
 /** Sauvegarde dans le navigateur : position (dehors ou dans le château), objets ramassés, portes ouvertes. */
 function persist() {
@@ -695,10 +782,17 @@ function updateHud(now: number) {
     const time = formatHour(Math.floor(hour * 4) / 4)
     const sky = describeWeather(weather)
     const wading = now - wadeBlocked < 2500
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${performanceLine()}`
+    if (fishingNote && now > fishingNote.until) fishingNote = null
+    const angling = describeFishing(fishing)
+    const fishHint = !angling && !landedCatch && !castle.active && waterAhead()
+    const team = ['Pikachu', ...captured.map((key) => key === 'mewtwo' ? 'Mewtwo' : FISH[key]?.name ?? key)]
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${angling}|${fishingNote?.text}|${fishHint}|${performanceLine()}`
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = `<strong>${zoneAt(player.position)} · ${time}${sky ? ` · ${sky}` : ''}</strong>`
+        + (angling ? `<p class="world3d-dialogue"><b>Pêche</b> — ${angling}</p>` : '')
+        + (fishingNote ? `<p><b>Pêche</b> — ${fishingNote.text}</p>` : '')
+        + (fishHint ? '<p>F : lancer la ligne</p>' : '')
         + (wading ? `<p>L’eau est trop profonde pour passer à pied (plus de ${Math.round(WADE * 100)} cm).</p>` : '')
         + (dialogue ? `<p class="world3d-dialogue"><b>${dialogue.name}</b> <i>(${dialogue.job})</i> — ${dialogue.text}</p>` : '')
         + (!dialogue && neighbour ? `<p>E : parler à ${neighbour.profile.name} <i>(${neighbour.profile.job})</i></p>` : '')
@@ -708,7 +802,7 @@ function updateHud(now: number) {
         + (exit ? '<p><b>Sortie est</b> — continue vers l’est pour rejoindre le monde ouvert.</p>' : '')
         + (nearCharmander ? '<p><b>Salamèche</b> — E : ouvrir le combat</p>' : '')
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
-        + (captured.includes('mewtwo') ? '<p>Équipe : Pikachu, Mewtwo</p>' : '')
+        + (captured.length ? `<p>Équipe : ${team.join(', ')}</p>` : '')
         + performanceLine()
         + `<p class="world3d-help">Flèches / ZQSD pour marcher · ${viewHelp()} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
         + MAP_BUTTON + NEW_GAME
@@ -744,15 +838,22 @@ CASTLE_FRAMING.reach = castle.cameraReach
 // Dehors, la caméra s'arrête devant les maisons et les remparts au lieu de les traverser.
 OUTDOOR_FRAMING.reach = createCameraObstacles(WORLD_MAP)
 // En développement, un panneau règle l'heure, la météo, la caméra et le rendu en direct (absent du build).
-if (import.meta.env.DEV) void import('./devPanel').then(({createDevPanel}) => createDevPanel({
-    renderer, scene, sun, weather, cameraOffset: CAMERA_OFFSET, framing: OUTDOOR_FRAMING, resolution,
-    hour: {get: () => hour, set: (value) => { hour = value }},
-    zoom: {get: () => zoom, set: (value) => { zoom = value }},
-    rain: (hours, storm) => startRain(weather, hours, storm),
-    simulate: (seconds) => {
-        for (let time = 0; time < seconds; time += 1 / 30) stepFlood(flood, 1 / 30, floodLevels(weather))
-    },
-}))
+if (import.meta.env.DEV) void Promise.all([import('./devPanel'), import('./propEditor')]).then(([{createDevPanel}, {createPropEditor}]) => {
+    const editor = createPropEditor({
+        scene, camera, canvas: renderer.domElement, map: WORLD_MAP, props: villageProps, ground: terrain.height,
+        refresh: (tile) => streamer.refresh(tile), setCameraActive: (active) => rig.setActive(active),
+    })
+    Object.assign((window as unknown as { world3d: object }).world3d, {editor})
+    createDevPanel({
+        renderer, scene, sun, weather, cameraOffset: CAMERA_OFFSET, framing: OUTDOOR_FRAMING, resolution, editor,
+        hour: {get: () => hour, set: (value) => { hour = value }},
+        zoom: {get: () => zoom, set: (value) => { zoom = value }},
+        rain: (hours, storm) => startRain(weather, hours, storm),
+        simulate: (seconds) => {
+            for (let time = 0; time < seconds; time += 1 / 30) stepFlood(flood, 1 / 30, floodLevels(weather))
+        },
+    })
+})
 
 const clock = new THREE.Clock()
 let floodViewTime = 0
@@ -792,8 +893,14 @@ function animate(now: number) {
     trainer.position.lerpVectors(from, to, progress)
     trainer.position.y = onBoat ? waterLevel(trainer.position.x, trainer.position.z) + 0.1 : terrain.height(trainer.position.x, trainer.position.z)
     // Petite marge après chaque pas : la marche ne se coupe pas entre deux cases enchaînées.
-    trainer.animate(delta, !onBoat && now - stepStart < STEP_DURATION + 60 ? 'walk' : 'idle')
-    trainer.rotation.y = THREE.MathUtils.lerp(trainer.rotation.y, ANGLES[player.direction], 0.25)
+    const fishingNow = isFishing(fishing) || landedCatch !== null
+    const walking = !onBoat && now - stepStart < STEP_DURATION + 60
+    trainer.animate(delta, walking ? 'walk' : fishingNow ? 'fish' : 'idle')
+    // Ligne à l'eau, le dresseur arrêté se tourne vers son flotteur (il a pu longer la berge entre-temps).
+    const facingFloat = !walking && fishing.phase !== 'idle' && fishing.phase !== 'casting'
+    const facing = facingFloat ? Math.atan2(fishing.float.x - trainer.position.x, fishing.float.z - trainer.position.z) : ANGLES[player.direction]
+    // Par le plus court chemin : sans cela, passer de -170° à 170° ferait faire un tour complet au dresseur.
+    trainer.rotation.y += (THREE.MathUtils.euclideanModulo(facing - trainer.rotation.y + Math.PI, Math.PI * 2) - Math.PI) * 0.25
     boat.visible = onBoat
     boat.position.set(trainer.position.x, waterLevel(trainer.position.x, trainer.position.z) + Math.sin(now * 0.002) * 0.03, trainer.position.z)
     boat.rotation.y = trainer.rotation.y
@@ -823,6 +930,16 @@ function animate(now: number) {
     // En vue FPS le dresseur disparaît : la caméra est sa tête.
     trainer.visible = rig.mode !== 'fps'
     rig.update(delta, trainer.position, player.direction, held !== null, outdoorFraming())
+    const phase = fishing.phase
+    fishingQueue.push(...moveAngler(fishing, {x: trainer.position.x, z: trainer.position.z}))
+    const fishingEvents = fishingQueue.splice(0)
+    if (!encounterOverlay.isOpen) {
+        fishingEvents.push(...updateFishing(fishing, delta, fishHeld, fishPressed, {waterAt: fishingWater, hour, rain: weather.rain, storm: weather.storm, random: Math.random}))
+    }
+    fishPressed = false
+    if (fishing.phase !== phase) lastHud = ''
+    handleFishing(fishingEvents, now)
+    fishingView.update(fishing, delta, now / 1000, waterLevel, fishingEvents)
     villageAudio.update({listener: trainer.position, forward: camera.getWorldDirection(audioForward), villagers, pokemon: villagePokemon,
         extraPokemon: [
             ...(pikachu ? [{id: 'compagnon-pikachu', species: 'pikachu', x: pikachu.root.position.x - 0.5, y: pikachu.root.position.z - 0.5}] : []),
