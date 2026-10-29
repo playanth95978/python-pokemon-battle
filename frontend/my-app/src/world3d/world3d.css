@@ -22,3 +22,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1622; fon
 .castle-minimap canvas { display: block; width: min(192px, 30vw, 34vh); height: auto; image-rendering: pixelated; border-radius: 6px; }
 .castle-minimap figcaption { margin-top: 4px; opacity: .8; }
 .castle-minimap[hidden] { display: none; }
+.village-audio-controls { position: fixed; bottom: 16px; left: 16px; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; max-width: calc(100vw - 32px); padding: 10px 14px; border: 1px solid #b8c0b53b; border-radius: 10px; background: #0b1725e6; color: #f4f1e8; font: 12px/1.4 system-ui, sans-serif; }
+.village-audio-controls button { padding: 6px 10px; border: 1px solid #cbb681; border-radius: 6px; background: transparent; color: #f1d496; font: inherit; cursor: pointer; }
+.village-audio-controls button:disabled { opacity: .5; cursor: default; }
+.village-audio-controls label { display: flex; align-items: center; gap: 8px; }
+.village-audio-controls input { width: 100px; accent-color: #e2c47e; }
+.village-audio-controls button:focus-visible, .village-audio-controls input:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+.village-audio-controls [role=status] { opacity: .7; }
+@media (max-width: 650px) { .village-audio-controls { bottom: 8px; left: 8px; max-width: calc(100vw - 16px); padding: 8px; gap: 6px 10px; } .village-audio-controls [role=status] { display: none; } }

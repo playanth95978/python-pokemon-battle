@@ -234,6 +234,21 @@ configuration de logging n'est déjà en place.
 
 ### Monde ouvert 3D et mini-carte
 
+Dans Clairbois 3D, **Activer les sons du village** (ou **M** dehors) débloque
+l'ambiance spatialisée ; un curseur règle son volume. L'eau, les fontaines et le
+feuillage sont audibles à proximité ; branches, marteaux, murmures des habitants
+et cris de Pokémon ponctuent l'exploration. Les voix humaines sont des syllabes
+synthétiques sans paroles. Les cris sont chargés à la demande depuis
+[PokéAPI/cries](https://github.com/PokeAPI/cries), mis en cache par espèce, avec
+un cri synthétique de repli hors ligne ou en cas d'échec de téléchargement.
+
+Le volume décroît progressivement avec la distance et le son suit le côté de la
+caméra. Les sources lointaines sont libérées : au maximum cinq ambiances en boucle
+et quatre sons courts simultanés, avec un calcul des positions à 10 Hz. La carte,
+les combats, l'entrée dans le château et un onglet masqué suspendent cette ambiance.
+Le château conserve sa propre musique et son raccourci M. Aucun son ni téléchargement
+de cri n'est lancé avant l'activation par le joueur.
+
 Dans `/world3d.html`, le bouton **Afficher la carte** ou la touche **C** ouvre le
 plan complet de Clairbois : position et direction du joueur, quartiers, bâtiments,
 château, bateau, Salamèche et sortie vers le monde ouvert. Une recherche permet

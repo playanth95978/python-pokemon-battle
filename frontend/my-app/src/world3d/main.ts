@@ -33,6 +33,8 @@ import { createPostProcessing } from './postProcessing'
 import { WorldStreamer } from './worldStreamer'
 import { createEncounterOverlay } from './encounterOverlay'
 import { createVillageMap } from './villageMapOverlay'
+import { createVillageAudio } from './villageAudio'
+import { createVillageAudioControls } from './villageAudioControls'
 import './world3d.css'
 import { canInteractWithPokemon } from './pokemonInteraction'
 import { createCastleMaterials } from './castle/castleMaterials'
@@ -45,9 +47,9 @@ import type { CastleEvent } from './castle/castleLayout'
 import { playBattleTransition } from './battleTransition'
 import { clearGame, loadGame, saveGame } from './saveGame'
 import { castleBlocks as insideCastleWalls } from './castle/castleArea'
-import { createVillagers, talkTo, updateVillagers, VILLAGERS, villagerAt } from './village/villagers'
+import { createVillagers, positionOf, talkTo, updateVillagers, VILLAGERS, villagerAt } from './village/villagers'
 import { createVillagerView } from './village/villagerView'
-import { createVillagePokemon, pokemonAt, pokemonNear, updateVillagePokemon, VILLAGE_POKEMON } from './village/villagePokemon'
+import { createVillagePokemon, pokemonAt, pokemonNear, pokemonPosition, updateVillagePokemon, VILLAGE_POKEMON } from './village/villagePokemon'
 import { createVillagePokemonView } from './village/villagePokemonView'
 import { advanceHour, DAY_SECONDS, formatHour, START_HOUR } from './village/villageClock'
 import { createFlood, isFlooded, stepFlood, surfaceAt, WADE, WET } from './village/flood'
@@ -183,6 +185,10 @@ const castleMaterials = createCastleMaterials(renderer)
 const castleOutside = buildCastleExterior(scene, castleMaterials)
 const castle = createCastle(renderer, camera, castleMaterials)
 const castleAudio = createCastleAudio()
+const villageAudio = createVillageAudio(WORLD_MAP)
+const villageAudioControls = createVillageAudioControls(document.body, villageAudio)
+const audioForward = new THREE.Vector3()
+renderer.domElement.addEventListener('pointerdown', () => villageAudio.resume())
 const minimap = createCastleMinimap(document.body)
 /** Exposition plus forte à l'intérieur : la lumière n'y vient que des torches et des fenêtres. */
 const CASTLE_EXPOSURE = 1.3, OUTDOOR_EXPOSURE = renderer.toneMappingExposure
@@ -434,6 +440,7 @@ function startCastleBattle(speciesKey: string, title: string, subtitle: string, 
 }
 
 function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
+    villageAudio.setActive(false)
     stopWalking()
     stepsSinceGhost = 0
     boat.visible = false
@@ -446,6 +453,7 @@ function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
 
 /** Retour devant la grande porte, face à l'ouest ; Pikachu suit une case derrière. */
 function leaveCastle(now: number) {
+    villageAudio.setActive(true)
     castle.leave()
     castleAudio.leave()
     minimap.draw(null, null, false)
@@ -484,8 +492,15 @@ function interactInCastle(now: number) {
 
 addEventListener('keydown', (event) => {
     if (encounterOverlay.isOpen || villageMap.isOpen || challenging || event.ctrlKey || event.metaKey || event.altKey) return
+    if (event.target instanceof HTMLElement && (event.target.closest('input, textarea, select') || event.target.isContentEditable)) return
     const key = event.key.toLowerCase()
     castleAudio.resume()
+    villageAudio.resume()
+    if (key === 'm' && !event.repeat && !castle.active) {
+        event.preventDefault()
+        villageAudio.toggle()
+        return
+    }
     if (key === 'm' && !event.repeat && castle.active) {
         castleAudio.toggleMute()
         lastHud = ''
@@ -516,6 +531,7 @@ addEventListener('keydown', (event) => {
             return
         }
         if (near) {
+            villageAudio.say({...pokemonPosition(near), id: near.profile.id, kind: 'cry', species: near.profile.speciesKey, radius: 16, level: 0.4})
             dialogue = {name: near.profile.name, job: 'Pokémon', text: near.profile.lore, until: performance.now() + 6000}
             lastHud = ''
             return
@@ -523,6 +539,8 @@ addEventListener('keydown', (event) => {
         const talk = player.travelMode === 'walking' ? talkTo(villagers, player.position, hour, {bossDefeated: castle.bossDefeated}, said) : null
         if (talk) {
             const {name, job} = talk.villager.profile
+            villageAudio.say({...positionOf(talk.villager), id: talk.villager.profile.id,
+                kind: talk.villager.profile.child ? 'child' : 'voice', radius: 10, level: 0.28})
             dialogue = {name, job, text: talk.text, until: performance.now() + 6000}
             lastHud = ''
             return
@@ -580,8 +598,14 @@ function newGame() {
 addEventListener('pagehide', persist)
 document.addEventListener('visibilitychange', () => {
     castleAudio.setHidden(document.hidden)
+    villageAudio.setHidden(document.hidden)
     if (document.visibilityState === 'hidden') persist()
 })
+addEventListener('pagehide', (event) => {
+    if (event.persisted) villageAudio.setHidden(true)
+    else { villageAudio.dispose(); villageAudioControls.dispose() }
+})
+addEventListener('pageshow', () => villageAudio.setHidden(document.hidden))
 addEventListener('wheel', (event) => {
     if (encounterOverlay.isOpen || villageMap.isOpen) return
     zoom = THREE.MathUtils.clamp(zoom + event.deltaY * 0.001, 0.45, 1.8)
@@ -598,13 +622,15 @@ const NEW_GAME = '<p><button type="button" class="world3d-new-game">Nouvelle par
 const MAP_BUTTON = '<p><button type="button" class="world3d-map-button" aria-haspopup="dialog" aria-keyshortcuts="C">Afficher la carte <kbd>C</kbd></button></p>'
 let lastHud = ''
 const encounterOverlay = createEncounterOverlay({
-    background: [host, hud],
+    background: [host, hud, villageAudioControls.element],
     onPause: () => {
+        villageAudio.setActive(false)
         stopWalking()
         rig.setActive(false)
         renderer.setAnimationLoop(null)
     },
     onResume: () => {
+        villageAudio.setActive(!castle.active)
         held = null
         rig.setActive(true)
         clock.getDelta()
@@ -619,12 +645,14 @@ const villageMap = createVillageMap({
     location: () => ({position: {...player.position}, direction: player.direction, insideCastle: castle.active}),
     canOpen: () => !encounterOverlay.isOpen && !challenging,
     onPause: () => {
+        villageAudio.setActive(false)
         stopWalking()
         rig.setActive(false)
         castleAudio.setHidden(true)
         renderer.setAnimationLoop(null)
     },
     onResume: () => {
+        villageAudio.setActive(!castle.active)
         stopWalking()
         rig.setActive(true)
         castleAudio.setHidden(document.hidden)
@@ -715,6 +743,16 @@ function outdoorFraming() {
 CASTLE_FRAMING.reach = castle.cameraReach
 // Dehors, la caméra s'arrête devant les maisons et les remparts au lieu de les traverser.
 OUTDOOR_FRAMING.reach = createCameraObstacles(WORLD_MAP)
+// En développement, un panneau règle l'heure, la météo, la caméra et le rendu en direct (absent du build).
+if (import.meta.env.DEV) void import('./devPanel').then(({createDevPanel}) => createDevPanel({
+    renderer, scene, sun, weather, cameraOffset: CAMERA_OFFSET, framing: OUTDOOR_FRAMING, resolution,
+    hour: {get: () => hour, set: (value) => { hour = value }},
+    zoom: {get: () => zoom, set: (value) => { zoom = value }},
+    rain: (hours, storm) => startRain(weather, hours, storm),
+    simulate: (seconds) => {
+        for (let time = 0; time < seconds; time += 1 / 30) stepFlood(flood, 1 / 30, floodLevels(weather))
+    },
+}))
 
 const clock = new THREE.Clock()
 let floodViewTime = 0
@@ -785,6 +823,11 @@ function animate(now: number) {
     // En vue FPS le dresseur disparaît : la caméra est sa tête.
     trainer.visible = rig.mode !== 'fps'
     rig.update(delta, trainer.position, player.direction, held !== null, outdoorFraming())
+    villageAudio.update({listener: trainer.position, forward: camera.getWorldDirection(audioForward), villagers, pokemon: villagePokemon,
+        extraPokemon: [
+            ...(pikachu ? [{id: 'compagnon-pikachu', species: 'pikachu', x: pikachu.root.position.x - 0.5, y: pikachu.root.position.z - 0.5}] : []),
+            {id: wildCharmander.id, species: wildCharmander.speciesKey, ...wildCharmander.position},
+        ], rain: weather.rain})
     // Passants et Pokémon après la caméra : seuls ceux qu'elle voit sont dessinés et animés.
     camera.updateMatrixWorld()
     frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))

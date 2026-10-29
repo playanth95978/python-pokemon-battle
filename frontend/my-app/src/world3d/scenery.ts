@@ -137,13 +137,18 @@ function createPlaceholderTrainer() {
 /** Résolution dynamique : baisse la définition quand les images ralentissent, la remonte quand il y a de la marge. */
 export function createResolutionScaler(renderer: THREE.WebGLRenderer, max = Math.min(devicePixelRatio, 2), min = 0.6,
                                        apply = (ratio: number) => renderer.setPixelRatio(ratio)) {
-    let pixelRatio = max, frameTime = 16, lastChange = 0
+    let pixelRatio = max, frameTime = 16, lastChange = 0, pinned = false
     apply(max)
     return {
         ratio: () => pixelRatio,
+        /** Fige la résolution (réglages de développement) ; `null` rend la main au réglage automatique. */
+        pin(ratio: number | null) {
+            pinned = ratio !== null
+            if (ratio !== null && ratio !== pixelRatio) apply(pixelRatio = ratio)
+        },
         update(now: number, frameSeconds: number) {
             // Un onglet en arrière-plan est ralenti par le navigateur : ce n'est pas un manque de puissance.
-            if (document.hidden || frameSeconds > 0.25) return
+            if (pinned || document.hidden || frameSeconds > 0.25) return
             frameTime = frameTime * 0.95 + frameSeconds * 1000 * 0.05
             if (now - lastChange < 1500) return
             const wanted = frameTime > 24 ? pixelRatio * 0.85 : frameTime < 18 ? pixelRatio * 1.1 : pixelRatio
