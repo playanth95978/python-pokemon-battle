@@ -24,7 +24,11 @@ const CLIPS: Record<Exclude<Pose, 'sleep'>, [string, number]> = {
     hammer: ['CharacterArmature|Sword_Slash', 0.7],
     chat: ['CharacterArmature|Idle_Neutral', 1],
     play: ['CharacterArmature|Idle', 1.3],
+    hit: ['CharacterArmature|HitRecieve', 1.4],
+    dead: ['CharacterArmature|Death', 1],
 }
+/** Joués une fois puis figés sur leur dernière image : le recul du coup, et le corps à terre. */
+const ONCE: Pose[] = ['hit', 'dead']
 /** Matériau du modèle → pièce de la tenue. */
 const OUTFIT_FOR: Record<string, keyof Outfit> = {
     White: 'shirt', LightBlue: 'pants', Hair: 'hair', Eyebrows: 'hair', Skin: 'skin', Skin_Darker: 'skin', Red_Dark: 'accent', LightBrown: 'accent',
@@ -82,7 +86,13 @@ export function createVillagerView(scene: THREE.Scene, villagers: Villager[], gr
         const actions: Body['actions'] = {}
         for (const [pose, [name, speed]] of Object.entries(CLIPS) as [Pose, [string, number]][]) {
             const clip = gltf.animations.find((animation) => animation.name === name)
-            if (clip) actions[pose] = mixer.clipAction(clip).setEffectiveTimeScale(speed)
+            if (!clip) continue
+            const action = mixer.clipAction(clip).setEffectiveTimeScale(speed)
+            if (ONCE.includes(pose)) {
+                action.setLoop(THREE.LoopOnce, 1)
+                action.clampWhenFinished = true
+            }
+            actions[pose] = action
         }
         // Chacun démarre son cycle à un instant différent : personne ne bouge en même temps que son voisin.
         mixer.setTime(Math.random() * 3)
@@ -128,7 +138,8 @@ export function createVillagerView(scene: THREE.Scene, villagers: Villager[], gr
                 // Rotation par le plus court chemin vers la direction voulue.
                 const turn = THREE.MathUtils.euclideanModulo(ANGLES[villager.facing] - body.root.rotation.y + Math.PI, Math.PI * 2) - Math.PI
                 body.root.rotation.y += turn * Math.min(1, seconds * 10)
-                if (far > ANIMATE_DISTANCE) continue
+                // Un corps à terre finit de tomber même hors de la bulle animée : il ne doit pas rester debout de loin.
+                if (far > ANIMATE_DISTANCE && villager.pose !== 'dead') continue
                 const pose = villager.pose === 'sleep' ? 'idle' : villager.pose
                 if (pose !== body.pose && body.actions[pose]) {
                     const next = body.actions[pose]!

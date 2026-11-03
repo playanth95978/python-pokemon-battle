@@ -54,6 +54,11 @@ export function createVillagePokemonView(scene: THREE.Scene, list: VillagePokemo
                     rig.root.rotation.x = THREE.MathUtils.lerp(rig.root.rotation.x, -Math.atan2(rise, seconds * 1.2 || 1), 0.5)
                     previousHeight.set(pokemon, pokemon.height)
                 }
+                // Tué : couché sur le flanc. Sonné : il tremble. Le retour à la vie le relève en douceur.
+                const lying = pokemon.down ? Math.PI / 2 : 0
+                rig.root.rotation.z = THREE.MathUtils.lerp(rig.root.rotation.z, lying, Math.min(1, seconds * 6))
+                if (pokemon.down) continue
+                if (pokemon.stagger > 0) rig.root.rotation.z += Math.sin(time * 45) * 0.12 * Math.min(1, pokemon.stagger * 2)
                 if (far < ANIMATE_DISTANCE) animatePokemon(rig, pokemon.profile.species, pokemon.pose, time, phase)
             }
         },

@@ -173,7 +173,8 @@ export const PATIENCE = 1.2
 /** Durée d'une conversation avec le dresseur : l'habitant s'arrête et le regarde. */
 export const TALK_SECONDS = 5
 
-export type Pose = Activity | 'walk' | 'run'
+/** `hit` : sonné par un coup du dresseur ; `dead` : à terre jusqu'à son retour (voir combat.ts). */
+export type Pose = Activity | 'walk' | 'run' | 'hit' | 'dead'
 
 export interface Villager {
     profile: Profile
@@ -192,6 +193,10 @@ export interface Villager {
     /** Rentré chez lui : invisible et hors des collisions. */
     inside: boolean
     talking: number
+    /** Tué par le dresseur : il reste à terre, hors des collisions et de la vie du village. */
+    down: boolean
+    /** Secondes pendant lesquelles il reste sonné après un coup. */
+    stagger: number
 }
 
 const sortedSchedules = new WeakMap<Shift[], Shift[]>()
@@ -217,7 +222,7 @@ export function createVillagers(profiles: Profile[], hour: number): Villager[] {
         const shift = shiftAt(profile.schedule, hour)
         const villager: Villager = {
             profile, tile: {x: 0, y: 0}, next: null, step: 0, path: [], shift, spotIndex: 0, dwell: DWELL,
-            waiting: 0, facing: 'down', pose: shift.activity, inside: shift.activity === 'sleep', talking: 0,
+            waiting: 0, facing: 'down', pose: shift.activity, inside: shift.activity === 'sleep', talking: 0, down: false, stagger: 0,
         }
         const goal = goalOf(villager)
         villager.tile = {x: goal.x, y: goal.y}
@@ -230,7 +235,7 @@ const same = (a: Position, b: Position) => a.x === b.x && a.y === b.y
 
 /** Habitant visible sur cette case (ou en train d'y entrer) : le dresseur ne peut pas y aller. */
 export function villagerAt(villagers: Villager[], tile: Position) {
-    return villagers.find((villager) => !villager.inside && (same(villager.tile, tile) || (villager.next && same(villager.next, tile))))
+    return villagers.find((villager) => !villager.inside && !villager.down && (same(villager.tile, tile) || (villager.next && same(villager.next, tile))))
 }
 
 /** Position continue (en cases) de l'habitant, au milieu de son pas. */
@@ -257,8 +262,9 @@ function directionTo(from: Position, to: Position): Direction {
 export function updateVillagers(villagers: Villager[], hour: number, seconds: number, player: Position, passable: (tile: Position) => boolean,
                                 blocked: (tile: Position) => boolean = () => false, shelter = false, activityRadius = Infinity) {
     const occupied = (tile: Position, self: Villager) => same(tile, player) || blocked(tile)
-        || villagers.some((other) => other !== self && !other.inside && (same(other.tile, tile) || (other.next !== null && same(other.next, tile))))
+        || villagers.some((other) => other !== self && !other.inside && !other.down && (same(other.tile, tile) || (other.next !== null && same(other.next, tile))))
     for (const villager of villagers) {
+        if (villager.down) continue
         const shift = shiftAt(villager.profile.schedule, hour)
         if (shift !== villager.shift) {
             villager.shift = shift
@@ -289,6 +295,12 @@ export function updateVillagers(villagers: Villager[], hour: number, seconds: nu
             villager.path = []
         }
         if (villager.inside) continue
+        // Sonné, il reste sur place le temps de reprendre ses esprits (la case visée lui reste réservée).
+        if (villager.stagger > 0) {
+            villager.stagger -= seconds
+            villager.pose = 'hit'
+            continue
+        }
         if (villager.talking > 0) villager.talking -= seconds
         if (villager.next) {
             const speed = villager.pose === 'run' ? RUN_SPEED : WALK_SPEED
@@ -354,7 +366,7 @@ export function updateVillagers(villagers: Villager[], hour: number, seconds: nu
 
 /** E à côté d'un habitant : il s'arrête, se tourne vers le dresseur et dit une de ses répliques. */
 export function talkTo(villagers: Villager[], player: Position, hour: number, context: { bossDefeated: boolean }, said: Map<string, number>) {
-    const villager = villagers.find((candidate) => !candidate.inside && !candidate.next && distance(candidate.tile, player) === 1)
+    const villager = villagers.find((candidate) => !candidate.inside && !candidate.down && !candidate.next && distance(candidate.tile, player) === 1)
     if (!villager) return null
     villager.talking = TALK_SECONDS
     villager.facing = directionTo(villager.tile, player)

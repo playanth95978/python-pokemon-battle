@@ -51,6 +51,11 @@ import { clearGame, loadGame, saveGame } from './saveGame'
 import { castleBlocks as insideCastleWalls } from './castle/castleArea'
 import { createVillagers, positionOf, talkTo, updateVillagers, VILLAGERS, villagerAt } from './village/villagers'
 import { createVillagerView } from './village/villagerView'
+import type { Target, WeaponId } from './village/combat'
+import { aimAt, createLife, passTime, strike, weaponById } from './village/combat'
+import { createWeaponMenu } from './village/weaponMenu'
+import { createWeaponView } from './village/weaponView'
+import type { AttackGait } from './scenery'
 import { createVillagePokemon, pokemonAt, pokemonNear, pokemonPosition, updateVillagePokemon, VILLAGE_POKEMON } from './village/villagePokemon'
 import { createVillagePokemonView } from './village/villagePokemonView'
 import { advanceHour, DAY_SECONDS, formatHour, START_HOUR } from './village/villageClock'
@@ -360,6 +365,105 @@ const villagePokemon = createVillagePokemon(VILLAGE_POKEMON, Math.random)
 /** Niveau de l'eau en un point : la crue là où elle est, sinon la rivière. */
 const waterLevel = (x: number, z: number) => surfaceAt(flood, {x: Math.floor(x), y: Math.floor(z)}) ?? floodLevels(weather).river
 const villagePokemonView = createVillagePokemonView(scene, villagePokemon, terrain.height, waterLevel)
+
+// Armes : Tab ouvre le menu, 1 à 3 choisissent, Espace frappe. Habitants et Pokémon du village peuvent être tués ;
+// ils reviennent quelques heures de jeu plus tard (voir combat.ts). Pikachu et les rencontres scriptées sont épargnés.
+const life = createLife()
+let weapon: WeaponId = 'fists'
+const weaponView = createWeaponView(scene, trainer)
+const weaponMenu = createWeaponMenu((picked) => {
+    weapon = picked
+    lastHud = ''
+})
+const ATTACK_GAIT: Record<WeaponId, AttackGait> = {fists: 'punch', sword: 'slash', bow: 'shoot'}
+/** Prochain coup permis, fin de l'animation du coup en cours, et coup en attente de son impact. */
+let nextAttack = 0, attackUntil = 0
+let pendingStrike: { at: number; weapon: WeaponId } | null = null
+let combatNote: { text: string; until: number } | null = null
+const HEALTH = {villager: 40, child: 25, pokemon: 30, ronflex: 120} as const
+
+/** Êtres vivants qu'on peut frapper, en cases (centre de case), avec leur santé maximale. */
+function combatTargets(): Target[] {
+    const targets: Target[] = []
+    for (const villager of villagers) {
+        if (villager.inside || villager.down) continue
+        const at = positionOf(villager)
+        targets.push({id: villager.profile.id, kind: 'villager', name: villager.profile.name, x: at.x + 0.5, y: at.y + 0.5,
+            maxHealth: villager.profile.child ? HEALTH.child : HEALTH.villager})
+    }
+    for (const pokemon of villagePokemon) {
+        if (!pokemon.visible || pokemon.down) continue
+        const at = pokemonPosition(pokemon)
+        targets.push({id: pokemon.profile.id, kind: 'pokemon', name: pokemon.profile.name, x: at.x + 0.5, y: at.y + 0.5,
+            maxHealth: pokemon.profile.species === 'ronflex' ? HEALTH.ronflex : HEALTH.pokemon})
+    }
+    return targets
+}
+
+/** Espace : lance le coup de l'arme tenue ; l'impact est résolu un peu plus tard, quand la lame ou la flèche arrive. */
+function attack(now: number) {
+    if (now < nextAttack || castle.active || bike || isFishing(fishing) || landedCatch || encounterOverlay.isOpen) return
+    const chosen = weaponById(weapon)
+    nextAttack = now + chosen.cooldown * 1000
+    attackUntil = now + chosen.cooldown * 1000
+    trainer.attack(ATTACK_GAIT[weapon])
+    pendingStrike = {at: now + chosen.impact * 1000, weapon}
+}
+
+const impactPoint = new THREE.Vector3()
+function resolveStrike(now: number) {
+    if (!pendingStrike || now < pendingStrike.at) return
+    const chosen = weaponById(pendingStrike.weapon)
+    pendingStrike = null
+    // Le dresseur frappe droit devant lui (rotation 0 : vers le sud, +y en cases).
+    const heading = {x: Math.sin(trainer.rotation.y), y: Math.cos(trainer.rotation.y)}
+    const origin = {x: trainer.position.x, y: trainer.position.z}
+    const target = aimAt(life, chosen, origin, heading, combatTargets())
+    if (!target) {
+        if (chosen.id === 'bow') {
+            weaponView.shoot(impactPoint.set(origin.x + heading.x * chosen.range, trainer.position.y + 1, origin.y + heading.y * chosen.range))
+        }
+        return
+    }
+    const hit = strike(life, chosen, target)!
+    impactPoint.set(target.x, terrain.height(target.x, target.y) + (target.kind === 'villager' ? 1.1 : 0.4), target.y)
+    if (chosen.id === 'bow') weaponView.shoot(impactPoint)
+    weaponView.burst(impactPoint, hit.killed)
+    if (target.kind === 'villager') {
+        const villager = villagers.find((candidate) => candidate.profile.id === target.id)!
+        if (hit.killed) {
+            // Il tombe sur la case la plus proche de sa position : plus de pas en cours, plus de case réservée.
+            if (villager.next && villager.step > 0.5) villager.tile = villager.next
+            Object.assign(villager, {down: true, next: null, step: 0, path: [], pose: 'dead', talking: 0, stagger: 0})
+        } else villager.stagger = 0.6
+    } else {
+        const pokemon = villagePokemon.find((candidate) => candidate.profile.id === target.id)!
+        if (hit.killed) {
+            if (pokemon.next && pokemon.step > 0.5) pokemon.tile = pokemon.next
+            // Un oiseau abattu retombe au sol ; un Magicarpe reste à la surface.
+            Object.assign(pokemon, {down: true, next: null, step: 0, path: [], flight: null, height: 0, visible: true, stagger: 0})
+        } else pokemon.stagger = 0.5
+    }
+    combatNote = {
+        text: hit.killed ? `${target.name} est ${target.kind === 'villager' ? 'mort' : 'tué'}.` : `${target.name} : −${hit.damage} PV (${hit.health}/${target.maxHealth})`,
+        until: now + 2500,
+    }
+    lastHud = ''
+}
+
+/** Les morts reviennent : les habitants depuis chez eux, les Pokémon là où ils sont tombés. */
+function reviveFallen(hours: number) {
+    for (const id of passTime(life, hours)) {
+        const villager = villagers.find((candidate) => candidate.profile.id === id)
+        if (villager) {
+            const {home} = villager.profile
+            Object.assign(villager, {down: false, inside: true, tile: {x: home.x, y: home.y}, next: null, path: [], pose: 'idle'})
+            continue
+        }
+        const pokemon = villagePokemon.find((candidate) => candidate.profile.id === id)
+        if (pokemon) Object.assign(pokemon, {down: false, visible: pokemon.profile.behaviour !== 'swim'})
+    }
+}
 /**
  * Cases à moins de `reach` cases (en carré) d'une eau : rivière, lac ou terre noyée. Recalculé chaque seconde pendant
  * la crue : une passe par ligne puis une par colonne, sans parcourir tout le carré autour de chaque case mouillée.
@@ -673,6 +777,25 @@ addEventListener('keydown', (event) => {
         lastHud = ''
         return
     }
+    if (key === 'tab' && !castle.active) {
+        event.preventDefault()
+        if (!event.repeat) weaponMenu.toggle()
+        return
+    }
+    if (!castle.active && !event.repeat && weaponMenu.pickByKey(key)) {
+        event.preventDefault()
+        return
+    }
+    if (key === 'escape' && weaponMenu.isOpen) {
+        weaponMenu.close()
+        return
+    }
+    if (key === ' ' && !castle.active) {
+        // Espace ne fait pas défiler la page ; maintenu, il enchaîne les coups au rythme de l'arme.
+        event.preventDefault()
+        attack(performance.now())
+        return
+    }
     if (key === 'b' && !event.repeat && !castle.active) {
         event.preventDefault()
         if (player.travelMode === 'walking' && !isFishing(fishing) && !landedCatch) ride(!bike)
@@ -890,7 +1013,7 @@ function updateHud(now: number) {
     const exit = nearExit(player.position)
     const nearCharmander = player.travelMode === 'walking' && canInteractWithPokemon(player.position, wildCharmander)
     if (dialogue && now > dialogue.until) dialogue = null
-    const neighbour = player.travelMode === 'walking' ? villagers.find((villager) => !villager.inside && !villager.next
+    const neighbour = player.travelMode === 'walking' ? villagers.find((villager) => !villager.inside && !villager.down && !villager.next
         && Math.abs(villager.tile.x - player.position.x) + Math.abs(villager.tile.y - player.position.y) === 1) : undefined
     const beast = player.travelMode === 'walking' ? pokemonNear(villagePokemon, player.position) : undefined
     const time = formatHour(Math.floor(hour * 4) / 4)
@@ -899,14 +1022,16 @@ function updateHud(now: number) {
     if (fishingNote && now > fishingNote.until) fishingNote = null
     const angling = describeFishing(fishing)
     const fishHint = !angling && !landedCatch && !castle.active && waterAhead()
+    if (combatNote && now > combatNote.until) combatNote = null
     const team = ['Pikachu', ...captured.map((key) => key === 'mewtwo' ? 'Mewtwo' : FISH[key]?.name ?? key)]
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${angling}|${fishingNote?.text}|${fishHint}|${bike !== null}|${performanceLine()}`
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${angling}|${fishingNote?.text}|${fishHint}|${bike !== null}|${weapon}|${combatNote?.text}|${performanceLine()}`
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = `<strong>${zoneAt(player.position)} · ${time}${sky ? ` · ${sky}` : ''}</strong>`
         + (angling ? `<p class="world3d-dialogue"><b>Pêche</b> — ${angling}</p>` : '')
         + (fishingNote ? `<p><b>Pêche</b> — ${fishingNote.text}</p>` : '')
         + (fishHint ? '<p>F : lancer la ligne</p>' : '')
+        + (combatNote ? `<p class="world3d-dialogue"><b>Combat</b> — ${combatNote.text}</p>` : '')
         + (wading ? `<p>L’eau est trop profonde pour passer à pied (plus de ${Math.round(WADE * 100)} cm).</p>` : '')
         + (dialogue ? `<p class="world3d-dialogue"><b>${dialogue.name}</b> <i>(${dialogue.job})</i> — ${dialogue.text}</p>` : '')
         + (!dialogue && neighbour ? `<p>E : parler à ${neighbour.profile.name} <i>(${neighbour.profile.job})</i></p>` : '')
@@ -919,6 +1044,7 @@ function updateHud(now: number) {
         + (captured.length ? `<p>Équipe : ${team.join(', ')}</p>` : '')
         + performanceLine()
         + (player.travelMode === 'walking' ? `<p>B : ${bike ? 'descendre du vélo' : 'monter à vélo'}</p>` : '')
+        + (bike ? '' : `<p>Arme : ${weaponById(weapon).name} · Espace : frapper · Tab : changer d’arme</p>`)
         + `<p class="world3d-help">${bike ? '↑ pédaler · ↓ freiner, puis reculer · ← → tourner' : 'Flèches / ZQSD pour marcher'} · ${viewHelp()} · <a href="/">carte 2D</a> · <a href="/open-world.html">monde ouvert</a></p>`
         + MAP_BUTTON + NEW_GAME
 }
@@ -961,7 +1087,7 @@ if (import.meta.env.DEV) void Promise.all([import('./devPanel'), import('./propE
     Object.assign((window as unknown as { world3d: object }).world3d, {editor})
     createDevPanel({
         renderer, scene, sun, weather, cameraOffset: CAMERA_OFFSET, framing: OUTDOOR_FRAMING, resolution, editor,
-        frameStats: () => ({cpu: cpuMilliseconds, gpu: gpuTimer.milliseconds()}),
+        frameStats: () => ({cpu: cpuMilliseconds, gpu: gpuTimer?.milliseconds() ?? null}),
         hour: {get: () => hour, set: (value) => { hour = value }},
         zoom: {get: () => zoom, set: (value) => { zoom = value }},
         rain: (hours, storm) => startRain(weather, hours, storm),
@@ -975,16 +1101,17 @@ const clock = new THREE.Clock()
 let floodViewTime = 0
 camera.position.copy(from).add(new THREE.Vector3(0, 7, 8))
 
-const gpuTimer = createGpuTimer(renderer.getContext())
+// Mesure réservée au développement : en production, pas de requête GPU à chaque image.
+const gpuTimer = import.meta.env.DEV ? createGpuTimer(renderer.getContext()) : null
 /** Temps CPU d'une image (logique et envoi des commandes de rendu), lissé ; lu par le panneau de développement. */
 let cpuMilliseconds = 0
 
 function animate(now: number) {
     const start = performance.now()
     renderer.info.reset()
-    gpuTimer.begin()
+    gpuTimer?.begin()
     frame(now)
-    gpuTimer.end()
+    gpuTimer?.end()
     cpuMilliseconds = cpuMilliseconds * 0.9 + (performance.now() - start) * 0.1
 }
 
@@ -1026,7 +1153,9 @@ function frame(now: number) {
     // Petite marge après chaque pas : la marche ne se coupe pas entre deux cases enchaînées.
     const fishingNow = isFishing(fishing) || landedCatch !== null
     const walking = !onBoat && now - stepStart < STEP_DURATION + 60
-    trainer.animate(delta, bike ? 'ride' : walking ? 'walk' : fishingNow ? 'fish' : 'idle')
+    const guard: 'sword' | 'bow' | 'idle' = weapon === 'sword' ? 'sword' : weapon === 'bow' ? 'bow' : 'idle'
+    trainer.animate(delta, bike ? 'ride' : now < attackUntil ? ATTACK_GAIT[weapon] : walking ? 'walk' : fishingNow ? 'fish' : guard)
+    weaponView.hold(bike || fishingNow ? null : weapon)
     // Ligne à l'eau, le dresseur arrêté se tourne vers son flotteur (il a pu longer la berge entre-temps).
     const facingFloat = !walking && fishing.phase !== 'idle' && fishing.phase !== 'casting'
     const facing = facingFloat ? Math.atan2(fishing.float.x - trainer.position.x, fishing.float.z - trainer.position.z) : ANGLES[player.direction]
@@ -1087,6 +1216,9 @@ function frame(now: number) {
     // Passants et Pokémon après la caméra : seuls ceux qu'elle voit sont dessinés et animés.
     camera.updateMatrixWorld()
     frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
+    resolveStrike(now)
+    reviveFallen(delta * 24 / DAY_SECONDS)
+    weaponView.update(delta)
     villagerView.update(delta, trainer.position, true, frustum)
     villagePokemonView.update(now / 1000, delta, trainer.position, true)
     // La carte d'ombre suit le regard : l'avant de la scène a ses ombres avant qu'on s'en approche.

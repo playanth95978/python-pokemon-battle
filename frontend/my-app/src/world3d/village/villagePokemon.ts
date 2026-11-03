@@ -116,6 +116,10 @@ export interface VillagePokemon {
     perch: number
     /** Après un chemin bloqué, délai avant de recalculer : pas de recherche A* à chaque image. */
     retry: number
+    /** Tué par le dresseur : couché, hors des collisions, jusqu'à son retour (voir combat.ts). */
+    down: boolean
+    /** Secondes pendant lesquelles il reste sonné après un coup. */
+    stagger: number
 }
 
 export interface PokemonWorld {
@@ -135,7 +139,7 @@ const same = (a: Position, b: Position) => a.x === b.x && a.y === b.y
 const inArea = (area: Area, {x, y}: Position) => x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height
 const isNight = (hour: number) => hour >= NIGHT_HOURS[0] || hour < NIGHT_HOURS[1]
 /** Les compagnons ne bloquent personne : ils collent à leur maître, comme Pikachu au dresseur. */
-const blocks = (pokemon: VillagePokemon) => pokemon.visible && pokemon.profile.behaviour !== 'follower' && walks(pokemon.profile.behaviour)
+const blocks = (pokemon: VillagePokemon) => pokemon.visible && !pokemon.down && pokemon.profile.behaviour !== 'follower' && walks(pokemon.profile.behaviour)
 const walks = (behaviour: Behaviour) => behaviour === 'worker' || behaviour === 'graze' || behaviour === 'follower' || behaviour === 'timid' || behaviour === 'sleeper'
 
 export function createVillagePokemon(profiles: PokemonProfile[], random: () => number): VillagePokemon[] {
@@ -156,7 +160,7 @@ export function createVillagePokemon(profiles: PokemonProfile[], random: () => n
         const at = profile.behaviour === 'perch' ? perches[perch] : {...start, height: 0}
         return {
             profile, tile: {...start}, next: null, step: 0, path: [], x: at.x, y: at.y, height: at.height,
-            heading: random() * Math.PI * 2, pose: 'idle', visible: profile.behaviour !== 'swim', timer: random() * 4, spotIndex: 0, flight: null, perch, retry: 0,
+            heading: random() * Math.PI * 2, pose: 'idle', visible: profile.behaviour !== 'swim', timer: random() * 4, spotIndex: 0, flight: null, perch, retry: 0, down: false, stagger: 0,
         }
     })
 }
@@ -179,7 +183,7 @@ export function pokemonAt(list: VillagePokemon[], tile: Position) {
 /** Pokémon visible à portée de main du dresseur (case voisine, ou moins d'une case et demie pour ceux qui volent). */
 export function pokemonNear(list: VillagePokemon[], player: Position) {
     const reachable = list.filter((pokemon) => {
-        if (!pokemon.visible || pokemon.flight) return false
+        if (!pokemon.visible || pokemon.flight || pokemon.down) return false
         if (walks(pokemon.profile.behaviour)) return !pokemon.next && distance(pokemon.tile, player) === 1
         return Math.hypot(pokemon.x - player.x, pokemon.y - player.y) < 1.5 && pokemon.height < 2.2
     })
@@ -192,7 +196,7 @@ export function pokemonNear(list: VillagePokemon[], player: Position) {
 }
 
 export function updateVillagePokemon(list: VillagePokemon[], hour: number, seconds: number, world: PokemonWorld) {
-    const villagerOn = (tile: Position) => world.villagers.some((villager) => !villager.inside
+    const villagerOn = (tile: Position) => world.villagers.some((villager) => !villager.inside && !villager.down
         && (same(villager.tile, tile) || (villager.next !== null && same(villager.next, tile))))
     const occupied = (tile: Position, self: VillagePokemon) => same(tile, world.player) || villagerOn(tile)
         || list.some((other) => other !== self && blocks(other) && (same(other.tile, tile) || (other.next !== null && same(other.next, tile))))
@@ -236,6 +240,11 @@ export function updateVillagePokemon(list: VillagePokemon[], hour: number, secon
     }
 
     for (const pokemon of list) {
+        if (pokemon.down) continue
+        if (pokemon.stagger > 0) {
+            pokemon.stagger -= seconds
+            continue
+        }
         const {behaviour, area, spots} = pokemon.profile
         const at = pokemonPosition(pokemon)
         const master = behaviour === 'follower' ? world.villagers.find((villager) => villager.profile.id === pokemon.profile.follows) : undefined

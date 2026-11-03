@@ -23,6 +23,8 @@ export interface DevPanelTargets {
     simulate(seconds: number): void
     /** Éditeur de mobilier (voir propEditor.ts). */
     editor: { enabled: boolean; changes(): string }
+    /** Temps d'une image en millisecondes : CPU, et GPU quand le navigateur sait le mesurer (sinon `null`). */
+    frameStats(): { cpu: number; gpu: number | null }
 }
 
 export function createDevPanel(targets: DevPanelTargets) {
@@ -83,6 +85,27 @@ export function createDevPanel(targets: DevPanelTargets) {
         ratio.updateDisplay()
     }
     setInterval(follow, 500)
+
+    // Ce que coûte une image : de quoi savoir quoi optimiser avant d'y toucher. Couper « Ombres du soleil » ou baisser
+    // la résolution ci-dessus et regarder ces chiffres bouger donne le coût de chaque poste.
+    const stats = {cpu: '', gpu: '', calls: 0, triangles: '', textures: 0, geometries: 0}
+    const performance = gui.addFolder('Performances')
+    performance.add(stats, 'cpu').name('CPU / image').listen().disable()
+    performance.add(stats, 'gpu').name('GPU / image').listen().disable()
+    performance.add(stats, 'calls').name('Draw calls').listen().disable()
+    performance.add(stats, 'triangles').name('Triangles').listen().disable()
+    performance.add(stats, 'textures').name('Textures en mémoire').listen().disable()
+    performance.add(stats, 'geometries').name('Géométries en mémoire').listen().disable()
+    setInterval(() => {
+        const {cpu, gpu} = targets.frameStats()
+        const {render, memory} = targets.renderer.info
+        stats.cpu = `${cpu.toFixed(1)} ms`
+        stats.gpu = gpu === null ? 'non mesurable' : `${gpu.toFixed(1)} ms`
+        stats.calls = render.calls
+        stats.triangles = `${(render.triangles / 1e6).toFixed(2)} M`
+        stats.textures = memory.textures
+        stats.geometries = memory.geometries
+    }, 500)
 
     const decor = gui.addFolder('Mobilier')
     const exported = {

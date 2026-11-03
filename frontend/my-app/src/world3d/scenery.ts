@@ -58,9 +58,12 @@ export function followShadow(sun: THREE.DirectionalLight, sunDirection: THREE.Ve
 
 /**
  * Allure du dresseur ; `fish` : debout, canne en main (la garde de l'épée du modèle) ; `ride` : à vélo, la tête et les
- * mains gardent le repos neutre, le reste est posé par cinématique inverse (voir createRiderPose).
+ * mains gardent le repos neutre, le reste est posé par cinématique inverse (voir createRiderPose). `sword` et `bow` :
+ * en garde, arme en main ; `punch`, `slash` et `shoot` : un coup, joué une fois (voir `attack`).
  */
-export type Gait = 'idle' | 'walk' | 'run' | 'fish' | 'ride'
+export type Gait = 'idle' | 'walk' | 'run' | 'fish' | 'ride' | 'sword' | 'bow' | AttackGait
+export type AttackGait = 'punch' | 'slash' | 'shoot'
+const ATTACKS: AttackGait[] = ['punch', 'slash', 'shoot']
 
 const TRAINER_MODEL = '/models/trainer/casual_character.glb'
 const TRAINER_HEIGHT = 1.45
@@ -71,6 +74,11 @@ const CLIPS: Record<Gait, [string, number]> = {
     run: ['CharacterArmature|Run', 1.4],
     fish: ['CharacterArmature|Idle_Sword', 0.6],
     ride: ['CharacterArmature|Idle_Neutral', 1],
+    sword: ['CharacterArmature|Idle_Sword', 1],
+    bow: ['CharacterArmature|Idle_Gun_Pointing', 1],
+    punch: ['CharacterArmature|Punch_Right', 1.6],
+    slash: ['CharacterArmature|Sword_Slash', 1.5],
+    shoot: ['CharacterArmature|Gun_Shoot', 1.3],
 }
 
 /**
@@ -79,8 +87,11 @@ const CLIPS: Record<Gait, [string, number]> = {
  */
 export function createTrainer() {
     let animateModel: ((delta: number, gait: Gait) => void) | null = null
+    let attackModel: ((gait: AttackGait) => void) | null = null
     const trainer = Object.assign(new THREE.Group(), {
         animate: (delta: number, gait: Gait) => animateModel?.(delta, gait),
+        /** Rejoue un coup depuis le début, même si le précédent n'est pas fini (coups enchaînés). */
+        attack: (gait: AttackGait) => attackModel?.(gait),
     })
     const placeholder = createPlaceholderTrainer()
     trainer.add(placeholder)
@@ -105,8 +116,20 @@ export function createTrainer() {
             const clip = gltf.animations.find((animation) => animation.name === name)
             return [gait, clip ? mixer.clipAction(clip).setEffectiveTimeScale(speed) : null]
         })) as Record<Gait, THREE.AnimationAction | null>
+        // Un coup se joue une fois et reste sur sa dernière image jusqu'au fondu suivant.
+        for (const gait of ATTACKS) {
+            actions[gait]?.setLoop(THREE.LoopOnce, 1)
+            if (actions[gait]) actions[gait]!.clampWhenFinished = true
+        }
         let current: Gait = 'idle'
         actions.idle?.play()
+        attackModel = (gait) => {
+            const action = actions[gait]
+            if (!action) return
+            action.reset().play()
+            if (current !== gait) actions[current]?.crossFadeTo(action, 0.08, false)
+            current = gait
+        }
         animateModel = (delta, gait) => {
             if (gait !== current && actions[gait]) {
                 actions[gait]!.reset().play()
