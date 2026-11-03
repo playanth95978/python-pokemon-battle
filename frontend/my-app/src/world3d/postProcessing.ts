@@ -9,6 +9,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 import { installCelShading } from './celShading'
+import type { GraphicsQuality } from './graphicsQuality'
 
 /**
  * Contours, tone mapping ACES (le même que celui de three.js), conversion sRGB puis étalonnage : couleurs franches
@@ -99,17 +100,18 @@ const GradingShader = {
         }`,
 }
 
-export function createPostProcessing(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+export function createPostProcessing(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera,
+                                     quality: Pick<GraphicsQuality, 'ambientOcclusion' | 'ambientOcclusionHalfRes'> = {ambientOcclusion: 'Low', ambientOcclusionHalfRes: true}) {
     installCelShading()
     const size = renderer.getSize(new THREE.Vector2())
     const composer = new EffectComposer(renderer)
     // L'occlusion ambiante part de la profondeur de l'image rendue : les feuilles découpées (alphaTest) restent justes,
-    // contrairement au GTAO de three.js qui redessine la scène sans leurs textures. Calculée en demi-résolution ;
-    // l'eau transparente n'a pas besoin d'un second rendu dédié.
+    // contrairement au GTAO de three.js qui redessine la scène sans leurs textures. Calculée en demi-résolution sur un
+    // GPU intégré, en pleine résolution sur une carte dédiée ; l'eau transparente n'a pas besoin d'un second rendu dédié.
     const ambientOcclusion = new N8AOPass(scene, camera, size.x, size.y)
-    ambientOcclusion.setQualityMode('Low')
+    ambientOcclusion.setQualityMode(quality.ambientOcclusion)
     Object.assign(ambientOcclusion.configuration, {
-        aoRadius: 1.6, distanceFalloff: 0.5, intensity: 1.3, halfRes: true, gammaCorrection: false,
+        aoRadius: 1.6, distanceFalloff: 0.5, intensity: 1.3, halfRes: quality.ambientOcclusionHalfRes, gammaCorrection: false,
         transparencyAware: false, color: new THREE.Color(0x0c1008),
     })
     // Sans cela, n8ao réactive le second rendu dès qu'il voit un objet transparent dans la scène.
@@ -125,9 +127,10 @@ export function createPostProcessing(renderer: THREE.WebGLRenderer, scene: THREE
         render() {
             grading.uniforms.exposure.value = renderer.toneMappingExposure
             // n8ao recrée sa cible de rendu quand sa configuration change : on relit sa profondeur à chaque image.
-            const depth = ambientOcclusion.beautyRenderTarget.depthTexture
-            grading.uniforms.tDepth.value = depth
-            grading.uniforms.pixelSize.value.set(1 / depth.image.width, 1 / depth.image.height)
+            const target = ambientOcclusion.beautyRenderTarget
+            grading.uniforms.tDepth.value = target.depthTexture
+            // Taille lue sur la cible (sa profondeur a la même) : les types three.js ne garantissent pas celle de l'image.
+            grading.uniforms.pixelSize.value.set(1 / target.width, 1 / target.height)
             grading.uniforms.cameraNear.value = camera.near
             grading.uniforms.cameraFar.value = camera.far
             composer.render()

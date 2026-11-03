@@ -60,10 +60,12 @@ export interface DayScene {
     sky: Sky
     hemisphere: THREE.HemisphereLight
     lanterns: THREE.MeshStandardMaterial
+    /** Distance où la brume masque tout par beau temps (selon la qualité choisie) ; VIEW_DISTANCE par défaut. */
+    viewDistance?: number
 }
 
 /** `overcast` : ciel couvert par la pluie, de 0 à 1 (soleil voilé, brume grise, lanternes allumées plus tôt). */
-export function applyDaylight({scene, clouds, sun, sunDirection, sky, hemisphere, lanterns}: DayScene, light: Daylight, overcast = 0) {
+export function applyDaylight({scene, clouds, sun, sunDirection, sky, hemisphere, lanterns, viewDistance = VIEW_DISTANCE}: DayScene, light: Daylight, overcast = 0) {
     // Ciel bleu profond de dessin animé par beau temps (voir createAtmosphere), gris laiteux sous la pluie.
     sky.material.uniforms.turbidity.value = 2 + overcast * 18
     sky.material.uniforms.rayleigh.value = 2.6 - overcast * 2.3
@@ -82,8 +84,8 @@ export function applyDaylight({scene, clouds, sun, sunDirection, sky, hemisphere
     if (scene.fog instanceof THREE.FogExp2) scene.fog.density = FOG_DENSITY + (RAIN_DENSITY - FOG_DENSITY) * overcast
     if (scene.fog instanceof THREE.Fog) {
         // L'horloge ne rétablit pas l'ancienne brume dense ; seule la pluie rapproche sa limite.
-        scene.fog.near = THREE.MathUtils.lerp(VIEW_DISTANCE / 2, 10, overcast)
-        scene.fog.far = THREE.MathUtils.lerp(VIEW_DISTANCE, 28, overcast)
+        scene.fog.near = THREE.MathUtils.lerp(viewDistance / 2, 10, overcast)
+        scene.fog.far = THREE.MathUtils.lerp(viewDistance, 28, overcast)
     }
     lanterns.emissiveIntensity = Math.max(light.lanterns, overcast * 0.6) * 2.4
     clouds.visible = overcast > 0.01

@@ -58,9 +58,9 @@ function withDetail(material: THREE.MeshStandardMaterial, texture: THREE.Texture
     material.metalness = 0
 }
 
-export async function loadVillageModels(renderer: THREE.WebGLRenderer): Promise<VillageModels> {
+export async function loadVillageModels(renderer: THREE.WebGLRenderer, maxAnisotropy = 8): Promise<VillageModels> {
     const loader = new GLTFLoader(), textureLoader = new THREE.TextureLoader()
-    const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
+    const anisotropy = Math.min(maxAnisotropy, renderer.capabilities.getMaxAnisotropy())
     const textures = new Map<string, Promise<THREE.Texture>>()
     const detail = (file: string) => {
         if (!textures.has(file)) {

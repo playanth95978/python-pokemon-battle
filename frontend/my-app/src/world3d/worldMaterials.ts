@@ -100,9 +100,9 @@ function groundMaterial(map: WorldMap, path: { value: THREE.Texture }, wetness: 
     return material
 }
 
-export function createWorldMaterials(map: WorldMap, renderer: THREE.WebGLRenderer): WorldMaterials {
+export function createWorldMaterials(map: WorldMap, renderer: THREE.WebGLRenderer, maxAnisotropy = 8): WorldMaterials {
     const loader = new THREE.TextureLoader()
-    const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
+    const anisotropy = Math.min(maxAnisotropy, renderer.capabilities.getMaxAnisotropy())
     let loaded = 0, total = 0
     const pending: Promise<unknown>[] = []
 

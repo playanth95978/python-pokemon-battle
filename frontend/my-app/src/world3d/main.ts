@@ -17,7 +17,9 @@ import {
 import { buildDecorChunk, buildGrassChunk, buildWorldBase, disposeChunk, tileCenter } from './buildWorld3D'
 import { createTerrain, RIVER_LEVEL } from './terrain'
 import { createWater } from './water'
-import { CHUNK_SIZE, GRASS_RADIUS, GRASS_UNLOAD_RADIUS, LOAD_RADIUS, UNLOAD_RADIUS, VIEW_DISTANCE } from './worldChunks'
+import { CHUNK_SIZE } from './worldChunks'
+import { gpuName, pickQuality } from './graphicsQuality'
+import { createGpuTimer } from './gpuTimer'
 import { createWorldMaterials } from './worldMaterials'
 import { leadsToOpenWorld, nearExit, OPEN_WORLD_URL } from './worldExit'
 import { createAtmosphere, createResolutionScaler, createTrainer, followShadow } from './scenery'
@@ -93,20 +95,23 @@ renderer.toneMappingExposure = 0.72
 host.appendChild(renderer.domElement)
 renderer.domElement.tabIndex = 0
 renderer.domElement.setAttribute('aria-label', 'Monde 3D de Clairbois')
+const quality = pickQuality(gpuName(renderer.getContext()), location.search, devicePixelRatio)
+// Compteurs cumulés sur toute l'image (ombre, occlusion, eau, post-traitement), remis à zéro par animate.
+renderer.info.autoReset = false
 
 const scene = new THREE.Scene()
 // La brume laisse les premiers plans nets, puis masque la limite du décor chargé.
-scene.fog = new THREE.Fog(0xa9c4d4, VIEW_DISTANCE / 2, VIEW_DISTANCE)
+scene.fog = new THREE.Fog(0xa9c4d4, quality.viewDistance / 2, quality.viewDistance)
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1200)
 
 // Carte d'ombre plus large et plus fine, centrée devant la caméra (voir followShadow).
-const {sun, sunDirection, sky, hemisphere} = createAtmosphere(renderer, scene, 20, 3072)
+const {sun, sunDirection, sky, hemisphere} = createAtmosphere(renderer, scene, quality.shadowExtent, quality.shadowMapSize)
 const firstPerson = createFirstPersonView(renderer.domElement, camera)
 const rig = createCameraRig(camera, renderer.domElement, firstPerson)
-const post = createPostProcessing(renderer, scene, camera)
+const post = createPostProcessing(renderer, scene, camera, quality)
 // En développement, la scène est exposée pour mesurer le coût du rendu depuis la console.
 if (import.meta.env.DEV) Object.assign(window, {world3d: {
-    renderer, scene, camera, post, water: () => water, castle: () => castle, villagers: () => villagers,
+    renderer, scene, camera, post, quality, water: () => water, castle: () => castle, villagers: () => villagers,
     setHour: (value: number) => { hour = value },
     weather: () => weather, flood: () => flood, fishing: () => fishing, bike: () => bike,
     /** Averse (`storm` : orage, qui fait déborder la rivière) de `hours` heures de jeu. */
@@ -123,11 +128,11 @@ if (import.meta.env.DEV) Object.assign(window, {world3d: {
     enterCastle: () => enterCastle(performance.now()),
 }})
 
-const materials = createWorldMaterials(WORLD_MAP, renderer)
+const materials = createWorldMaterials(WORLD_MAP, renderer, quality.anisotropy)
 // Les chunks attendent que les arbres et les maisons soient prêts (modèles chargés, textures envoyées, shaders compilés) :
 // rien n'apparaît à moitié chargé.
 let village: VillageModels | null = null
-void Promise.all([prepareTrees(renderer, scene, ['oak', 'aspen', 'pine']), loadVillageModels(renderer)]).then(([, models]) => {
+void Promise.all([prepareTrees(renderer, scene, ['oak', 'aspen', 'pine']), loadVillageModels(renderer, quality.anisotropy)]).then(([, models]) => {
     village = models
 })
 const villageProps = createVillageProps(materials)
@@ -144,9 +149,10 @@ floodView.update(weather.rise)
 materials.floodMap.value = floodView.texture
 // Surface locale qui suit le joueur : densité des vagues constante, même quand la carte grandit.
 // Le brouillard masque son bord ; la texture de crue continue de décrire toute la carte.
-const WATER_REACH = (LOAD_RADIUS + 2) * CHUNK_SIZE
+const WATER_REACH = (quality.loadRadius + 2) * CHUNK_SIZE
 const water = createWater(renderer, scene, sunDirection, {
-    width: WATER_REACH * 2, depth: WATER_REACH * 2, segments: 240, focused: true,
+    // Même finesse de vagues quelle que soit la portée : 240 segments pour le décor standard (64 unités de rayon).
+    width: WATER_REACH * 2, depth: WATER_REACH * 2, segments: Math.round(240 * WATER_REACH / 64), focused: true,
     waveHeight: 0.02, wavelength: 2.4, shallowColor: 0xcfe6dc, deepColor: 0x0e3438, absorption: 3.2, foamWidth: 0.1,
     surface: {map: floodView.texture, rect: floodView.rect, muddyColor: 0x7a5c3e},
 })
@@ -155,15 +161,15 @@ const rain = createRain(scene)
 const streamer = new WorldStreamer(WORLD_MAP, scene, [
     {
         name: 'decor',
-        loadRadius: LOAD_RADIUS,
-        unloadRadius: UNLOAD_RADIUS,
+        loadRadius: quality.loadRadius,
+        unloadRadius: quality.unloadRadius,
         build: (chunk) => buildDecorChunk(WORLD_MAP, chunk, village!, villageProps, terrain, materials),
         dispose: disposeChunk
     },
     {
         name: 'grass',
-        loadRadius: GRASS_RADIUS,
-        unloadRadius: GRASS_UNLOAD_RADIUS,
+        loadRadius: quality.grassRadius,
+        unloadRadius: quality.grassUnloadRadius,
         build: (chunk) => buildGrassChunk(WORLD_MAP, chunk, materials, terrain, isCastleGround),
         dispose: disposeChunk
     },
@@ -284,7 +290,7 @@ function poseBicycle(delta: number) {
 // Château du pré sud-ouest : extérieur dans Clairbois, intérieur dans sa propre scène (trois étages, Mewtwo au sommet).
 const castleMaterials = createCastleMaterials(renderer)
 const castleOutside = buildCastleExterior(scene, castleMaterials)
-const castle = createCastle(renderer, camera, castleMaterials)
+const castle = createCastle(renderer, camera, castleMaterials, quality)
 const castleAudio = createCastleAudio()
 const villageAudio = createVillageAudio(WORLD_MAP)
 const villageAudioControls = createVillageAudioControls(document.body, villageAudio)
@@ -479,7 +485,7 @@ function handleFishing(events: FishingEvent[], now: number) {
 }
 const clouds = createCloudCover()
 scene.add(clouds)
-const DAY = {scene, clouds, sun, sunDirection, sky, hemisphere, lanterns: lanternGlass}
+const DAY = {scene, clouds, sun, sunDirection, sky, hemisphere, lanterns: lanternGlass, viewDistance: quality.viewDistance}
 
 let pikachu: Companion | null = null
 const wildCharmander: WorldPokemon = {
@@ -925,7 +931,7 @@ addEventListener('resize', () => {
     castle.setSize(innerWidth, innerHeight)
 })
 
-const resolution = createResolutionScaler(renderer, undefined, undefined, (ratio) => {
+const resolution = createResolutionScaler(renderer, quality.maxPixelRatio, undefined, (ratio) => {
     renderer.setPixelRatio(ratio)
     post.setPixelRatio(ratio)
     castle.setPixelRatio(ratio)
@@ -955,6 +961,7 @@ if (import.meta.env.DEV) void Promise.all([import('./devPanel'), import('./propE
     Object.assign((window as unknown as { world3d: object }).world3d, {editor})
     createDevPanel({
         renderer, scene, sun, weather, cameraOffset: CAMERA_OFFSET, framing: OUTDOOR_FRAMING, resolution, editor,
+        frameStats: () => ({cpu: cpuMilliseconds, gpu: gpuTimer.milliseconds()}),
         hour: {get: () => hour, set: (value) => { hour = value }},
         zoom: {get: () => zoom, set: (value) => { zoom = value }},
         rain: (hours, storm) => startRain(weather, hours, storm),
@@ -968,7 +975,20 @@ const clock = new THREE.Clock()
 let floodViewTime = 0
 camera.position.copy(from).add(new THREE.Vector3(0, 7, 8))
 
+const gpuTimer = createGpuTimer(renderer.getContext())
+/** Temps CPU d'une image (logique et envoi des commandes de rendu), lissé ; lu par le panneau de développement. */
+let cpuMilliseconds = 0
+
 function animate(now: number) {
+    const start = performance.now()
+    renderer.info.reset()
+    gpuTimer.begin()
+    frame(now)
+    gpuTimer.end()
+    cpuMilliseconds = cpuMilliseconds * 0.9 + (performance.now() - start) * 0.1
+}
+
+function frame(now: number) {
     const frameSeconds = clock.getDelta()
     measureFps(now, frameSeconds)
     const delta = Math.min(frameSeconds, 0.05)

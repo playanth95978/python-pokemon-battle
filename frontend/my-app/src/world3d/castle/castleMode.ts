@@ -7,6 +7,7 @@ import * as THREE from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import type { Direction } from '../../world/types'
 import { createPostProcessing } from '../postProcessing'
+import type { GraphicsQuality } from '../graphicsQuality'
 import type { Gait } from '../scenery'
 import type { CastleEvent, CastleState, Tile } from './castleLayout'
 import { blocksCamera, BOSS, enterCastle, FLOOR_NAMES, interact, ITEMS, nearBoss, roomAt, ROOMS } from './castleLayout'
@@ -24,7 +25,8 @@ const MESSAGE_MS = 3200
 
 type Trainer = THREE.Object3D & { animate: (delta: number, gait: Gait) => void }
 
-export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera, materials: CastleMaterials) {
+export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera, materials: CastleMaterials,
+                             quality?: Pick<GraphicsQuality, 'ambientOcclusion' | 'ambientOcclusionHalfRes'>) {
     const scene = new THREE.Scene()
     // Brouillard chaud et lointain : il donne de la profondeur sans plonger les pièces dans le noir.
     scene.background = new THREE.Color(0x1c1814)
@@ -57,7 +59,7 @@ export function createCastle(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
         scene.add(light)
         return light
     })
-    const post = createPostProcessing(renderer, scene, camera)
+    const post = createPostProcessing(renderer, scene, camera, quality)
 
     let state: CastleState | null = null
     /** Objets ramassés et portes ouvertes : ils restent acquis quand on sort du château et qu'on y revient. */
