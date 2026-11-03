@@ -243,16 +243,34 @@ ne déclenche pas cette première version de la police.
 Les chevaux galopent sur les chemins et ponts en contournant les maisons, arbres,
 passants et rivières. Les murs et arbres coupent leur vue : rester hors de vue
 pendant 30, 40 ou 50 secondes selon l'alerte permet de les semer. Un cavalier à
-moins de 1,5 case pendant 2,5 secondes continues interpelle le joueur : retour au
-vieux bourg, poings sélectionnés et recherche levée, sans perte de progression au
-château ni modification des PV des combats Pokémon. Le bateau ne peut pas être
+moins de 1,5 case pendant 2,5 secondes continues alors que le joueur est immobile
+interpelle le joueur. Bouger remet cette progression à zéro. L'écran **Interpellé
+par la garde montée** suspend la scène en gardant les cavaliers visibles : aucun
+déplacement n'a lieu avant le choix. **Se rendre** conduit en cellule ; **Se défendre**
+lance un duel à pied contre un garde. **1 / 2 / 3** choisit poings, épée ou arc,
+**Espace** attaque, les déplacements permettent d'esquiver. Le personnage se tourne
+vers son adversaire ; les obstacles bloquent les coups. Le garde annonce son attaque
+avant de frapper. Les PV de ce duel sont locaux (joueur 100, garde 80), indépendants
+des combats Pokémon. Une victoire ou une fuite relance la poursuite avec une étoile
+supplémentaire et huit secondes sans nouvelle interpellation ; une défaite mène en prison.
+La progression au château reste conservée. Le bateau ne peut pas être
 interpellé depuis la rive ; les gardes cherchent la dernière position terrestre.
+
+La **Prison de Clairbois** apparaît sur la carte C, dans le faubourg du rempart.
+En détention : approche des barreaux à l'est, **E** appelle le geôlier et ouvre la
+cellule pour le duel. Après la victoire, approche des **clés dorées**, puis **E**
+pour les ramasser. Rejoins la porte au **nord-est** et appuie sur **E** pour sortir.
+La garde est alors alertée. Perdre contre le geôlier replace en cellule avec un
+nouveau duel. Depuis l'extérieur, **E** devant l'entrée permet aussi une visite
+libre ; un visiteur peut ressortir sans clés. Les duels ne nécessitent pas le backend.
 
 Les montures et cavaliers sont des modèles procéduraux locaux avec galop animé,
 géométries et matériaux partagés. Au plus quatre cavaliers et une recherche A*
 par image ; aucune requête réseau ni appel LLM. Carte, rencontre, onglet masqué et
 château suspendent la poursuite sans effacer l'alerte. La recherche reste propre
-à la session d'exploration de Clairbois et n'est pas enregistrée dans la sauvegarde.
+à la session d'exploration de Clairbois. Recherche, détention et duels de gardes
+ne sont pas enregistrés dans la sauvegarde ; un rechargement reprend l'exploration
+extérieure et conserve la progression du château.
 
 Dans Clairbois 3D, **Activer les sons du village** (ou **M** dehors) débloque
 l'ambiance spatialisée ; un curseur règle son volume. L'eau, les fontaines et le

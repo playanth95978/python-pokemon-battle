@@ -11,6 +11,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1622; fon
 .world3d-hud a { color: #ffd66b; }
 .world3d-help { opacity: .75; font-size: .8rem !important; }
 .world3d-hud .world3d-wanted { margin: 10px 0; padding: 8px 10px; border: 1px solid #e0b257; border-radius: 8px; background: #4a231de0; color: #ffe09a; }
+.world3d-arrest { width: min(430px, calc(100vw - 64px)); padding: 28px; border: 1px solid #d9b568; border-radius: 14px; background: #142132; color: #f4efe2; box-shadow: 0 20px 80px #0009; }
+.world3d-arrest::backdrop { background: #080e1a9c; }
+.world3d-arrest h2 { margin: 0 0 16px; color: #f1ce85; font-size: 1.5rem; }
+.world3d-arrest h2:focus { outline: none; }
+.world3d-arrest p { line-height: 1.5; }
+.world3d-arrest button { margin-top: 12px; padding: 12px 18px; border: 1px solid #f1ce85; border-radius: 8px; background: #e7c581; color: #172335; font: inherit; font-weight: 600; cursor: pointer; }
+.world3d-arrest button:focus-visible { outline: 3px solid white; outline-offset: 4px; }
 .world3d-new-game {
   margin-top: 4px; padding: 4px 10px; border-radius: 8px; border: 1px solid rgb(255 214 107 / .5);
   background: transparent; color: #ffd66b; font: inherit; font-size: .8rem; cursor: pointer;

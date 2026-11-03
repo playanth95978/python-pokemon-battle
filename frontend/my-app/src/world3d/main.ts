@@ -55,8 +55,14 @@ import type { Target, WeaponId } from './village/combat'
 import { aimAt, createLife, passTime, strike, weaponById } from './village/combat'
 import { createWeaponMenu } from './village/weaponMenu'
 import { createWeaponView } from './village/weaponView'
-import { createPolice, describePolice, policeAt, reportKilling, updatePolice } from './village/police'
+import { createPolice, describePolice, finishArrest, hasPoliceSight, officerPosition, policeAt, reportKilling, resumeAfterResistance, updatePolice } from './village/police'
 import { createMountedPoliceView } from './village/mountedPoliceView'
+import { createArrestOverlay } from './arrestOverlay'
+import { createGuardDuel, duelHealth, guardWasHit, updateGuardDuel, type GuardDuel } from './village/guardDuel'
+import { createGuardDuelView } from './village/guardDuelView'
+import { createPrison, defeatWarden, interactPrison, prisonInteraction, prisonPassable, WARDEN_SPAWN, type PrisonState } from './prison/prison'
+import { createPrisonView } from './prison/prisonView'
+import { PRISON_ENTRANCE } from './prison/prisonLocation'
 import { createGoreView } from './village/goreView'
 import type { KillingBlow } from './village/villagerView'
 import { createPhysics } from './physicsWorld'
@@ -122,6 +128,7 @@ const post = createPostProcessing(renderer, scene, camera, quality)
 // En développement, la scène est exposée pour mesurer le coût du rendu depuis la console.
 if (import.meta.env.DEV) Object.assign(window, {world3d: {
     renderer, scene, camera, post, quality, water: () => water, castle: () => castle, villagers: () => villagers, police: () => police,
+    detention: () => ({prison, duel: guardDuel}),
     setHour: (value: number) => { hour = value },
     weather: () => weather, flood: () => flood, fishing: () => fishing, bike: () => bike, physics: () => physics,
     /** Averse (`storm` : orage, qui fait déborder la rivière) de `hours` heures de jeu. */
@@ -379,6 +386,28 @@ const villagePokemonView = createVillagePokemonView(scene, villagePokemon, terra
 const life = createLife()
 const police = createPolice()
 const mountedPolice = createMountedPoliceView(scene, terrain.height)
+let prison: PrisonState | null = null
+let prisonView: ReturnType<typeof createPrisonView> | null = null
+let guardDuel: GuardDuel | null = null
+let challengedOfficer: number | null = null
+const guardDuelView = createGuardDuelView()
+const PRISON_FRAMING: CameraFraming = {offset: new THREE.Vector3(0, 5, 5), lookHeight: 0.8, lookAhead: 0}
+let prisonFrom = new THREE.Vector3(), prisonTo = new THREE.Vector3(), prisonStepAt = 0
+let prisonDirection: Direction = 'right'
+const arrestOverlay = createArrestOverlay({
+    onPause: () => {
+        stopWalking()
+        pendingStrike = null
+        rig.setActive(false)
+        villageAudio.setActive(false)
+        renderer.setAnimationLoop(null)
+    },
+    onRelease: () => {
+        enterPrison(true)
+        resumeDetentionScene()
+    },
+    onResist: () => {startResistance(); resumeDetentionScene()},
+})
 let weapon: WeaponId = 'fists'
 const weaponView = createWeaponView(scene, trainer)
 const weaponMenu = createWeaponMenu((picked) => {
@@ -394,6 +423,8 @@ const HEALTH = {villager: 40, child: 25, pokemon: 30, ronflex: 120} as const
 
 /** Êtres vivants qu'on peut frapper, en cases (centre de case), avec leur santé maximale. */
 function combatTargets(): Target[] {
+    if (duelActive()) return [guardDuel!.opponent]
+    if (prison) return []
     const targets: Target[] = []
     for (const villager of villagers) {
         if (villager.inside || villager.down) continue
@@ -413,6 +444,7 @@ function combatTargets(): Target[] {
 /** Espace : lance le coup de l'arme tenue ; l'impact est résolu un peu plus tard, quand la lame ou la flèche arrive. */
 function attack(now: number) {
     if (now < nextAttack || castle.active || bike || isFishing(fishing) || landedCatch || encounterOverlay.isOpen) return
+    if (prison && !duelActive()) return
     const chosen = weaponById(weapon)
     nextAttack = now + chosen.cooldown * 1000
     attackUntil = now + chosen.cooldown * 1000
@@ -430,11 +462,26 @@ function resolveStrike(now: number) {
     // Le dresseur frappe droit devant lui (rotation 0 : vers le sud, +y en cases).
     const heading = {x: Math.sin(trainer.rotation.y), y: Math.cos(trainer.rotation.y)}
     const origin = {x: trainer.position.x, y: trainer.position.z}
-    const target = aimAt(life, chosen, origin, heading, combatTargets())
+    const targetLife = duelActive() ? guardDuel!.life : life
+    const target = aimAt(targetLife, chosen, origin, heading, combatTargets())
     if (!target) {
         if (chosen.id === 'bow') {
             weaponView.shoot(impactPoint.set(origin.x + heading.x * chosen.range, trainer.position.y + 1, origin.y + heading.y * chosen.range))
         }
+        return
+    }
+    if (target.kind === 'guard') {
+        const blocked = prison ? (tile: Position) => !prisonPassable(prison!, tile)
+            : (tile: Position) => !walkable(tile) || castleBlocks(tile)
+        // La même ligne de visée que le garde empêche de tirer à travers les barreaux et les maisons.
+        if (!hasClearDuelSight(origin, target, blocked)) return
+        const hit = strike(targetLife, chosen, target)
+        if (!hit) return
+        guardWasHit(guardDuel!)
+        impactPoint.set(target.x, prison ? 1 : terrain.height(target.x, target.y) + 1, target.y)
+        if (chosen.id === 'bow') weaponView.shoot(impactPoint)
+        weaponView.burst(impactPoint, false)
+        combatNote = {text: `${target.name} : −${hit.damage} PV (${hit.health}/${target.maxHealth})`, until: now + 2000}
         return
     }
     const hit = strike(life, chosen, target)!
@@ -490,8 +537,42 @@ function reviveFallen(hours: number) {
     }
 }
 
-/** Interpellation en exploration : retour au bourg, sans modifier les combats ni la progression du château. */
-function releaseAfterArrest(now: number) {
+function duelActive(): boolean {
+    return !!guardDuel && !guardDuel.result && (!prison || (prison.detained && prison.cellOpen))
+}
+
+function hasClearDuelSight(origin: Position, target: Position, blocked: (position: Position) => boolean) {
+    return hasPoliceSight({x: origin.x - 0.5, y: origin.y - 0.5}, {x: target.x - 0.5, y: target.y - 0.5}, blocked)
+}
+
+function resumeDetentionScene() {
+    rig.setActive(true)
+    villageAudio.setActive(!prison)
+    clock.getDelta()
+    renderer.setAnimationLoop(animate)
+}
+
+function startResistance() {
+    ride(false)
+    const selected = [...police.officers].sort((a, b) => {
+        const pa = officerPosition(a), pb = officerPosition(b)
+        return Math.hypot(pa.x + 0.5 - trainer.position.x, pa.y + 0.5 - trainer.position.z)
+            - Math.hypot(pb.x + 0.5 - trainer.position.x, pb.y + 0.5 - trainer.position.z)
+    })[0]
+    if (!selected) return
+    challengedOfficer = selected.id
+    const at = officerPosition(selected)
+    guardDuel = createGuardDuel('police', {x: at.x + 0.5, y: at.y + 0.5})
+    trainer.rotation.y = Math.atan2(guardDuel.opponent.x - trainer.position.x, guardDuel.opponent.y - trainer.position.z)
+    stopWalking()
+    pendingStrike = null
+    combatNote = {text: 'Duel contre la garde : Espace pour frapper, 1 / 2 / 3 pour choisir une arme. Recule pour esquiver.', until: performance.now() + 6000}
+}
+
+/** Une détention possède son propre état local ; la progression et les PV Pokémon ne changent pas. */
+function enterPrison(detained: boolean) {
+    const now = performance.now()
+    if (detained) finishArrest(police)
     ride(false)
     stopWalking()
     pendingStrike = null
@@ -502,31 +583,107 @@ function releaseAfterArrest(now: number) {
     Object.assign(fishing, createFishing())
     landedCatch = null
     fishHeld = fishPressed = false
-    const position = [WORLD_SPAWN, {x: 18, y: 37}, {x: 18, y: 35}, {x: 19, y: 36}, {x: 17, y: 36}]
-        .find((tile) => walkable(tile) && !villagerAt(villagers, tile) && !pokemonAt(villagePokemon, tile)) ?? WORLD_SPAWN
-    player = {...player, travelMode: 'walking', position: {...position}, direction: 'down'}
+    prison = createPrison(detained)
+    prisonView ??= createPrisonView(renderer, camera)
+    prisonView.scene.add(trainer)
+    weaponView.setScene(prisonView.scene)
+    prisonFrom = prisonTo = tileCenter(prison.position.x, prison.position.y)
+    prisonStepAt = now - STEP_DURATION
+    prisonDirection = 'right'
+    trainer.position.copy(prisonTo)
+    guardDuel = createGuardDuel('warden', {x: WARDEN_SPAWN.x + 0.5, y: WARDEN_SPAWN.y + 0.5})
+    guardDuel.heading = -Math.PI / 2
+    challengedOfficer = null
+    villageAudio.setActive(false)
+    renderer.toneMappingExposure = 1
+    rig.snap(trainer.position, PRISON_FRAMING)
+    combatNote = null
+    mountedPolice.update(police, 0, false)
+    lastHud = ''
+}
+
+function leavePrison() {
+    const escaped = prison!.detained
+    stopWalking()
+    pendingStrike = null
+    prison = null
+    guardDuel = null
+    guardDuelView.root.removeFromParent()
+    scene.add(trainer)
+    weaponView.setScene(scene)
+    const position = {...PRISON_ENTRANCE}
+    player = {...player, travelMode: 'walking', position, direction: 'down'}
     from = to = tileCenter(position.x, position.y)
     followerFrom = followerTo = tileCenter(position.x, position.y - 1)
-    stepStart = now - STEP_DURATION
+    stepStart = performance.now() - STEP_DURATION
     trainer.position.copy(to)
     trainer.position.y = terrain.tile(position)
-    trainer.rotation.y = 0
+    renderer.toneMappingExposure = OUTDOOR_EXPOSURE
     rig.snap(trainer.position, outdoorFraming())
-    combatNote = {text: 'Interpellé par la garde montée. Tu es reconduit au vieux bourg, désarmé.', until: now + 7000}
+    villageAudio.setActive(true)
+    if (escaped) resumeAfterResistance(police, position, null)
+    combatNote = {text: escaped ? 'Tu as ouvert la prison avec les clés du geôlier. La garde est alertée !' : 'Tu quittes la prison.', until: performance.now() + 6000}
     lastHud = ''
+}
+
+function interactWithPrison() {
+    if (!prison) return
+    const event = interactPrison(prison)
+    if (event === 'exit') return leavePrison()
+    if (event === 'challenge') combatNote = {text: 'Le geôlier ouvre la cellule et te défie. Espace : attaquer. 1 / 2 / 3 : arme.', until: performance.now() + 5000}
+    if (event === 'keys') combatNote = {text: 'Clés du geôlier récupérées. Rejoins la porte au nord-est et appuie sur E.', until: performance.now() + 6000}
+    lastHud = ''
+}
+
+function updateDuelEncounter(delta: number, now: number) {
+    if (duelActive()) {
+        const duel = guardDuel!
+        for (const event of updateGuardDuel(duel, delta, {
+            player: {x: trainer.position.x, y: trainer.position.z},
+            passable: prison ? (tile) => prisonPassable(prison!, tile) : (tile) => walkable(tile) && !castleBlocks(tile),
+            blocksSight: prison ? (tile) => !prisonPassable(prison!, tile) : (tile) => !walkable(tile) || castleBlocks(tile),
+        })) {
+            if (event.type === 'lost') {
+                enterPrison(true)
+                combatNote = {text: 'Duel perdu. La garde te reconduit en cellule. Approche des barreaux pour défier le geôlier.', until: now + 7000}
+                break
+            }
+            if (event.type === 'won' || event.type === 'fled') {
+                pendingStrike = null
+                if (duel.kind === 'warden') {
+                    defeatWarden(prison!, duel.opponent)
+                    combatNote = {text: 'Geôlier vaincu. Approche de ses clés et appuie sur E.', until: now + 6000}
+                } else {
+                    resumeAfterResistance(police, player.position, event.type === 'won' ? challengedOfficer : null)
+                    guardDuel = null
+                    challengedOfficer = null
+                    combatNote = {text: event.type === 'won' ? 'Garde vaincu. Fuis avant les renforts !' : 'Tu romps le duel. La garde reprend la poursuite.', until: now + 5000}
+                }
+            }
+        }
+    }
+    guardDuelView.update(guardDuel, delta, prison ? prisonView!.scene : scene, prison ? () => 0 : terrain.height)
+}
+
+function duelHud(): string {
+    if (!duelActive()) return ''
+    const duel = guardDuel!
+    return `<p class="world3d-wanted"><b>Duel · ${duel.opponent.name}</b><br>Toi : ${duelHealth(duel, 'player')}/100 PV · ${duel.opponent.name} : ${duelHealth(duel, 'opponent')}/80 PV`
+        + `<br>${duel.windup > 0 ? '⚔ Le garde prépare son coup : recule !' : 'Espace : frapper · 1 / 2 / 3 : arme · déplace-toi pour esquiver'}</p>`
 }
 
 function updateVillagePolice(delta: number, now: number) {
     for (const event of updatePolice(police, document.hidden ? 0 : delta, {
         player: {x: trainer.position.x - 0.5, y: trainer.position.z - 0.5}, onLand: player.travelMode === 'walking',
+        playerMoving: bike ? Math.abs(bike.speed) > 0.3 : now - stepStart < STEP_DURATION,
         passable: (tile) => walkable(tile) && !castleBlocks(tile),
         blocksSight: (tile) => { const kind = tileAt(WORLD_MAP, tile); return kind === null || kind === 'wall' || kind === 'tree' || castleBlocks(tile) },
         occupied: (tile) => !!villagerAt(villagers, tile) || !!pokemonAt(villagePokemon, tile),
     })) {
-        if (event.type === 'arrested') releaseAfterArrest(now)
+        if (event.type === 'arrested') arrestOverlay.open()
         else {combatNote = {text: 'Tu as semé la garde montée. La recherche est levée.', until: now + 5000}; lastHud = ''}
     }
-    mountedPolice.update(police, delta, true)
+    mountedPolice.update(guardDuel?.kind === 'police' ? {...police, officers: police.officers.filter((officer) => officer.id !== challengedOfficer)} : police, delta, true)
 }
 /**
  * Cases à moins de `reach` cases (en carré) d'une eau : rivière, lac ou terre noyée. Recalculé chaque seconde pendant
@@ -676,6 +833,7 @@ void loadPokemon('/models/poc/charmander.glb', 0.38).then(({root}) => {
 })
 
 function step(now: number) {
+    if (prison) return
     // À vélo, le déplacement est libre : voir rideBicycle.
     if (encounterOverlay.isOpen || challenging || !held || bike) return
     // Les touches sont relatives à la vue (caméra libre, vue de dos ou regard FPS).
@@ -688,6 +846,10 @@ function step(now: number) {
     // Le château n'est pas sur la carte 2D : ses murs bloquent, sa grande porte fait entrer.
     // Un habitant sur la case : le dresseur se tourne vers lui sans avancer.
     if (player.travelMode === 'walking' && (villagerAt(villagers, position) || pokemonAt(villagePokemon, position) || policeAt(police, position))) {
+        player = {...player, direction}
+        return
+    }
+    if (duelActive() && Math.floor(guardDuel!.opponent.x) === position.x && Math.floor(guardDuel!.opponent.y) === position.y) {
         player = {...player, direction}
         return
     }
@@ -769,6 +931,7 @@ function startCastleBattle(speciesKey: string, title: string, subtitle: string, 
 }
 
 function enterCastle(now: number, resume?: Parameters<typeof castle.enter>[3]) {
+    if (prison || duelActive()) return
     ride(false)
     villageAudio.setActive(false)
     stopWalking()
@@ -821,7 +984,7 @@ function interactInCastle(now: number) {
 }
 
 addEventListener('keydown', (event) => {
-    if (encounterOverlay.isOpen || villageMap.isOpen || challenging || event.ctrlKey || event.metaKey || event.altKey) return
+    if (encounterOverlay.isOpen || villageMap.isOpen || arrestOverlay.isOpen || challenging || event.ctrlKey || event.metaKey || event.altKey) return
     if (event.target instanceof HTMLElement && (event.target.closest('input, textarea, select') || event.target.isContentEditable)) return
     const key = event.key.toLowerCase()
     castleAudio.resume()
@@ -837,7 +1000,7 @@ addEventListener('keydown', (event) => {
         return
     }
     if (key === 'v' && !event.repeat) {
-        rig.cycle(castle.state?.facing ?? player.direction)
+        rig.cycle(prison ? prisonDirection : castle.state?.facing ?? player.direction)
         lastHud = ''
         return
     }
@@ -862,11 +1025,13 @@ addEventListener('keydown', (event) => {
     }
     if (key === 'b' && !event.repeat && !castle.active) {
         event.preventDefault()
+        if (prison) return
         if (player.travelMode === 'walking' && !isFishing(fishing) && !landedCatch) ride(!bike)
         return
     }
     if (key === 'f' && !castle.active) {
         event.preventDefault()
+        if (prison || duelActive()) return
         if (event.repeat) return
         fishHeld = fishPressed = true
         if (!isFishing(fishing) && !landedCatch) {
@@ -893,7 +1058,10 @@ addEventListener('keydown', (event) => {
 
         event.preventDefault()
         stopWalking()
+        if (prison) return interactWithPrison()
+        if (duelActive()) return
         if (castle.active) return interactInCastle(performance.now())
+        if (Math.hypot(player.position.x - PRISON_ENTRANCE.x, player.position.y - PRISON_ENTRANCE.y) <= 1.5) return enterPrison(false)
         // Parler, combattre ou embarquer : on descend d'abord du vélo.
         ride(false)
         const nearCharmander =
@@ -991,11 +1159,11 @@ document.addEventListener('visibilitychange', () => {
 })
 addEventListener('pagehide', (event) => {
     if (event.persisted) villageAudio.setHidden(true)
-    else { villageAudio.dispose(); villageAudioControls.dispose(); mountedPolice.dispose() }
+    else { villageAudio.dispose(); villageAudioControls.dispose(); mountedPolice.dispose(); arrestOverlay.dispose() }
 })
 addEventListener('pageshow', () => villageAudio.setHidden(document.hidden))
 addEventListener('wheel', (event) => {
-    if (encounterOverlay.isOpen || villageMap.isOpen) return
+    if (encounterOverlay.isOpen || villageMap.isOpen || arrestOverlay.isOpen) return
     zoom = THREE.MathUtils.clamp(zoom + event.deltaY * 0.001, 0.45, 1.8)
 }, {passive: true})
 
@@ -1031,7 +1199,7 @@ const villageMap = createVillageMap({
     extraPoints: [{id: wildCharmander.id, name: 'Salamèche sauvage', description: 'Approche Salamèche et appuie sur E pour ouvrir un combat.',
         ...wildCharmander.position, category: 'rencontre'}],
     location: () => ({position: {...player.position}, direction: player.direction, insideCastle: castle.active}),
-    canOpen: () => !encounterOverlay.isOpen && !challenging,
+    canOpen: () => !encounterOverlay.isOpen && !arrestOverlay.isOpen && !prison && !duelActive() && !challenging,
     onPause: () => {
         villageAudio.setActive(false)
         stopWalking()
@@ -1064,8 +1232,21 @@ function performanceLine() {
 }
 
 function updateHud(now: number) {
+    if (prison) {
+        const hint = prisonInteraction(prison)
+        const instruction = hint === 'challenge' ? 'E : appeler et défier le geôlier'
+            : hint === 'keys' ? 'E : récupérer les clés du geôlier' : hint === 'exit' ? 'E : ouvrir la porte et sortir'
+            : !prison.cellOpen ? 'Approche des barreaux à l’est pour appeler le geôlier.'
+            : prison.guardDefeated && !prison.hasKeys ? 'Approche des clés brillantes et appuie sur E.'
+            : prison.hasKeys || !prison.detained ? 'La sortie est au nord-est.' : 'Affronte le geôlier pour récupérer ses clés.'
+        hud.innerHTML = `<strong>Prison de Clairbois · ${prison.detained ? 'Détention' : 'Visite'}</strong>` + duelHud()
+            + `<p>${instruction}</p><p>${prison.hasKeys ? '🔑 Clés du geôlier récupérées' : '🔒 Sortie verrouillée pour les détenus'}</p>`
+            + (combatNote && now < combatNote.until ? `<p>${combatNote.text}</p>` : '')
+            + `<p>Arme : ${weaponById(weapon).name} · Espace : frapper · 1 / 2 / 3 : arme</p><p>Flèches / ZQSD · ${viewHelp()}</p>`
+        return
+    }
     const wanted = describePolice(police)
-    const policeLine = wanted ? `<p class="world3d-wanted"><b>Garde montée</b><br>${wanted}</p>` : ''
+    const policeLine = duelActive() ? duelHud() : wanted ? `<p class="world3d-wanted"><b>Garde montée</b><br>${wanted}</p>` : ''
     if (castle.active) {
         const text = castle.hud(now, `${viewHelp()} · M : ${castleAudio.muted ? 'remettre' : 'couper'} le son`) + policeLine + performanceLine()
         if (text === lastHud) return
@@ -1090,7 +1271,7 @@ function updateHud(now: number) {
     const fishHint = !angling && !landedCatch && !castle.active && waterAhead()
     if (combatNote && now > combatNote.until) combatNote = null
     const team = ['Pikachu', ...captured.map((key) => key === 'mewtwo' ? 'Mewtwo' : FISH[key]?.name ?? key)]
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${angling}|${fishingNote?.text}|${fishHint}|${bike !== null}|${weapon}|${combatNote?.text}|${wanted}|${performanceLine()}`
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${angling}|${fishingNote?.text}|${fishHint}|${bike !== null}|${weapon}|${combatNote?.text}|${policeLine}|${performanceLine()}`
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = `<strong>${zoneAt(player.position)} · ${time}${sky ? ` · ${sky}` : ''}</strong>`
@@ -1107,6 +1288,7 @@ function updateHud(now: number) {
         + (loading < 100 ? `<p>Chargement du monde… ${loading} %</p>` : '')
         + (exit ? '<p><b>Sortie est</b> — continue vers l’est pour rejoindre le monde ouvert.</p>' : '')
         + (nearCharmander ? '<p><b>Salamèche</b> — E : ouvrir le combat</p>' : '')
+        + (Math.hypot(player.position.x - PRISON_ENTRANCE.x, player.position.y - PRISON_ENTRANCE.y) <= 1.5 ? '<p>E : entrer dans la prison de Clairbois</p>' : '')
         + (boatAction ? `<p>E : ${boatAction === 'board' ? 'embarquer' : 'débarquer'}</p>` : '')
         + (captured.length ? `<p>Équipe : ${team.join(', ')}</p>` : '')
         + performanceLine()
@@ -1187,6 +1369,7 @@ function frame(now: number) {
     measureFps(now, frameSeconds)
     const delta = Math.min(frameSeconds, 0.05)
     step(now)
+    if (prison) {framePrison(delta, now); return}
     // Le village continue de vivre pendant qu'on explore le château.
     hour = advanceHour(hour, delta)
     updateWeather(weather, delta * 24 / DAY_SECONDS, Math.random)
@@ -1227,7 +1410,8 @@ function frame(now: number) {
     weaponView.hold(bike || fishingNow ? null : weapon)
     // Ligne à l'eau, le dresseur arrêté se tourne vers son flotteur (il a pu longer la berge entre-temps).
     const facingFloat = !walking && fishing.phase !== 'idle' && fishing.phase !== 'casting'
-    const facing = facingFloat ? Math.atan2(fishing.float.x - trainer.position.x, fishing.float.z - trainer.position.z) : ANGLES[player.direction]
+    const facing = duelActive() ? Math.atan2(guardDuel!.opponent.x - trainer.position.x, guardDuel!.opponent.y - trainer.position.z)
+        : facingFloat ? Math.atan2(fishing.float.x - trainer.position.x, fishing.float.z - trainer.position.z) : ANGLES[player.direction]
     // Par le plus court chemin : sans cela, passer de -170° à 170° ferait faire un tour complet au dresseur.
     const yawStep = (THREE.MathUtils.euclideanModulo(facing - trainer.rotation.y + Math.PI, Math.PI * 2) - Math.PI) * 0.25
     if (bike) poseBicycle(delta)
@@ -1286,6 +1470,8 @@ function frame(now: number) {
     camera.updateMatrixWorld()
     frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
     resolveStrike(now)
+    updateDuelEncounter(delta, now)
+    if (prison) {updateHud(now); prisonView!.render(); return}
     reviveFallen(delta * 24 / DAY_SECONDS)
     weaponView.update(delta)
     physics.step(delta)
@@ -1305,3 +1491,30 @@ function frame(now: number) {
 }
 
 renderer.setAnimationLoop(animate)
+
+function framePrison(delta: number, now: number) {
+    if (!prison) return
+    if (held && now - prisonStepAt >= STEP_DURATION) {
+        prisonDirection = rig.direction(held)
+        const [dx, dy] = VECTORS[prisonDirection]
+        const next = {x: prison.position.x + dx, y: prison.position.y + dy}
+        const opponent = duelActive() ? guardDuel!.opponent : null
+        const occupied = opponent && Math.floor(opponent.x) === next.x && Math.floor(opponent.y) === next.y
+        if (prisonPassable(prison, next) && !occupied) {
+            prisonFrom = prisonTo.clone(); prisonTo = tileCenter(next.x, next.y)
+            prison.position = next; prisonStepAt = now
+        }
+    }
+    trainer.position.lerpVectors(prisonFrom, prisonTo, Math.min(1, (now - prisonStepAt) / STEP_DURATION))
+    trainer.rotation.y = duelActive() ? Math.atan2(guardDuel!.opponent.x - trainer.position.x, guardDuel!.opponent.y - trainer.position.z) : ANGLES[prisonDirection]
+    trainer.animate(delta, now < attackUntil ? ATTACK_GAIT[weapon] : now - prisonStepAt < STEP_DURATION ? 'walk' : weapon === 'sword' ? 'sword' : weapon === 'bow' ? 'bow' : 'idle')
+    weaponView.hold(weapon)
+    resolveStrike(now)
+    updateDuelEncounter(delta, now)
+    weaponView.update(delta)
+    prisonView!.update(prison!, now / 1000)
+    trainer.visible = rig.mode !== 'fps'
+    rig.update(delta, trainer.position, prisonDirection, held !== null, PRISON_FRAMING)
+    updateHud(now)
+    prisonView!.render()
+}

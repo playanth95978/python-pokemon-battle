@@ -177,6 +177,8 @@ function createMap(): WorldMap {
     ],
   }
   densifyClairbois(map)
+  const prison = map.buildings.find((building) => building.district === 'bourg')
+  if (prison) {prison.name = 'Prison de Clairbois'; prison.roof = '#414a61'; prison.facade = '#a9afb1'}
   return map
 }
 

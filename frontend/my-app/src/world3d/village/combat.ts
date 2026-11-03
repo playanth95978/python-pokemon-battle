@@ -32,7 +32,7 @@ export const weaponById = (id: WeaponId) => WEAPONS.find((weapon) => weapon.id =
 /** Heures de jeu avant qu'un être tué revienne. */
 export const REVIVE_HOURS = 8
 
-export type TargetKind = 'villager' | 'pokemon'
+export type TargetKind = 'villager' | 'pokemon' | 'guard' | 'player'
 
 export interface Target {
     id: string

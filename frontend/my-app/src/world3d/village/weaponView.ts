@@ -108,6 +108,11 @@ export function createWeaponView(scene: THREE.Scene, trainer: THREE.Object3D) {
     let flight: { from: THREE.Vector3; to: THREE.Vector3; t: number; duration: number } | null = null
 
     return {
+        setScene(parent: THREE.Scene) {
+            parent.add(arrow)
+            arrow.visible = false; flight = null
+            for (const spark of sparks) {parent.add(spark.mesh); spark.mesh.visible = false; spark.life = 0}
+        },
         /** Arme tenue, ou aucune (poings, canne à pêche, vélo). */
         hold(weapon: WeaponId | null) {
             attach()

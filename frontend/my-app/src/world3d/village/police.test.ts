@@ -4,7 +4,7 @@ import { canEnter, tileAt, WORLD_MAP } from '../../world/worldMap'
 import { castleBlocks } from '../castle/castleArea'
 import { createLife, strike, weaponById, type Hit, type Target } from './combat'
 import { findPath } from './pathfinding'
-import { ARREST_SECONDS, createPolice, describePolice, ESCAPE_SECONDS, hasPoliceSight, MAX_OFFICERS,
+import { ARREST_SECONDS, createPolice, describePolice, ESCAPE_SECONDS, finishArrest, hasPoliceSight, MAX_OFFICERS, resumeAfterResistance,
     officerPosition, policeAt, reportKilling, updatePolice, type MountedOfficer, type PoliceState, type PoliceWorld } from './police'
 
 const victim: Target = {id: 'villager', kind: 'villager', name: 'Habitant', x: 30, y: 31, maxHealth: 40}
@@ -21,6 +21,18 @@ function simulate(state: PoliceState, seconds: number, world: PoliceWorld) {
 }
 
 describe('Garde montée de Clairbois', () => {
+    it('reprend la poursuite après une résistance avec une marge pour fuir et sans le garde vaincu', () => {
+        const state = createPolice()
+        reportKilling(state, killing, plain.player)
+        state.arrested = true
+        state.officers = [officer(29, 30, 0), officer(31, 30, 1)]
+        resumeAfterResistance(state, plain.player, 1)
+        expect(state.arrested).toBe(false)
+        expect(state.level).toBe(2)
+        expect(state.officers.map((guard) => guard.id)).toEqual([0])
+        expect(simulate(state, 7, plain)).toEqual([])
+        expect(state.contactSeconds).toBe(0)
+    })
     it('déclenche la recherche sur une mort humaine, sans recompter les coups ni les cadavres', () => {
         const life = createLife(), state = createPolice()
         expect(reportKilling(state, strike(life, weaponById('fists'), victim)!, plain.player)).toBe(false)
@@ -62,8 +74,46 @@ describe('Garde montée de Clairbois', () => {
             }
         }
         expect(arrested).toBe(true)
+        expect(state.arrested).toBe(true)
+        expect(state.level).toBe(1)
+        expect(state.officers).toHaveLength(1)
+        expect(finishArrest(state)).toBe(true)
         expect(state.level).toBe(0)
         expect(state.officers).toEqual([])
+    })
+
+    it('n’arrête pas un joueur qui court à proximité et remet la progression à zéro au départ', () => {
+        const state = createPolice()
+        reportKilling(state, killing, plain.player)
+        state.officers = [officer(29, 30)]
+        state.dispatchIn = 100
+        simulate(state, 1, plain)
+        expect(state.contactSeconds).toBeCloseTo(1)
+        expect(simulate(state, ARREST_SECONDS * 2, {...plain, playerMoving: true})).toEqual([])
+        expect(state.contactSeconds).toBe(0)
+        expect(state.level).toBe(1)
+        expect(state.officers).toHaveLength(1)
+        expect(state.arrested).toBe(false)
+        expect(simulate(state, ARREST_SECONDS + 0.1, plain)).toEqual([{type: 'arrested'}])
+    })
+
+    it('garde la scène d’interpellation jusqu’au retour explicite et n’émet l’événement qu’une fois', () => {
+        const state = createPolice()
+        reportKilling(state, killing, plain.player)
+        expect(finishArrest(state)).toBe(false)
+        expect(state.level).toBe(1)
+        state.officers = [officer(29, 30)]
+        state.dispatchIn = 100
+        expect(simulate(state, ARREST_SECONDS + 0.1, plain)).toEqual([{type: 'arrested'}])
+        expect(describePolice(state)).toContain('Interpellation')
+        const arrestedState = structuredClone(state)
+        expect(simulate(state, 60, plain)).toEqual([])
+        expect(reportKilling(state, killing, plain.player)).toBe(false)
+        expect(state).toEqual(arrestedState)
+        expect(finishArrest(state)).toBe(true)
+        expect(state.officers).toEqual([])
+        expect(describePolice(state)).toBeNull()
+        expect(finishArrest(state)).toBe(false)
     })
 
     it('ne connaît pas les mouvements cachés derrière les murs et lève la recherche après la fuite', () => {

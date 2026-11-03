@@ -21,6 +21,8 @@ export interface MountedOfficer {
 
 export interface PoliceState {
     level: number
+    arrested: boolean
+    graceSeconds: number
     officers: MountedOfficer[]
     lastSeen: Position | null
     unseenSeconds: number
@@ -34,6 +36,8 @@ export interface PoliceWorld {
     /** Position continue en cases, centres entiers comme les habitants (pas en coordonnées three.js). */
     player: Position
     onLand: boolean
+    /** Une proximité pendant une course n'est pas une immobilisation. */
+    playerMoving?: boolean
     passable: (position: Position) => boolean
     blocksSight: (position: Position) => boolean
     occupied?: (position: Position) => boolean
@@ -44,12 +48,12 @@ export interface PoliceWorld {
 export type PoliceEvent = {type: 'arrested'} | {type: 'escaped'}
 
 export function createPolice(): PoliceState {
-    return {level: 0, officers: [], lastSeen: null, unseenSeconds: 0, contactSeconds: 0, dispatchIn: 0, spawnCursor: 0, nextId: 0}
+    return {level: 0, arrested: false, graceSeconds: 0, officers: [], lastSeen: null, unseenSeconds: 0, contactSeconds: 0, dispatchIn: 0, spawnCursor: 0, nextId: 0}
 }
 
 /** Le moteur d'armes garantit qu'un cadavre ne produit pas un deuxième Hit. */
 export function reportKilling(state: PoliceState, hit: Hit, player: Position): boolean {
-    if (!hit.killed || hit.target.kind !== 'villager') return false
+    if (state.arrested || !hit.killed || hit.target.kind !== 'villager') return false
     state.level = Math.min(MAX_WANTED_LEVEL, state.level + 1)
     state.lastSeen = {x: Math.round(player.x), y: Math.round(player.y)}
     state.unseenSeconds = state.contactSeconds = 0
@@ -136,10 +140,30 @@ function moveOfficer(officer: MountedOfficer, seconds: number, world: PoliceWorl
 
 function clearPursuit(state: PoliceState) {
     state.level = 0
+    state.arrested = false
+    state.graceSeconds = 0
     state.officers = []
     state.lastSeen = null
     state.contactSeconds = state.unseenSeconds = 0
     state.dispatchIn = 0
+}
+
+/** La scène et les cavaliers restent présents jusqu'à l'acquittement de l'interpellation. */
+export function finishArrest(state: PoliceState): boolean {
+    if (!state.arrested) return false
+    clearPursuit(state)
+    return true
+}
+
+/** Une résistance réussie donne le temps de repartir ; les autres cavaliers reprennent ensuite la poursuite. */
+export function resumeAfterResistance(state: PoliceState, player: Position, defeatedOfficer: number | null) {
+    state.arrested = false
+    state.level = Math.min(MAX_WANTED_LEVEL, state.level + 1)
+    state.contactSeconds = state.unseenSeconds = 0
+    state.lastSeen = {x: Math.round(player.x), y: Math.round(player.y)}
+    state.graceSeconds = 8
+    state.dispatchIn = 3
+    if (defeatedOfficer !== null) state.officers = state.officers.filter((officer) => officer.id !== defeatedOfficer)
 }
 
 /**
@@ -147,7 +171,8 @@ function clearPursuit(state: PoliceState) {
  * La police cherche la dernière position vue ; elle ne connaît pas les déplacements derrière un mur.
  */
 export function updatePolice(state: PoliceState, seconds: number, world: PoliceWorld): PoliceEvent[] {
-    if (state.level === 0 || seconds <= 0) return []
+    if (state.level === 0 || state.arrested || seconds <= 0) return []
+    state.graceSeconds = Math.max(0, state.graceSeconds - seconds)
     state.dispatchIn -= seconds
     const seen = state.officers.some((officer) => seesPlayer(officer, world))
     if (seen) {
@@ -170,16 +195,21 @@ export function updatePolice(state: PoliceState, seconds: number, world: PoliceW
         moveOfficer(officer, seconds, world, state.officers)
     }
 
-    const close = world.onLand && state.officers.some((officer) => distance(officerPosition(officer), world.player) <= ARREST_RANGE && seesPlayer(officer, world))
+    const close = state.graceSeconds === 0 && world.onLand && !world.playerMoving && state.officers.some((officer) => distance(officerPosition(officer), world.player) <= ARREST_RANGE && seesPlayer(officer, world))
     state.contactSeconds = close ? state.contactSeconds + seconds : 0
-    if (state.contactSeconds >= ARREST_SECONDS) { clearPursuit(state); return [{type: 'arrested'}] }
+    if (state.contactSeconds >= ARREST_SECONDS) {
+        state.arrested = true
+        state.officers.forEach((officer) => { officer.moving = false })
+        return [{type: 'arrested'}]
+    }
     return []
 }
 
 export function describePolice(state: PoliceState): string | null {
     if (!state.level) return null
     const stars = '★'.repeat(state.level) + '☆'.repeat(MAX_WANTED_LEVEL - state.level)
-    const status = state.contactSeconds > 0 ? `Interpellation ${Math.floor(state.contactSeconds / ARREST_SECONDS * 100)} % — éloigne-toi !`
+    const status = state.arrested ? 'Interpellation · se rendre ou résister'
+        : state.contactSeconds > 0 ? `Interpellation ${Math.floor(state.contactSeconds / ARREST_SECONDS * 100)} % — éloigne-toi !`
         : !state.officers.length ? 'Cavalerie en approche'
         : state.unseenSeconds > 2 ? `Dernière position recherchée · ${Math.ceil(ESCAPE_SECONDS + (state.level - 1) * 10 - state.unseenSeconds)} s pour semer la garde`
         : 'La garde montée te poursuit'
