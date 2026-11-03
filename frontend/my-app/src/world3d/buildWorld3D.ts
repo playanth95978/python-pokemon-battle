@@ -245,8 +245,7 @@ export function buildDecorChunk(map: WorldMap, chunk: ChunkKey, village: Village
     addTrees(group, tiles.filter((tile) => tileAt(map, tile) === 'tree' && !isExitGap(tile)), terrain)
     // Une maison appartient au chunk de son coin nord-ouest.
     const inChunk = new Set(tiles.map(({x, y}) => `${x},${y}`))
-    map.buildings.filter((building) => inChunk.has(`${building.x},${building.y}`))
-        .forEach((building) => group.add(village.house(building)))
+    group.add(village.houses(map.buildings.filter((building) => inChunk.has(`${building.x},${building.y}`))))
     props.addTo(group, map.props.filter((prop) => inChunk.has(`${prop.x},${prop.y}`)), terrain.height)
     return group.children.length ? freeze(group) : null
 }

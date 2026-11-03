@@ -5,6 +5,8 @@
  */
 import type { Direction, PlayerState } from '../world/types'
 import { canEnter, tileAt, WORLD_MAP } from '../world/worldMap'
+import { buildingEntrance } from '../world/buildings'
+import { cityStreetAt } from '../world/cityLayout'
 import { ITEMS, tileAt as castleTileAt, type Tile } from './castle/castleLayout'
 
 export const SAVE_KEY = 'pokemon-battle.world3d.save'
@@ -34,9 +36,26 @@ function upgrade(saved: SavedGame | SavedGameV1 | null): SavedGame | null {
     return saved?.version === SAVE_VERSION ? saved : null
 }
 
+/** Une nouvelle construction ne doit pas effacer la progression d'une ancienne partie. */
+function restorePlayer(player: PlayerState): PlayerState | null {
+    if (canEnter(tileAt(WORLD_MAP, player.position), player.travelMode)) return player
+    if (player.travelMode !== 'walking') return null
+    const {x, y} = player.position
+    const building = WORLD_MAP.buildings.find((house) => house.district && x >= house.x && x < house.x + house.width
+        && y >= house.y && y < house.y + house.height)
+    if (building) return {...player, position: buildingEntrance(building)}
+    if (!cityStreetAt(player.position, 2) || !WORLD_MAP.props.some((prop) => prop.x === x && prop.y === y)) return null
+    for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+        const position = {x: x + dx, y: y + dy}
+        if (canEnter(tileAt(WORLD_MAP, position), 'walking')) return {...player, position}
+    }
+    return null
+}
+
 /**
  * Relit la sauvegarde. Elle vient du navigateur et peut dater d'une autre version du jeu : une sauvegarde illisible,
- * d'une autre version, ou dont la case n'est plus praticable (carte modifiée depuis) donne une nouvelle partie.
+ * d'une autre version, ou dont la case est invalide donne une nouvelle partie. Les nouvelles maisons de la ville
+ * replacent le joueur devant leur entrée en conservant la progression.
  */
 export function loadGame(storage: Pick<Storage, 'getItem'>): SavedGame | null {
     let saved: SavedGame | null
@@ -46,11 +65,12 @@ export function loadGame(storage: Pick<Storage, 'getItem'>): SavedGame | null {
         return null
     }
     if (!saved) return null
-    if (!canEnter(tileAt(WORLD_MAP, saved.player.position), saved.player.travelMode)) return null
+    const player = restorePlayer(saved.player)
+    if (!player) return null
     const inside = saved.castle && castleTileAt(saved.castle)
     if (inside && inside !== 'floor' && inside !== 'door') return null
     // Un objet retiré du château entre deux versions disparaît simplement du sac.
-    return {...saved, inventory: saved.inventory.filter((id) => ITEMS.some((item) => item.id === id))}
+    return {...saved, player, inventory: saved.inventory.filter((id) => ITEMS.some((item) => item.id === id))}
 }
 
 export function saveGame(storage: Pick<Storage, 'setItem'>, game: Omit<SavedGame, 'version'>) {

@@ -9,6 +9,11 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js'
 import type { Direction } from '../../world/types'
 import type { Outfit, Pose, Villager } from './villagers'
 import { positionOf } from './villagers'
+import type { Physics } from '../physicsWorld'
+import type { Limb } from './dismemberment'
+import { pickSeveredLimb } from './dismemberment'
+import type { Ragdoll } from './ragdoll'
+import { createRagdoll } from './ragdoll'
 
 const MODEL = '/models/trainer/casual_character.glb'
 const ADULT_HEIGHT = 1.5, CHILD_HEIGHT = 1.05
@@ -40,10 +45,15 @@ interface Body {
     actions: Partial<Record<Pose, THREE.AnimationAction>>
     pose: Pose | null
     materials: THREE.Material[]
+    /** Corps devenu physique à la mort (adultes seulement) : il remplace l'animation. */
+    ragdoll: Ragdoll | null
 }
 
-/** `ground` : hauteur du sol sous chaque habitant (relief de la vallée). */
-export function createVillagerView(scene: THREE.Scene, villagers: Villager[], ground: (x: number, z: number) => number) {
+/** Coup mortel : où il frappe, avec quelle force, et si la lame peut trancher. */
+export interface KillingBlow { point: THREE.Vector3; impulse: THREE.Vector3; cuts: boolean }
+
+/** `ground` : hauteur du sol sous chaque habitant (relief de la vallée) ; `physics` : monde des corps tombés. */
+export function createVillagerView(scene: THREE.Scene, villagers: Villager[], ground: (x: number, z: number) => number, physics: Physics) {
     const bodies = new Map<string, Body>()
     let template: GLTF | null = null
     let height = 1
@@ -96,12 +106,13 @@ export function createVillagerView(scene: THREE.Scene, villagers: Villager[], gr
         }
         // Chacun démarre son cycle à un instant différent : personne ne bouge en même temps que son voisin.
         mixer.setTime(Math.random() * 3)
-        const body: Body = {root, mixer, actions, pose: null, materials: [...owned.values()]}
+        const body: Body = {root, mixer, actions, pose: null, materials: [...owned.values()], ragdoll: null}
         bodies.set(villager.profile.id, body)
         return body
     }
 
     function release(id: string, body: Body) {
+        body.ragdoll?.dispose()
         body.mixer.stopAllAction()
         body.mixer.uncacheRoot(body.mixer.getRoot())
         body.root.traverse((object) => { if (object instanceof THREE.SkinnedMesh) object.skeleton.dispose() })
@@ -114,14 +125,42 @@ export function createVillagerView(scene: THREE.Scene, villagers: Villager[], gr
     return {
         /** Racines des habitants, pour les passes qui peuvent les ignorer (reflet de l'eau). */
         roots: () => [...bodies.values()].map((body) => body.root),
+        /**
+         * L'habitant meurt sous ce coup : son corps devient un ragdoll poussé par le coup, et une lame tranche le
+         * membre le plus proche de l'impact. Renvoie le moignon qui saigne, s'il y en a un. Les enfants ne sont ni
+         * démembrés ni projetés : ils gardent l'animation de chute.
+         */
+        kill(villager: Villager, blow: KillingBlow): { stump: THREE.Object3D | null; limb: Limb | null } {
+            const body = bodies.get(villager.profile.id)
+            if (!body || body.ragdoll || villager.profile.child) return {stump: null, limb: null}
+            body.mixer.stopAllAction()
+            const model = body.root.children[0]
+            const ground = physics.groundAt(body.root.position.x, body.root.position.z)
+            body.ragdoll = createRagdoll(model, physics, ground)
+            if (!body.ragdoll) {
+                ground.dispose()
+                return {stump: null, limb: null}
+            }
+            body.ragdoll.push(blow.point, blow.impulse)
+            if (!blow.cuts) return {stump: null, limb: null}
+            const limb = pickSeveredLimb(blow.point, body.ragdoll.joints())
+            if (!limb) return {stump: null, limb: null}
+            return {stump: body.ragdoll.sever(limb, blow.impulse), limb}
+        },
         update(seconds: number, around: THREE.Vector3, visible: boolean, frustum: THREE.Frustum) {
             let built = 0
             for (const villager of villagers) {
                 let body = bodies.get(villager.profile.id)
                 const at = positionOf(villager)
                 const far = Math.hypot(at.x + 0.5 - around.x, at.y + 0.5 - around.z)
-                if (far > RELEASE_DISTANCE || villager.inside) {
+                // Revenu à la vie : le corps physique et coupé est jeté, un habitant entier est reconstruit.
+                if (far > RELEASE_DISTANCE || villager.inside || (body?.ragdoll && !villager.down)) {
                     if (body) release(villager.profile.id, body)
+                    continue
+                }
+                if (body?.ragdoll) {
+                    body.ragdoll.update()
+                    body.root.visible = visible && far < SHOW_DISTANCE
                     continue
                 }
                 if (!body) {

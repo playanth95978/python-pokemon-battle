@@ -10,6 +10,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1622; fon
 .world3d-hud p { margin: 6px 0 0; font-size: .9rem; }
 .world3d-hud a { color: #ffd66b; }
 .world3d-help { opacity: .75; font-size: .8rem !important; }
+.world3d-hud .world3d-wanted { margin: 10px 0; padding: 8px 10px; border: 1px solid #e0b257; border-radius: 8px; background: #4a231de0; color: #ffe09a; }
 .world3d-new-game {
   margin-top: 4px; padding: 4px 10px; border-radius: 8px; border: 1px solid rgb(255 214 107 / .5);
   background: transparent; color: #ffd66b; font: inherit; font-size: .8rem; cursor: pointer;

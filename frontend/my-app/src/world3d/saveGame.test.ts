@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PlayerState } from '../world/types'
 import { tileAt, WORLD_MAP, WORLD_SPAWN } from '../world/worldMap'
+import { buildingEntrance } from '../world/buildings'
 import { clearGame, loadGame, SAVE_KEY, SAVE_VERSION, saveGame } from './saveGame'
 
 function memoryStorage() {
@@ -15,6 +16,14 @@ function memoryStorage() {
 const player: PlayerState = {travelMode: 'walking', position: {...WORLD_SPAWN}, direction: 'left', steps: 12, visited: ['Clairbois']}
 
 describe('Sauvegarde de Clairbois 3D', () => {
+  it('replace devant la porte une ancienne position couverte par une nouvelle maison, sans perdre la progression', () => {
+    const storage = memoryStorage(), building = WORLD_MAP.buildings.find((house) => house.district)!
+    const game = {player: {...player, position: {x: building.x, y: building.y}}, castle: null,
+      inventory: ['potion'], opened: ['gallery-treasury'], bossDefeated: true, captured: ['mewtwo']}
+    saveGame(storage, game)
+    expect(loadGame(storage)).toEqual({version: SAVE_VERSION, ...game, player: {...player, position: buildingEntrance(building)}})
+  })
+
   it('reprend la position, le sac et les portes ouvertes tels qu’ils ont été sauvegardés', () => {
     const storage = memoryStorage()
     const game = {

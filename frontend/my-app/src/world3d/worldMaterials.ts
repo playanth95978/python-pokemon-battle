@@ -2,6 +2,7 @@
 import * as THREE from 'three'
 import type { WorldMap } from '../world/types'
 import { tileAt } from '../world/worldMap'
+import { cityStreetAt } from '../world/cityLayout'
 
 const TEXTURES = '/textures/polyhaven'
 /** Une texture de sol couvre 4 × 4 cases. */
@@ -37,7 +38,7 @@ function solid(color: string) {
     return texture
 }
 
-/** Masque par case : rouge = chemin, vert = sous-bois, bleu = lit du lac. Filtré linéairement pour adoucir les bords. */
+/** Masque par case : chemin, sous-bois, lit du lac, pavés urbains. Filtrage linéaire aux bords. */
 function splatTexture(map: WorldMap) {
     const data = new Uint8Array(map.width * map.height * 4)
     for (let y = 0; y < map.height; y++) {
@@ -47,7 +48,8 @@ function splatTexture(map: WorldMap) {
             data[offset] = tile === 'path' || tile === 'bridge' || tile === 'wall' ? 255 : 0
             data[offset + 1] = tile === 'tree' ? 255 : 0
             data[offset + 2] = tile === 'water' ? 255 : 0
-            data[offset + 3] = 255
+            const street = cityStreetAt({x, y}, 1)
+            data[offset + 3] = tile === 'path' && street && street.district !== 'fermes' && street.district !== 'vergers' ? 255 : 0
         }
     }
     const texture = new THREE.DataTexture(data, map.width, map.height)
@@ -84,7 +86,17 @@ function groundMaterial(map: WorldMap, path: { value: THREE.Texture }, wetness: 
                 float grain = dot(grassTexel.rgb, vec3(0.33)) / max(dot(grassAverage, vec3(0.33)), 0.01);
                 grassTexel.rgb = vec3(0.05, 0.19, 0.028) * mix(1.0, grain, 0.45);
                 vec4 pathTexel = mix(texture2D(pathMap, vMapUv, 5.0), texture2D(pathMap, vMapUv), 0.35);
-                vec3 splat = texture2D(splatMap, worldXZ / splatSize).rgb;
+                vec4 splatChannels = texture2D(splatMap, worldXZ / splatSize);
+                vec3 splat = splatChannels.rgb;
+                // Pavés en quinconce : calcul dans le shader partagé, sans image ni maillage de plus.
+                vec2 paving = worldXZ * 2.5;
+                paving.x += mod(floor(paving.y), 2.0) * 0.5;
+                vec2 cell = fract(paving);
+                float edge = min(min(cell.x, 1.0 - cell.x), min(cell.y, 1.0 - cell.y));
+                float variation = fract(sin(dot(floor(paving), vec2(12.9898, 78.233))) * 43758.5453);
+                vec3 stone = mix(vec3(0.24, 0.26, 0.25), vec3(0.39, 0.40, 0.36), variation);
+                stone *= mix(0.6, 1.0, smoothstep(0.02, 0.07, edge));
+                pathTexel.rgb = mix(pathTexel.rgb, stone, splatChannels.a);
                 float breakup = texture2D(pathMap, vMapUv * 0.37).g - 0.4;
                 float pathMask = smoothstep(0.35, 0.65, splat.r + breakup * 0.6);
                 vec4 groundTexel = mix(grassTexel, pathTexel, max(pathMask, splat.b));

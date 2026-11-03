@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Direction, Position, TileType, WorldMap } from '../world/types'
 import { BOAT_DOCK, WORLD_SPAWN } from '../world/worldMap'
+import { buildingEntrance } from '../world/buildings'
 import { CASTLE_DOORSTEP } from './castle/castleArea'
 import { CASTLE_AREA } from './castle/castleArea'
 import { EXIT } from './worldExit'
@@ -21,7 +22,7 @@ function mapPoints(map: WorldMap, extra: MapPoint[]): MapPoint[] {
     for (const [index, building] of map.buildings.entries()) {
         if (points.some((point) => point.name === building.name)) continue
         points.push({id: `maison-${index}`, name: building.name, description: 'Bâtiment du village. Le repère indique son entrée.',
-            x: building.x + Math.floor(building.width / 2), y: building.y + building.height, category: 'village'})
+            ...buildingEntrance(building), category: 'village'})
     }
     return [...points,
         {id: 'depart', name: 'Point de départ', description: 'Le carrefour du vieux bourg.', ...WORLD_SPAWN, category: 'village'},

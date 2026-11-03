@@ -55,6 +55,11 @@ import type { Target, WeaponId } from './village/combat'
 import { aimAt, createLife, passTime, strike, weaponById } from './village/combat'
 import { createWeaponMenu } from './village/weaponMenu'
 import { createWeaponView } from './village/weaponView'
+import { createPolice, describePolice, policeAt, reportKilling, updatePolice } from './village/police'
+import { createMountedPoliceView } from './village/mountedPoliceView'
+import { createGoreView } from './village/goreView'
+import type { KillingBlow } from './village/villagerView'
+import { createPhysics } from './physicsWorld'
 import type { AttackGait } from './scenery'
 import { createVillagePokemon, pokemonAt, pokemonNear, pokemonPosition, updateVillagePokemon, VILLAGE_POKEMON } from './village/villagePokemon'
 import { createVillagePokemonView } from './village/villagePokemonView'
@@ -116,9 +121,9 @@ const rig = createCameraRig(camera, renderer.domElement, firstPerson)
 const post = createPostProcessing(renderer, scene, camera, quality)
 // En développement, la scène est exposée pour mesurer le coût du rendu depuis la console.
 if (import.meta.env.DEV) Object.assign(window, {world3d: {
-    renderer, scene, camera, post, quality, water: () => water, castle: () => castle, villagers: () => villagers,
+    renderer, scene, camera, post, quality, water: () => water, castle: () => castle, villagers: () => villagers, police: () => police,
     setHour: (value: number) => { hour = value },
-    weather: () => weather, flood: () => flood, fishing: () => fishing, bike: () => bike,
+    weather: () => weather, flood: () => flood, fishing: () => fishing, bike: () => bike, physics: () => physics,
     /** Averse (`storm` : orage, qui fait déborder la rivière) de `hours` heures de jeu. */
     rain: (hours = 3, storm = false) => startRain(weather, hours, storm),
     /** Avance la crue de `seconds` secondes d'un coup, aux niveaux actuels (le navigateur de test ne tourne pas en continu). */
@@ -143,6 +148,9 @@ void Promise.all([prepareTrees(renderer, scene, ['oak', 'aspen', 'pine']), loadV
 const villageProps = createVillageProps(materials)
 // Relief : le bourg sur un plateau, la vallée de la rivière en contrebas, des cuvettes aux champs et à l'enclos.
 const terrain = createTerrain(WORLD_MAP)
+// Physique des corps tombés (ragdolls, membres tranchés), et le sang qui va avec.
+const physics = createPhysics(terrain.height)
+const gore = createGoreView(scene, terrain.height)
 const base = buildWorldBase(scene, WORLD_MAP, materials, terrain)
 // Météo et crue : la pluie fait monter la nappe, l'orage fait déborder la rivière ; maisons et château arrêtent l'eau.
 const weather = createWeather()
@@ -218,7 +226,7 @@ const tileOf = (x: number, z: number): Position => ({x: Math.floor(x), y: Math.f
 /** Sol praticable à vélo : comme à pied, sans foncer dans les habitants ni les Pokémon. */
 function rideable(x: number, z: number) {
     const tile = tileOf(x, z)
-    return walkable(tile) && !castleBlocks(tile) && !villagerAt(villagers, tile) && !pokemonAt(villagePokemon, tile)
+    return walkable(tile) && !castleBlocks(tile) && !villagerAt(villagers, tile) && !pokemonAt(villagePokemon, tile) && !policeAt(police, tile)
 }
 function ride(on: boolean) {
     if ((bike !== null) === on) return
@@ -359,16 +367,18 @@ let stepsSinceGhost = 0
 // Habitants de Clairbois : leur journée suit l'horloge du village (douze minutes pour vingt-quatre heures).
 let hour = START_HOUR
 const villagers = createVillagers(VILLAGERS, hour)
-const villagerView = createVillagerView(scene, villagers, terrain.height)
+const villagerView = createVillagerView(scene, villagers, terrain.height, physics)
 // Pokémon du village : au travail, au pré, sur les lanternes, dans le lac… et deux sauvages (Évoli, Fantominus la nuit).
 const villagePokemon = createVillagePokemon(VILLAGE_POKEMON, Math.random)
 /** Niveau de l'eau en un point : la crue là où elle est, sinon la rivière. */
 const waterLevel = (x: number, z: number) => surfaceAt(flood, {x: Math.floor(x), y: Math.floor(z)}) ?? floodLevels(weather).river
-const villagePokemonView = createVillagePokemonView(scene, villagePokemon, terrain.height, waterLevel)
+const villagePokemonView = createVillagePokemonView(scene, villagePokemon, terrain.height, waterLevel, physics)
 
 // Armes : Tab ouvre le menu, 1 à 3 choisissent, Espace frappe. Habitants et Pokémon du village peuvent être tués ;
 // ils reviennent quelques heures de jeu plus tard (voir combat.ts). Pikachu et les rencontres scriptées sont épargnés.
 const life = createLife()
+const police = createPolice()
+const mountedPolice = createMountedPoliceView(scene, terrain.height)
 let weapon: WeaponId = 'fists'
 const weaponView = createWeaponView(scene, trainer)
 const weaponMenu = createWeaponMenu((picked) => {
@@ -411,6 +421,8 @@ function attack(now: number) {
 }
 
 const impactPoint = new THREE.Vector3()
+/** Force du coup mortel sur le corps (N·s) : la flèche projette, le poing renverse à peine. */
+const IMPACT_IMPULSE: Record<WeaponId, number> = {fists: 45, sword: 80, bow: 110}
 function resolveStrike(now: number) {
     if (!pendingStrike || now < pendingStrike.at) return
     const chosen = weaponById(pendingStrike.weapon)
@@ -426,24 +438,37 @@ function resolveStrike(now: number) {
         return
     }
     const hit = strike(life, chosen, target)!
-    impactPoint.set(target.x, terrain.height(target.x, target.y) + (target.kind === 'villager' ? 1.1 : 0.4), target.y)
+    reportKilling(police, hit, player.position)
+    // Une lame frappe à une hauteur et d'un côté variables : c'est ce qui décide du membre tranché (voir pickSeveredLimb).
+    const human = target.kind === 'villager'
+    const side = (Math.random() - 0.5) * (chosen.id === 'sword' ? 0.5 : 0.1)
+    const height = human ? (chosen.id === 'sword' ? 0.35 + Math.random() * 1.2 : 1.1) : 0.2 + Math.random() * 0.4
+    impactPoint.set(target.x - heading.y * side, terrain.height(target.x, target.y) + height, target.y + heading.x * side)
     if (chosen.id === 'bow') weaponView.shoot(impactPoint)
     weaponView.burst(impactPoint, hit.killed)
-    if (target.kind === 'villager') {
+    const push = new THREE.Vector3(heading.x, 0.3, heading.y).normalize()
+    gore.splash(impactPoint, push, hit.killed ? 18 : 8)
+    const blow: KillingBlow = {point: impactPoint.clone(), impulse: push.multiplyScalar(IMPACT_IMPULSE[chosen.id]), cuts: chosen.id === 'sword'}
+    let wound: THREE.Object3D | null = null
+    if (human) {
         const villager = villagers.find((candidate) => candidate.profile.id === target.id)!
         if (hit.killed) {
             // Il tombe sur la case la plus proche de sa position : plus de pas en cours, plus de case réservée.
             if (villager.next && villager.step > 0.5) villager.tile = villager.next
             Object.assign(villager, {down: true, next: null, step: 0, path: [], pose: 'dead', talking: 0, stagger: 0})
+            wound = villagerView.kill(villager, blow).stump
         } else villager.stagger = 0.6
     } else {
         const pokemon = villagePokemon.find((candidate) => candidate.profile.id === target.id)!
         if (hit.killed) {
             if (pokemon.next && pokemon.step > 0.5) pokemon.tile = pokemon.next
-            // Un oiseau abattu retombe au sol ; un Magicarpe reste à la surface.
+            wound = villagePokemonView.kill(pokemon, blow)
+            // Sans figurine à l'écran, un oiseau abattu est posé au sol ; la chute physique, elle, part de sa pose réelle.
             Object.assign(pokemon, {down: true, next: null, step: 0, path: [], flight: null, height: 0, visible: true, stagger: 0})
         } else pokemon.stagger = 0.5
     }
+    if (wound) gore.spurt(wound)
+    if (hit.killed) gore.pool(target.x, target.y, human ? 0.9 : 0.5)
     combatNote = {
         text: hit.killed ? `${target.name} est ${target.kind === 'villager' ? 'mort' : 'tué'}.` : `${target.name} : −${hit.damage} PV (${hit.health}/${target.maxHealth})`,
         until: now + 2500,
@@ -463,6 +488,45 @@ function reviveFallen(hours: number) {
         const pokemon = villagePokemon.find((candidate) => candidate.profile.id === id)
         if (pokemon) Object.assign(pokemon, {down: false, visible: pokemon.profile.behaviour !== 'swim'})
     }
+}
+
+/** Interpellation en exploration : retour au bourg, sans modifier les combats ni la progression du château. */
+function releaseAfterArrest(now: number) {
+    ride(false)
+    stopWalking()
+    pendingStrike = null
+    attackUntil = 0
+    nextAttack = now + 1000
+    weapon = 'fists'
+    weaponMenu.close()
+    Object.assign(fishing, createFishing())
+    landedCatch = null
+    fishHeld = fishPressed = false
+    const position = [WORLD_SPAWN, {x: 18, y: 37}, {x: 18, y: 35}, {x: 19, y: 36}, {x: 17, y: 36}]
+        .find((tile) => walkable(tile) && !villagerAt(villagers, tile) && !pokemonAt(villagePokemon, tile)) ?? WORLD_SPAWN
+    player = {...player, travelMode: 'walking', position: {...position}, direction: 'down'}
+    from = to = tileCenter(position.x, position.y)
+    followerFrom = followerTo = tileCenter(position.x, position.y - 1)
+    stepStart = now - STEP_DURATION
+    trainer.position.copy(to)
+    trainer.position.y = terrain.tile(position)
+    trainer.rotation.y = 0
+    rig.snap(trainer.position, outdoorFraming())
+    combatNote = {text: 'Interpellé par la garde montée. Tu es reconduit au vieux bourg, désarmé.', until: now + 7000}
+    lastHud = ''
+}
+
+function updateVillagePolice(delta: number, now: number) {
+    for (const event of updatePolice(police, document.hidden ? 0 : delta, {
+        player: {x: trainer.position.x - 0.5, y: trainer.position.z - 0.5}, onLand: player.travelMode === 'walking',
+        passable: (tile) => walkable(tile) && !castleBlocks(tile),
+        blocksSight: (tile) => { const kind = tileAt(WORLD_MAP, tile); return kind === null || kind === 'wall' || kind === 'tree' || castleBlocks(tile) },
+        occupied: (tile) => !!villagerAt(villagers, tile) || !!pokemonAt(villagePokemon, tile),
+    })) {
+        if (event.type === 'arrested') releaseAfterArrest(now)
+        else {combatNote = {text: 'Tu as semé la garde montée. La recherche est levée.', until: now + 5000}; lastHud = ''}
+    }
+    mountedPolice.update(police, delta, true)
 }
 /**
  * Cases à moins de `reach` cases (en carré) d'une eau : rivière, lac ou terre noyée. Recalculé chaque seconde pendant
@@ -511,7 +575,7 @@ function followShores(now: number) {
 
 /** Ce que les passes de l'eau peuvent ignorer : objets ni vus à travers l'eau (`refraction`) ni reflétés (`reflection`). */
 function dryObjects() {
-    const actors = [...villagerView.roots(), ...villagePokemonView.roots()].filter((root) => !nearShore(root.position.x, root.position.z))
+    const actors = [...villagerView.roots(), ...villagePokemonView.roots(), ...mountedPolice.roots()].filter((root) => !nearShore(root.position.x, root.position.z))
     const chunks = scene.children.filter((object) => object.name.startsWith('decor') || object.name.startsWith('grass'))
     const reach = (chunk: THREE.Object3D) => {
         if (!chunkReach.has(chunk)) {
@@ -623,7 +687,7 @@ function step(now: number) {
     const position = nextPosition(WORLD_MAP, previous, direction, player.travelMode)
     // Le château n'est pas sur la carte 2D : ses murs bloquent, sa grande porte fait entrer.
     // Un habitant sur la case : le dresseur se tourne vers lui sans avancer.
-    if (player.travelMode === 'walking' && (villagerAt(villagers, position) || pokemonAt(villagePokemon, position))) {
+    if (player.travelMode === 'walking' && (villagerAt(villagers, position) || pokemonAt(villagePokemon, position) || policeAt(police, position))) {
         player = {...player, direction}
         return
     }
@@ -927,7 +991,7 @@ document.addEventListener('visibilitychange', () => {
 })
 addEventListener('pagehide', (event) => {
     if (event.persisted) villageAudio.setHidden(true)
-    else { villageAudio.dispose(); villageAudioControls.dispose() }
+    else { villageAudio.dispose(); villageAudioControls.dispose(); mountedPolice.dispose() }
 })
 addEventListener('pageshow', () => villageAudio.setHidden(document.hidden))
 addEventListener('wheel', (event) => {
@@ -1000,8 +1064,10 @@ function performanceLine() {
 }
 
 function updateHud(now: number) {
+    const wanted = describePolice(police)
+    const policeLine = wanted ? `<p class="world3d-wanted"><b>Garde montée</b><br>${wanted}</p>` : ''
     if (castle.active) {
-        const text = castle.hud(now, `${viewHelp()} · M : ${castleAudio.muted ? 'remettre' : 'couper'} le son`) + performanceLine()
+        const text = castle.hud(now, `${viewHelp()} · M : ${castleAudio.muted ? 'remettre' : 'couper'} le son`) + policeLine + performanceLine()
         if (text === lastHud) return
         lastHud = text
         hud.innerHTML = text + MAP_BUTTON + NEW_GAME
@@ -1024,10 +1090,11 @@ function updateHud(now: number) {
     const fishHint = !angling && !landedCatch && !castle.active && waterAhead()
     if (combatNote && now > combatNote.until) combatNote = null
     const team = ['Pikachu', ...captured.map((key) => key === 'mewtwo' ? 'Mewtwo' : FISH[key]?.name ?? key)]
-    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${angling}|${fishingNote?.text}|${fishHint}|${bike !== null}|${weapon}|${combatNote?.text}|${performanceLine()}`
+    const text = `${zoneAt(player.position)}|${landmark?.name}|${boatAction}|${loading}|${exit}|${nearCharmander}|${captured}|${time}|${dialogue?.text}|${neighbour?.profile.id}|${beast?.profile.id}|${sky}|${wading}|${angling}|${fishingNote?.text}|${fishHint}|${bike !== null}|${weapon}|${combatNote?.text}|${wanted}|${performanceLine()}`
     if (text === lastHud) return
     lastHud = text
     hud.innerHTML = `<strong>${zoneAt(player.position)} · ${time}${sky ? ` · ${sky}` : ''}</strong>`
+        + policeLine
         + (angling ? `<p class="world3d-dialogue"><b>Pêche</b> — ${angling}</p>` : '')
         + (fishingNote ? `<p><b>Pêche</b> — ${fishingNote.text}</p>` : '')
         + (fishHint ? '<p>F : lancer la ligne</p>' : '')
@@ -1125,9 +1192,10 @@ function frame(now: number) {
     updateWeather(weather, delta * 24 / DAY_SECONDS, Math.random)
     stepFlood(flood, delta, floodLevels(weather))
     followShores(now)
-    updateVillagers(villagers, hour, delta, player.position, walkable, (tile) => pokemonAt(villagePokemon, tile) !== undefined, weather.rain > 0.45, 48)
-    updateVillagePokemon(villagePokemon, hour, delta, {player: player.position, passable: walkable, villagers, random: Math.random, rain: weather.rain, pools, activityRadius: 48})
+    updateVillagers(villagers, hour, delta, player.position, walkable, (tile) => pokemonAt(villagePokemon, tile) !== undefined || policeAt(police, tile), weather.rain > 0.45, 48)
+    updateVillagePokemon(villagePokemon, hour, delta, {player: player.position, passable: (tile) => walkable(tile) && !policeAt(police, tile), villagers, random: Math.random, rain: weather.rain, pools, activityRadius: 48})
     if (castle.active) {
+        mountedPolice.update(police, 0, false)
         // À l'intérieur : seul le château est animé et dessiné ; Clairbois attend dehors.
         walkInCastle(delta, now)
         if (!castle.active) return
@@ -1150,6 +1218,7 @@ function frame(now: number) {
 
     trainer.position.lerpVectors(from, to, progress)
     trainer.position.y = onBoat ? waterLevel(trainer.position.x, trainer.position.z) + 0.1 : terrain.height(trainer.position.x, trainer.position.z)
+    updateVillagePolice(delta, now)
     // Petite marge après chaque pas : la marche ne se coupe pas entre deux cases enchaînées.
     const fishingNow = isFishing(fishing) || landedCatch !== null
     const walking = !onBoat && now - stepStart < STEP_DURATION + 60
@@ -1219,6 +1288,8 @@ function frame(now: number) {
     resolveStrike(now)
     reviveFallen(delta * 24 / DAY_SECONDS)
     weaponView.update(delta)
+    physics.step(delta)
+    gore.update(delta, now / 1000)
     villagerView.update(delta, trainer.position, true, frustum)
     villagePokemonView.update(now / 1000, delta, trainer.position, true)
     // La carte d'ombre suit le regard : l'avant de la scène a ses ombres avant qu'on s'en approche.

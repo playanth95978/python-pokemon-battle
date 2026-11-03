@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Position } from './types'
+import { buildingEntrance } from './buildings'
 import { BOAT_DOCK, canEnter, CLAIRBOIS_DISTRICTS, nextPosition, tileAt, WORLD_MAP, WORLD_SPAWN } from './worldMap'
 
 function reachableFromSpawn() {
@@ -22,14 +23,14 @@ describe('Agrandissement de Clairbois', () => {
     expect(WORLD_MAP.width).toBe(160)
     expect(WORLD_MAP.height).toBe(128)
     expect(WORLD_MAP.tiles).toHaveLength(5 * 64 * 64)
-    expect(WORLD_MAP.buildings).toHaveLength(35)
+    expect(WORLD_MAP.buildings).toHaveLength(80)
     expect(CLAIRBOIS_DISTRICTS).toHaveLength(4)
     for (const district of CLAIRBOIS_DISTRICTS) {
       expect(WORLD_MAP.buildings.filter(({name}) => (district.houses as readonly string[]).includes(name))).toHaveLength(7)
       expect(WORLD_MAP.landmarks.some(({name}) => name === district.name)).toBe(true)
     }
     expect(new Set(WORLD_MAP.props.map(({kind}) => kind))).toEqual(new Set([
-      'fountain', 'stall', 'bench', 'crates', 'barrels', 'lantern', 'well', 'anvil', 'hay', 'cart', 'crops', 'fence',
+      'fountain', 'stall', 'bench', 'crates', 'barrels', 'lantern', 'well', 'anvil', 'hay', 'cart', 'crops', 'fence', 'planter', 'sign',
     ]))
   })
 
@@ -49,7 +50,7 @@ describe('Agrandissement de Clairbois', () => {
       expect(seen.has(`${district.x},${district.y}`), district.name).toBe(true)
     }
     for (const building of WORLD_MAP.buildings) {
-      const door = {x: building.x + Math.floor(building.width / 2), y: building.y + building.height}
+      const door = buildingEntrance(building)
       expect(seen.has(`${door.x},${door.y}`), building.name).toBe(true)
     }
     expect(seen.has('157,34')).toBe(true)

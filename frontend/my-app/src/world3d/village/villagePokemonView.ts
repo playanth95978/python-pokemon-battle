@@ -4,19 +4,37 @@ import type { Rig } from './pokemonKit'
 import { animatePokemon, buildPokemon } from './pokemonKit'
 import type { VillagePokemon } from './villagePokemon'
 import { pokemonPosition } from './villagePokemon'
+import type { Physics } from '../physicsWorld'
+import type { PokemonFall } from './pokemonFall'
+import { fallPokemon } from './pokemonFall'
+import type { KillingBlow } from './villagerView'
 
 /** Animés en dessous de cette distance (en cases), visibles en dessous de la suivante. */
 const ANIMATE_DISTANCE = 22, SHOW_DISTANCE = 32, RELEASE_DISTANCE = 44, BUILDS_PER_FRAME = 2
 
 /** `ground` : hauteur du sol ; `water` : niveau de l'eau où nage Magicarpe (rivière, lac ou champ noyé). */
 export function createVillagePokemonView(scene: THREE.Scene, list: VillagePokemon[], ground: (x: number, z: number) => number,
-                                         water: (x: number, z: number) => number) {
+                                         water: (x: number, z: number) => number, physics: Physics) {
     // Les géométries et matériaux du kit restent partagés ; seuls les objets proches sont instanciés.
     const rigs = new Map<VillagePokemon, Rig>()
     const previousHeight = new Map<VillagePokemon, number>()
+    /** Pokémon abattus dont la figurine est confiée à la physique. */
+    const falls = new Map<VillagePokemon, PokemonFall>()
+    function forget(pokemon: VillagePokemon) {
+        falls.get(pokemon)?.restore()
+        falls.delete(pokemon)
+    }
 
     return {
         roots: () => [...rigs.values()].map((rig) => rig.root),
+        /** Le Pokémon tombe sous ce coup ; une lame lui arrache une pièce. Renvoie la plaie qui saigne, s'il y en a une. */
+        kill(pokemon: VillagePokemon, blow: KillingBlow): THREE.Object3D | null {
+            const rig = rigs.get(pokemon)
+            if (!rig || falls.has(pokemon)) return null
+            const {fall, stump} = fallPokemon(rig, scene, physics, physics.groundAt(rig.root.position.x, rig.root.position.z), blow.point, blow.impulse, blow.cuts)
+            falls.set(pokemon, fall)
+            return stump
+        },
         update(time: number, seconds: number, around: THREE.Vector3, visible: boolean) {
             let built = 0
             for (let index = 0; index < list.length; index++) {
@@ -27,6 +45,7 @@ export function createVillagePokemonView(scene: THREE.Scene, list: VillagePokemo
                 if (far > RELEASE_DISTANCE) {
                     if (rig) {
                         // Aucune libération GPU ici : les autres Pokémon utilisent ces mêmes ressources du kit.
+                        forget(pokemon)
                         rig.root.removeFromParent()
                         rigs.delete(pokemon)
                         previousHeight.delete(pokemon)
@@ -42,6 +61,17 @@ export function createVillagePokemonView(scene: THREE.Scene, list: VillagePokemo
                     built++
                 }
                 rig.root.visible = visible && pokemon.visible && far < SHOW_DISTANCE
+                const fall = falls.get(pokemon)
+                if (fall && pokemon.down) {
+                    fall.update()
+                    continue
+                }
+                // Revenu à la vie : la figurine est remise d'aplomb, entière, à sa place.
+                if (fall) {
+                    forget(pokemon)
+                    scene.add(rig.root)
+                    rig.root.rotation.set(0, pokemon.heading, 0)
+                }
                 if (!rig.root.visible) continue
                 const swim = pokemon.profile.behaviour === 'swim'
                 const x = at.x + 0.5, z = at.y + 0.5
@@ -54,7 +84,7 @@ export function createVillagePokemonView(scene: THREE.Scene, list: VillagePokemo
                     rig.root.rotation.x = THREE.MathUtils.lerp(rig.root.rotation.x, -Math.atan2(rise, seconds * 1.2 || 1), 0.5)
                     previousHeight.set(pokemon, pokemon.height)
                 }
-                // Tué : couché sur le flanc. Sonné : il tremble. Le retour à la vie le relève en douceur.
+                // Tué hors de vue (pas de chute physique) : couché sur le flanc. Sonné : il tremble.
                 const lying = pokemon.down ? Math.PI / 2 : 0
                 rig.root.rotation.z = THREE.MathUtils.lerp(rig.root.rotation.z, lying, Math.min(1, seconds * 6))
                 if (pokemon.down) continue

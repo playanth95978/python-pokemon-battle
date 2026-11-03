@@ -28,6 +28,17 @@ function at(geometry: THREE.BufferGeometry, material: Material, x: number, y: nu
 
 /** Pièces de chaque sorte, centrées sur leur emprise, posées au sol, l'avant vers +z. */
 const SHAPES: Record<PropKind, () => Part[]> = {
+    planter: () => [
+        at(box(0.85, 0.32, 0.65), 'stone', 0, 0.16, 0),
+        ...[-0.24, 0, 0.24].map((x) => at(new THREE.SphereGeometry(0.2, 7, 5), 'leaf', x, 0.43, 0)),
+        ...[-0.2, 0.15].map((x) => at(new THREE.SphereGeometry(0.08, 6, 4), 'fruit', x, 0.58, 0.05)),
+    ],
+    sign: () => [
+        at(box(0.07, 1.8, 0.07), 'wood', 0, 0.9, 0),
+        at(box(0.85, 0.27, 0.07), 'wood', 0.12, 1.55, 0),
+        at(box(0.65, 0.04, 0.08), 'hay', 0.12, 1.55, 0.02),
+        at(box(0.6, 0.22, 0.07), 'wood', -0.1, 1.24, 0),
+    ],
     fountain: () => [
         at(cylinder(0.95, 1, 0.45, 20), 'stone', 0, 0.22, 0),
         at(cylinder(0.84, 0.84, 0.04, 20), 'water', 0, 0.4, 0),

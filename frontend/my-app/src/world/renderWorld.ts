@@ -137,7 +137,10 @@ export function renderWorld(ctx: Paint, map: WorldMap, player: PlayerState, widt
     rect(ctx, '#436970', x + 23, y + 80, 24, 27)
     rect(ctx, '#436970', x + w - 47, y + 80, 24, 27)
     rect(ctx, '#9dc6bf', x + 26, y + 83, 18, 3)
-    rect(ctx, '#8c694b', x + w / 2 - 13, y + h - 37, 26, 37)
+    const facing = building.facing ?? 'down'
+    if (facing === 'down') rect(ctx, '#8c694b', x + w / 2 - 13, y + h - 37, 26, 37)
+    else if (facing === 'up') rect(ctx, '#8c694b', x + w / 2 - 13, y + 4, 26, 30)
+    else rect(ctx, '#8c694b', facing === 'left' ? x + 8 : x + w - 30, y + h / 2 - 16, 22, 32)
     if (building.name === 'Maison des soins') {
       rect(ctx, '#fff1d2', x + w / 2 - 12, y + 21, 24, 9)
       rect(ctx, '#fff1d2', x + w / 2 - 4, y + 13, 8, 25)

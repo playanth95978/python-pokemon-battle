@@ -1,4 +1,7 @@
-import type { Building, Direction, HouseModel, PlayerState, Position, Prop, PropKind, TileType, TravelMode, WorldMap, Zone } from './types'
+import type { Building, Direction, PlayerState, Position, Prop, PropKind, TileType, TravelMode, WorldMap, Zone } from './types'
+import { createHouse as house } from './buildings'
+import { cityStreetAt, densifyClairbois } from './cityLayout'
+export { HOUSE_SIZE } from './buildings'
 
 export const WORLD_SPAWN: Position = { x: 18, y: 36 }
 export const BOAT_DOCK = {
@@ -11,17 +14,6 @@ export const TILE_COLORS: Record<TileType, string> = {
 /** Lanternes et puits du vieux bourg : Roucool s'y perche, Rose y puise l'eau. */
 export const BOURG_LANTERNS = [[27, 36], [16, 30], [20, 32], [16, 38], [8, 32], [16, 44], [21, 25]] as const
 export const BOURG_WELL: Position = { x: 16, y: 41 }
-/**
- * Emprise de chaque modèle de maison (largeur, profondeur), à l'échelle des habitants : une porte d'environ 1,7 m
- * pour des personnages de 1,5 m. La parcelle suit le modèle, jamais l'inverse (voir villageModels.ts).
- */
-export const HOUSE_SIZE: Record<HouseModel, [number, number]> = {
-  fantasy_house_a: [5, 6], fantasy_house_b: [5, 8], fantasy_inn: [10, 10],
-}
-const house = (x: number, y: number, model: HouseModel, name: string, roof: string): Building => {
-  const [width, height] = HOUSE_SIZE[model]
-  return { x, y, width, height, name, roof, model }
-}
 /** Cases occupées par un mobilier plus grand qu'une case (largeur, profondeur). */
 export const PROP_SIZE: Partial<Record<PropKind, [number, number]>> = { fountain: [2, 2] }
 const DELTAS: Record<Direction, Position> = {
@@ -98,7 +90,7 @@ function createMap(): WorldMap {
   // Chaque quartier a sept maisons et une place, avec des métiers et des façades différents. Au nord, les portes
   // donnent sur la rue qui longe la place ; au sud, chacune a son allée jusqu'à la rue centrale. L'auberge (5e) est
   // la grande maison du quartier.
-  const housePlots: [number, number, HouseModel][] = [
+  const housePlots: [number, number, Building['model']][] = [
     [-13, -13, 'fantasy_house_a'], [-6, -15, 'fantasy_house_b'], [3, -13, 'fantasy_house_a'],
     [-7, 8, 'fantasy_house_a'], [3, 8, 'fantasy_inn'], [-13, 8, 'fantasy_house_b'], [10, -13, 'fantasy_house_a'],
   ]
@@ -142,9 +134,12 @@ function createMap(): WorldMap {
   for (const district of CLAIRBOIS_DISTRICTS) {
     const add = (dx: number, dy: number, kind: PropKind, facing?: Direction) =>
       props.push({x: district.x + dx, y: district.y + dy, kind, ...(facing ? {facing} : {})})
-    add(3, 2, 'fountain')
-    for (const y of [-4, 2, 4]) add(-6, y, 'stall', 'right')
-    add(6, -4, 'stall', 'left')
+    add(3, 2, district.id === 'fermes' ? 'well' : 'fountain')
+    for (const y of district.id === 'artisans' ? [-4, 2, 4] : [-4]) add(-6, y, 'stall', 'right')
+    add(6, -4, district.id === 'port' ? 'barrels' : district.id === 'vergers' ? 'planter' : 'stall', 'left')
+    if (district.id === 'port') { add(-6, 2, 'crates'); add(-6, 4, 'barrels') }
+    if (district.id === 'vergers') { add(-6, 2, 'planter'); add(-6, 4, 'bench', 'right') }
+    if (district.id === 'fermes') { add(-6, 2, 'hay'); add(-6, 4, 'cart', 'right') }
     for (const x of [-6, 6]) for (const y of [-3, 3]) add(x, y, 'lantern')
     add(-4, 5, 'bench', 'up')
     add(5, 5, 'bench', 'up')
@@ -168,7 +163,7 @@ function createMap(): WorldMap {
     const [w, h] = PROP_SIZE[prop.kind] ?? [1, 1]
     paint(prop.x, prop.y, prop.x + w - 1, prop.y + h - 1, 'wall')
   }
-  return {
+  const map = {
     width, height, tileSize: 32, tiles, buildings, props,
     landmarks: [
       { x: 20, y: 36, name: 'Panneau de Clairbois', message: 'Bienvenue à Clairbois ! Au nord, le bois des murmures. À l’est, traverse le pont pour rejoindre la rive.' },
@@ -181,6 +176,8 @@ function createMap(): WorldMap {
         message: `${name} : maisons, commerces et habitants rythment la journée. Les grandes routes rejoignent le vieux bourg.`})),
     ],
   }
+  densifyClairbois(map)
+  return map
 }
 
 export const WORLD_MAP = createMap()
@@ -223,6 +220,7 @@ export function toggleBoatAtDock(map: WorldMap, player: PlayerState): PlayerStat
 }
 
 export function zoneAt(position: Position): Zone {
+  if (cityStreetAt(position, 6)) return 'Clairbois'
   if (CLAIRBOIS_DISTRICTS.some(({x, y}) => Math.abs(position.x - x) <= 20 && Math.abs(position.y - y) <= 21)) return 'Clairbois'
   if (position.x >= 64 || position.y >= 64) {
     if (position.y < 18 || position.y > 110) return 'Bois des murmures'

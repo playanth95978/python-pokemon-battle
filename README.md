@@ -234,6 +234,26 @@ configuration de logging n'est déjà en place.
 
 ### Monde ouvert 3D et mini-carte
 
+Dans `/world3d.html`, tuer un habitant déclenche la **garde montée** : un niveau
+de recherche par mort, plafonné à trois étoiles, et deux à quatre cavaliers en
+renfort. L'indicateur du HUD montre l'arrivée, la poursuite, la recherche de la
+dernière position connue et l'interpellation. Blesser un PNJ ou tuer un Pokémon
+ne déclenche pas cette première version de la police.
+
+Les chevaux galopent sur les chemins et ponts en contournant les maisons, arbres,
+passants et rivières. Les murs et arbres coupent leur vue : rester hors de vue
+pendant 30, 40 ou 50 secondes selon l'alerte permet de les semer. Un cavalier à
+moins de 1,5 case pendant 2,5 secondes continues interpelle le joueur : retour au
+vieux bourg, poings sélectionnés et recherche levée, sans perte de progression au
+château ni modification des PV des combats Pokémon. Le bateau ne peut pas être
+interpellé depuis la rive ; les gardes cherchent la dernière position terrestre.
+
+Les montures et cavaliers sont des modèles procéduraux locaux avec galop animé,
+géométries et matériaux partagés. Au plus quatre cavaliers et une recherche A*
+par image ; aucune requête réseau ni appel LLM. Carte, rencontre, onglet masqué et
+château suspendent la poursuite sans effacer l'alerte. La recherche reste propre
+à la session d'exploration de Clairbois et n'est pas enregistrée dans la sauvegarde.
+
 Dans Clairbois 3D, **Activer les sons du village** (ou **M** dehors) débloque
 l'ambiance spatialisée ; un curseur règle son volume. L'eau, les fontaines et le
 feuillage sont audibles à proximité ; branches, marteaux, murmures des habitants
@@ -265,11 +285,28 @@ les artisans (80, 34), le port des roseaux (128, 34), le hameau des moissons
 (18, 88) et les vergers (84, 90). La sortie vers le monde procédural se trouve
 désormais au bout de la route est, en 157, 33–35.
 
-Le village compte 35 bâtiments, 55 habitants et 65 Pokémon d'ambiance : travail,
+Le village compte 80 bâtiments, 100 habitants et 65 Pokémon d'ambiance : travail,
 marché, enfants, pâtures, compagnons, oiseaux, poissons et apparitions nocturnes.
 Les routines, dialogues et réactions à la pluie sont conservés. Les sauvegardes
 du vieux bourg restent compatibles ; la carte 2D et sa mini-carte utilisent aussi
 les nouvelles dimensions.
+
+L'urbanisme relie les quartiers par 21 rues nommées : grande rue commerçante,
+ruelles d'ateliers, quais et entrepôts, faubourg du rempart et promenades des jardins.
+Les nouvelles parcelles bordent leur rue, avec des portes orientées dans les quatre
+directions, des palettes de façades et de toitures par secteur, des jardinières et
+des panneaux. Les rues commerçantes et les quais sont pavés ; les chemins des
+moissons et des jardins restent en terre. Les places se distinguent aussi par leur mobilier : marché artisanal,
+caisses du port, charrettes des moissons et jardins des vergers. Les rues de liaison
+ont leurs propres habitants, métiers, enfants et petites routines quotidiennes.
+Le plan **C** répertorie ces rues et indique les véritables entrées des bâtiments.
+
+Les maisons répétées sont regroupées en `InstancedMesh` par géométrie et matériau
+dans chaque chunk. Les géométries, textures et teintes sont partagées ; les instances
+sont libérées au déchargement. Le mobilier reste fusionné par matériau. Cette
+densification réutilise les modèles locaux et ne télécharge aucun nouvel asset.
+Si une nouvelle maison occupe une ancienne position sauvegardée, le joueur reprend
+devant sa porte en conservant son sac, les portes ouvertes et sa progression au château.
 
 Pour limiter le coût de la grande carte, le sol, les maisons, les arbres et
 l'herbe sont chargés par chunks proches, puis libérés à distance. Les corps des

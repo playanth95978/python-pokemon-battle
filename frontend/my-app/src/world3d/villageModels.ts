@@ -6,17 +6,11 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { Building, HouseModel } from '../world/types'
 import { HOUSE_SIZE } from '../world/worldMap'
+import { buildHouseInstances } from './houseInstances'
 
 const MODELS = '/models/village'
 const TEXTURES = '/textures/polyhaven'
 const HOUSES = Object.keys(HOUSE_SIZE) as HouseModel[]
-/**
- * Même agrandissement pour tous les modèles (ils viennent du même jeu de Quaternius) : le premier étage commence
- * vers 0,9 unité, soit environ 2,1 m, et la porte arrive à 1,7 m pour des habitants de 1,5 m.
- * Les parcelles de la carte (HOUSE_SIZE) sont taillées pour ces dimensions.
- */
-const HOUSE_SCALE = 2.33
-
 /** Texture de détail d'après le nom du matériau du modèle, et sa taille de répétition en unités du monde. */
 const DETAIL: [RegExp, string, number][] = [
     [/roof/i, 'clay_roof_tiles', 1.2],
@@ -25,8 +19,8 @@ const DETAIL: [RegExp, string, number][] = [
 ]
 
 export interface VillageModels {
-    /** Maison posée au centre de sa parcelle, porte vers le sud (+z), toit à la couleur du bâtiment. */
-    house(building: Building): THREE.Object3D
+    /** Maisons orientées vers leur rue, regroupées pour limiter les appels de rendu. */
+    houses(buildings: readonly Building[]): THREE.Object3D
 }
 
 /** Multiplie la couleur du matériau par le grain de la texture (divisée par sa couleur moyenne), projeté sur les trois axes. */
@@ -36,8 +30,14 @@ function withDetail(material: THREE.MeshStandardMaterial, texture: THREE.Texture
         shader.vertexShader = shader.vertexShader
             .replace('#include <common>', '#include <common>\nvarying vec3 vDetailPosition;\nvarying vec3 vDetailNormal;')
             .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
-                vDetailPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
-                vDetailNormal = normalize(mat3(modelMatrix) * objectNormal);`)
+                vec4 detailPosition = vec4(transformed, 1.0);
+                vec3 detailNormal = objectNormal;
+                #ifdef USE_INSTANCING
+                    detailPosition = instanceMatrix * detailPosition;
+                    detailNormal = mat3(instanceMatrix) * detailNormal;
+                #endif
+                vDetailPosition = (modelMatrix * detailPosition).xyz;
+                vDetailNormal = normalize(mat3(modelMatrix) * detailNormal);`)
         shader.fragmentShader = shader.fragmentShader
             .replace('#include <common>', `#include <common>
                 uniform sampler2D detailMap;
@@ -98,12 +98,13 @@ export async function loadVillageModels(renderer: THREE.WebGLRenderer, maxAnisot
         const pivot = new THREE.Group()
         scene.position.set(-center.x, -box.min.y, -center.z)
         pivot.add(scene)
-        return [name, {pivot}] as const
+        pivot.updateMatrixWorld(true)
+        return [name, pivot] as const
     })))
 
-    // Une teinte de toit par couleur de bâtiment, partagée par toutes les maisons de cette couleur.
+    // Teintes de toit et d'enduit partagées : pas de matériau cloné par maison.
     const roofs = new Map<string, THREE.Material>()
-    const roofFor = (material: THREE.MeshStandardMaterial, color: string) => {
+    const tintFor = (material: THREE.MeshStandardMaterial, color: string) => {
         const key = `${material.uuid}:${color}`
         if (!roofs.has(key)) {
             const tinted = material.clone()
@@ -116,18 +117,9 @@ export async function loadVillageModels(renderer: THREE.WebGLRenderer, maxAnisot
         return roofs.get(key)!
     }
 
-    return {
-        house(building) {
-            const {pivot} = models.get(building.model)!
-            const house = pivot.clone()
-            house.scale.setScalar(HOUSE_SCALE)
-            house.position.set(building.x + building.width / 2, 0, building.y + building.height / 2)
-            house.traverse((object) => {
-                if (object instanceof THREE.Mesh && !Array.isArray(object.material) && /roof/i.test(object.material.name)) {
-                    object.material = roofFor(object.material as THREE.MeshStandardMaterial, building.roof)
-                }
-            })
-            return house
-        },
-    }
+    return {houses: (buildings) => buildHouseInstances(buildings, models, (material, building) => {
+        const color = /roof/i.test(material.name) ? building.roof
+            : /plaster|walls|beige|main|stone/i.test(material.name) ? building.facade : undefined
+        return color && material instanceof THREE.MeshStandardMaterial ? tintFor(material, color) : material
+    })}
 }

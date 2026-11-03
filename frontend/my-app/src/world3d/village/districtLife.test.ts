@@ -7,9 +7,9 @@ import { createVillagers, updateVillagers, VILLAGERS } from './villagers'
 
 describe('Vie des quartiers de Clairbois', () => {
     it('répartit les métiers et les Pokémon dans chacun des quatre nouveaux quartiers', () => {
-        expect(VILLAGERS).toHaveLength(55)
+        expect(VILLAGERS).toHaveLength(100)
         expect(VILLAGE_POKEMON).toHaveLength(65)
-        expect(new Set(VILLAGERS.map((profile) => profile.id)).size).toBe(55)
+        expect(new Set(VILLAGERS.map((profile) => profile.id)).size).toBe(100)
         expect(new Set(VILLAGE_POKEMON.map((profile) => profile.id)).size).toBe(65)
         for (const district of LIFE_DISTRICTS) {
             const villagers = DISTRICT_VILLAGERS.filter((profile) => profile.id.startsWith(district.id))

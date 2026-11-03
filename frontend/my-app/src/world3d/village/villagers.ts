@@ -6,6 +6,7 @@
 import type { Direction, Position } from '../../world/types'
 import { distance, findPath } from './pathfinding'
 import { DISTRICT_VILLAGERS } from './districtLife'
+import { CITY_VILLAGERS } from './cityResidents'
 
 export interface Spot extends Position { facing: Direction }
 /** Ce que fait un habitant arrivé à destination ; le rendu en tire l'animation. */
@@ -162,6 +163,7 @@ export const VILLAGERS: Profile[] = [
         lines: ['Léo triche, il court trop vite !', 'Un jour j’aurai un Évoli. Il est trop mignon.', 'Maman dit qu’il faut rentrer avant les lanternes.'],
     },
     ...DISTRICT_VILLAGERS,
+    ...CITY_VILLAGERS,
 ]
 
 /** Cases par seconde, à la marche (adultes) et en courant (enfants qui jouent). */

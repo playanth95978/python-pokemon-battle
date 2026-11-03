@@ -4,6 +4,7 @@ import { createVillagePokemon, VILLAGE_POKEMON } from './villagePokemon'
 import { createVillagePokemonView } from './villagePokemonView'
 import { createVillagerView } from './villagerView'
 import { createVillagers, VILLAGERS } from './villagers'
+import { createPhysics } from '../physicsWorld'
 
 const {loadModel} = vi.hoisted(() => ({loadModel: vi.fn()}))
 vi.mock('three/addons/loaders/GLTFLoader.js', () => ({GLTFLoader: class { loadAsync = loadModel }}))
@@ -19,7 +20,7 @@ describe('Chargement progressif des habitants', () => {
         loadModel.mockResolvedValueOnce({scene: template, animations: []})
         const scene = new THREE.Scene()
         const villagers = createVillagers(VILLAGERS, 10)
-        const view = createVillagerView(scene, villagers, () => 0)
+        const view = createVillagerView(scene, villagers, () => 0, createPhysics(() => 0))
         await Promise.resolve()
         const around = new THREE.Vector3(18, 0, 36)
         const frustum = new THREE.Frustum()
@@ -40,7 +41,7 @@ describe('Chargement progressif des habitants', () => {
 
     it('ne construit les figurines Pokémon qu’à proximité, avec un budget de deux par image', () => {
         const list = createVillagePokemon(VILLAGE_POKEMON, () => 0.5)
-        const view = createVillagePokemonView(new THREE.Scene(), list, () => 0, () => 0)
+        const view = createVillagePokemonView(new THREE.Scene(), list, () => 0, () => 0, createPhysics(() => 0))
         expect(view.roots()).toHaveLength(0)
         view.update(0, 0.1, new THREE.Vector3(1000, 0, 1000), true)
         expect(view.roots()).toHaveLength(0)
